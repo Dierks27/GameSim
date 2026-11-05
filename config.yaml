@@ -37,7 +37,9 @@ sim:
   # Additive matchup correction (see DECISIONS.md): the off/def mixture halves matchup effects, so sampled
   # rows are EPA-tilted until the mixture's mean shift = matchup_strength * (shrunk off effect + def effect).
   matchup_strength: 1.0        # 0 disables the correction (pure spec mixture)
-  k_team_epa: 300              # shrinkage of team/QB EPA-per-play effects (plays)       # Kaplan-Meier extension of TD plays sampled from closer to the goal line
+  k_team_epa: 300              # shrinkage of team/QB EPA-per-play effects (plays)
+  score_effect_strength: 0.0   # game-state EPA effects (no measurable effect at 1-2; off by default, tunable)
+  k_score_effect: 2000         # shrinkage of the game-state EPA table (plays per cell)       # Kaplan-Meier extension of TD plays sampled from closer to the goal line
 
 playcall:
   smoothing_m: 25              # hierarchical additive smoothing strength for league P(pass) cells
@@ -149,6 +151,7 @@ tune:
     playcall.pass_logit_shift: {low: -0.2, high: 0.1}
     weather.strength: {low: 0.0, high: 1.5}
     rest_travel.strength: {low: 0.0, high: 2.0}
+    sim.score_effect_strength: {low: 0.0, high: 2.0}
 
 markets:
   # READ-ONLY market data. gridsim never places orders and never uses exchange account keys.

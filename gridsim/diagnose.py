@@ -125,8 +125,27 @@ def worst_misses(g: pl.DataFrame, comp: pl.DataFrame, k: int = 15) -> list[dict]
     return out
 
 
-def plain_summary(score: list[dict], resid: list[dict], metrics: dict) -> list[str]:
+def key_numbers(g: pl.DataFrame) -> list[dict]:
+    """Predicted vs actual frequency of key margins (3, 7) and one-score games."""
+    out = []
+    m = (g["margin"].abs()).to_numpy()
+    for col, name, act in (("p_abs3", "margin exactly 3", m == 3), ("p_abs7", "margin exactly 7", m == 7),
+                           ("p_within7", "one-score game (<= 7)", m <= 7)):
+        if col not in g.columns:
+            continue
+        pred = float(g[col].mean())
+        a = float(np.mean(act))
+        se = float(np.sqrt(max(a * (1 - a), 1e-9) / len(m)))
+        out.append({"key": name, "sim": pred, "actual": a, "diff": pred - a, "se": se, "flag": abs(pred - a) > 2 * se})
+    return out
+
+
+def plain_summary(score: list[dict], resid: list[dict], metrics: dict, keys: list[dict] | None = None) -> list[str]:
     items = []
+    for k in keys or []:
+        if k["flag"]:
+            items.append((abs(k["diff"]) / k["se"], f"{k['key']}: sim {100 * k['sim']:.1f}% vs actual {100 * k['actual']:.1f}% "
+                                                    f"— the margin distribution's shape (late-game score effects) is off; matters for spreads near 3/7."))
     for c in score:
         if c["flag"]:
             direction = "too high" if c["bias"] > 0 else "too low"
@@ -157,7 +176,9 @@ def diagnose(games: pl.DataFrame, comp: pl.DataFrame) -> dict:
     metrics = summarize_games(games)
     score = component_scorecard(comp)
     resid = residual_breakdown(games)
-    return {"metrics": metrics, "summary": plain_summary(score, resid, metrics), "components": score,
+    keys = key_numbers(games)
+    return {"metrics": metrics, "summary": plain_summary(score, resid, metrics, keys), "components": score,
+            "key_numbers": keys,
             "residuals": resid, "worst_misses": worst_misses(games, comp),
             "coverage": {k: metrics.get(k) for k in ("coverage_80_margin", "coverage_80_total", "coverage_80_points")},
             "calibration": calibration_table((games["p_home"] + 0.5 * games["p_tie"]).to_numpy(), games["home_win"].to_numpy())}
@@ -223,6 +244,7 @@ td,th{{border-bottom:1px solid #2a2f3a;padding:4px 10px;text-align:left}} tr.fla
 {pio.to_html(fig, include_plotlyjs="inline", full_html=False)}
 <h2>Component scorecard</h2>{pio.to_html(fig2, include_plotlyjs=False, full_html=False)}
 {table(comp, ["component", "sim", "actual", "bias", "se", "t", "rel_bias", "points_to"], f)}
+<h2>Key numbers</h2>{table(diag.get('key_numbers', []), ["key", "sim", "actual", "diff", "se"], f)}
 <h2>Residual breakdown</h2>{table(diag['residuals'], ["group", "metric", "n", "mean_error", "se", "t"], f)}
 <h2>Worst misses</h2><ol>{misses}</ol><p>Full component detail for each miss is in diagnose.json.</p></body></html>"""
     path = out_dir / "diagnose.html"

@@ -47,6 +47,7 @@ class SimModel:
     default_qb: dict = field(default_factory=dict)
     qb_names: dict = field(default_factory=dict)
     weather_eff: object = None
+    score_effects: dict = field(default_factory=dict)
 
 
 def kickoff_era_seasons(season: int, cfg: Config, available: list[int]) -> list[int]:
@@ -102,6 +103,28 @@ def apply_regime_changes(df: pl.DataFrame, cfg: Config) -> pl.DataFrame:
     return df.with_columns(w=expr)
 
 
+def build_score_effects(tend: pl.DataFrame, cfg: Config) -> dict:
+    """Game-state EPA residual by (phase H1/Q3/Q4+, score bucket, call), net of offense, defense and league
+    season means, shrunk with n/(n + k). Captures e.g. leading teams' Q4 runs into stacked boxes."""
+    from . import buckets as B
+    k = float(cfg.sim.get("k_score_effect", 2000))
+    P = tend.filter(pl.col("call").is_not_null() & pl.col("down").is_not_null() & pl.col("epa").is_not_null()
+                    & pl.col("score_differential").is_not_null())
+    if P.height == 0:
+        return {}
+    P = B.add_bucket_columns(P).with_columns(
+        phase=pl.when(pl.col("qtr") <= 2).then(0).when(pl.col("qtr") == 3).then(1).otherwise(2),
+        e=pl.col("epa").clip(-4, 4))
+    keys = ["season", "call"]
+    off = P.group_by(keys + ["posteam"]).agg(((pl.col("e") * pl.col("w")).sum() / pl.col("w").sum()).alias("mo"))
+    de = P.group_by(keys + ["defteam"]).agg(((pl.col("e") * pl.col("w")).sum() / pl.col("w").sum()).alias("md"))
+    lg = P.group_by(keys).agg(((pl.col("e") * pl.col("w")).sum() / pl.col("w").sum()).alias("ml"))
+    Q = (P.join(off, on=keys + ["posteam"]).join(de, on=keys + ["defteam"]).join(lg, on=keys)
+         .with_columns(r=pl.col("e") - (pl.col("mo") + pl.col("md") - pl.col("ml"))))
+    agg = Q.group_by(["phase", "score_b", "call"]).agg((pl.col("r") * pl.col("w")).sum().alias("s"), pl.col("w").sum().alias("n"))
+    return {(int(r["phase"]), int(r["score_b"]), r["call"]): round(r["s"] / (r["n"] + k), 6) for r in agg.iter_rows(named=True)}
+
+
 def build_presnap(sc_plays: pl.DataFrame, cfg: Config) -> PresnapModel:
     k = float(cfg.sim.get("k_presnap", 400))
     base = sc_plays.filter(pl.col("down").is_not_null() & (pl.col("two_point_attempt").fill_null(0) == 0)
@@ -148,6 +171,7 @@ def build_model(cfg: Config, season: int, through_week: int | None = None, plays
     pc_src = apply_regime_changes(pc_src, cfg)
     playcall = build_playcall(pc_src, cfg)
     presnap = build_presnap(tendency, cfg)
+    score_effects = build_score_effects(tendency, cfg)
     clock = build_clock(window, cfg)
 
     fg_back = int(cfg.kicking["fg_seasons_back"])
@@ -193,4 +217,5 @@ def build_model(cfg: Config, season: int, through_week: int | None = None, plays
     m.default_qb = default_qb
     m.qb_names = qb_names
     m.weather_eff = weather_eff
+    m.score_effects = score_effects
     return m

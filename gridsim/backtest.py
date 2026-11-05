@@ -197,6 +197,8 @@ def sim_week(job: dict) -> list[dict]:
             "mkt_spread": spread, "mkt_margin": gm.get("spread_line"), "mkt_total": gm.get("total_line"),
             "mkt_p_home": ml_to_prob(gm.get("home_moneyline"), gm.get("away_moneyline")),
             "p_cover": float(np.mean(mar + spread > 0)) if spread is not None else None,
+            "p_abs3": float(np.mean(np.abs(mar) == 3)), "p_abs7": float(np.mean(np.abs(mar) == 7)),
+            "p_within7": float(np.mean(np.abs(mar) <= 7)),
             "p_over": float(np.mean(tot > gm["total_line"])) if gm.get("total_line") is not None else None,
             "roof": gm.get("roof"), "div_game": gm.get("div_game"), "gametime": gm.get("gametime"),
             "weekday": gm.get("weekday"), "home_rest": gm.get("home_rest"), "away_rest": gm.get("away_rest"),

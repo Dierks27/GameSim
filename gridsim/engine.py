@@ -70,6 +70,9 @@ class GameSim:
         self.m_strength = float(self.cfg.sim.get("matchup_strength", 0.0))
         self.k_epa = float(self.cfg.sim.get("k_team_epa", 300))
         self.lam_cache: dict = {}
+        self.lam_slope: dict = {}
+        self.score_fx = model.score_effects if float(self.cfg.sim.get("score_effect_strength", 0.0)) > 0 else {}
+        self.score_strength = float(self.cfg.sim.get("score_effect_strength", 0.0))
         self.aux_gen = np.random.default_rng(seed + 7919)
         if starters is None:
             starters = tuple(model.default_qb.get(t) for t in (home, away))
@@ -665,8 +668,9 @@ class GameSim:
         if lam is not None:
             return lam
         wx_shift = (self.wx["pass_epa"] if call == "pass" else 0.0) + self.edge[off]
-        if (self.m_strength <= 0 and wx_shift == 0.0) or not self.pools.ref_sits.get(call):
+        if (self.m_strength <= 0 and wx_shift == 0.0 and not self.score_fx) or not self.pools.ref_sits.get(call):
             self.lam_cache[key] = 0.0
+            self.lam_slope[key] = 0.0
             return 0.0
         if call == "pass" and qb is not None:
             # prior for a QB: backup level when he has no sample, fading to league average once he has
@@ -699,13 +703,24 @@ class GameSim:
             else:
                 hi = mid
         lam = 0.5 * (lo + hi)
+        wts = np.exp(lam * es)
+        mu = (es * wts).sum() / wts.sum()
+        var = max(((es - mu) ** 2 * wts).sum() / wts.sum(), 1e-3)
         self.lam_cache[key] = lam
+        self.lam_slope[key] = 1.0 / var          # d(lambda)/d(target) for small extra shifts
         return lam
 
     def sample_row(self, call: str, tb: int) -> int:
         off = self.pos
         lam = (self.matchup_lambda(off, call)
-               if (self.m_strength > 0 or self.wx["pass_epa"] != 0.0 or self.edge[off] != 0.0) else 0.0)
+               if (self.m_strength > 0 or self.wx["pass_epa"] != 0.0 or self.edge[off] != 0.0 or self.score_fx) else 0.0)
+        if self.score_fx:
+            phase = 0 if self.qtr <= 2 else (1 if self.qtr == 3 else 2)
+            d = self.score[off] - self.score[1 - off]
+            fx = self.score_fx.get((phase, B.score_b(d), call), 0.0)
+            if fx:
+                qb = self.qb[off] if call == "pass" else None
+                lam += self.score_strength * fx * self.lam_slope.get((off, call, qb), 0.0)
         variant = self.tilt[off]
         if lam == 0.0:
             return self._draw(call, tb, variant)
@@ -841,7 +856,10 @@ class GameSim:
             adj = gain - R["yards"][rid]
         new_yl = self.yl - gain
 
-        if kind == K_COMP:
+        if kind == K_COMP and R["int"][rid]:
+            # interception where the offense got the ball back (e.g. fumbled return): an INT, not a completion
+            st[INTS] += 1
+        elif kind == K_COMP:
             st[COMP] += 1
             st[PYDS] += R["pass_yds"][rid] + adj
         elif kind == K_SACK:
