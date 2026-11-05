@@ -128,14 +128,21 @@ pytest -s                # everything, including the full-season sanity table (~
 
 1. `data.py` downloads/caches nflverse data and derives one row per snap with the *real* end spot (from the next
    snap), turnover returns, penalty enforcement, clock usage, and special-teams results.
-2. `pools.py` builds weighted sampling pools per play type × situation bucket for the league and for every team
-   (offense and defense).
-3. `engine.py` runs the game: play call (`playcall.py`), pre-snap fouls, one sampled real play applied to the
-   current state, clock (`clock.py`), kicking (`kicking.py`), overtime (`overtime.py`).
-4. `report.py` turns the per-sim box scores into the summary.
+2. `pools.py` builds weighted sampling pools per play type x situation bucket for the league, every team (offense and
+   defense) and every QB, with an empirical-Bayes team/league blend and a back-off chain for thin buckets.
+3. `engine.py` runs the game snap by snap: play call (`playcall.py`), pre-snap fouls, one sampled *real* play applied
+   to the current down/distance/field position, clock (`clock.py`), kicking (`kicking.py`), overtime (`overtime.py`).
+   An EPA tilt makes the offense/defense mixture additive (see DECISIONS.md) and carries home field, weather,
+   rest/travel and the starting QB.
+4. `availability.py` decides who plays (injury report, depth chart, overrides), `players.py` splits every play among
+   current players, `report.py` / `html_report.py` / `app/` present the result, `backtest.py` / `diagnose.py` /
+   `tune.py` / `live.py` keep score.
 
-See `DECISIONS.md` for the back-off chain, shrinkage, clock model, kickoff era rules and calibration notes,
-and `SCHEMA_NOTES.md` for the nflverse columns used.
+How good is it? Out of sample (no lookahead) it is roughly market-level in 2025 and clearly behind the closing
+market in 2024 — see DECISIONS.md. Use the live scorecard and closing-line value to decide how much to trust it.
+
+See `DECISIONS.md` for every modeling choice and the backtest numbers, and `SCHEMA_NOTES.md` for the nflverse columns
+used.
 
 ## GUI
 
