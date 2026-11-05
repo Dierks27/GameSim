@@ -203,7 +203,20 @@ def run_game(req: RunRequest, cfg: Config | None = None, progress=None, verbose:
     if req.combos:
         from .combos import evaluate
         extra["combos"] = [evaluate(c, res, players) for c in req.combos]
+    if game and game.get("home_score") is None and bool(cfg.markets["kalshi"].get("enabled", True)) and req.state is None:
+        try:
+            from .markets import Kalshi, edges, game_markets, sim_probs
+            mk = game_markets(Kalshi(cfg), game)
+            extra["_kalshi_raw"] = mk
+        except Exception as e:
+            banners.append(f"Kalshi prices unavailable ({str(e)[:80]})")
     summ = summarize(res, spread, total, model.meta, cfg.hash, extra)
+    if summ.get("_kalshi_raw") is not None:
+        from .markets import edges, sim_probs
+        mk = summ.pop("_kalshi_raw")
+        summ["kalshi"] = {"fetched_utc": mk["fetched_utc"], "rows": edges(sim_probs(summ, mk), cfg)}
+    import datetime as _dt
+    summ["created_utc"] = _dt.datetime.now(_dt.timezone.utc).isoformat()
     summ["meta"]["total_seconds"] = round(time.time() - t0, 2)
     summ["request"] = {**req.__dict__, "season": season}
     if use_cache or refresh:

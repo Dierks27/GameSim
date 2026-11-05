@@ -173,6 +173,16 @@ def console(summary: dict) -> str:
         fmt = lambda d: f"{d['p10']:.0f} / {d['p50']:.0f} / {d['p90']:.0f}"  # noqa: E731
         L.append(f"  {k:<32}{fmt(hd):>20}{fmt(ad):>20}")
     L.append("\nMost common final scores: " + ", ".join(f"{H} {t['home']}-{t['away']} {100 * t['p']:.1f}%" for t in s["top_scores"]))
+    if s.get("kalshi") and s["kalshi"].get("rows"):
+        L.append(f"\nKalshi (read-only, {s['kalshi']['fetched_utc']}): sim vs market, best side after fees")
+        rows = [r for r in s["kalshi"]["rows"] if r["market"] == "moneyline"]
+        rows += sorted([r for r in s["kalshi"]["rows"] if r["market"] != "moneyline" and r.get("edge") is not None],
+                       key=lambda r: -r["edge"])[:6]
+        for r in rows:
+            e = r.get("edge")
+            L.append(f"  {r['label']:<26} sim {100 * r['p_yes']:5.1f}% ± {100 * r['moe']:.1f}  bid/ask {100 * (r['yes_bid'] or 0):.0f}/"
+                     f"{100 * (r['yes_ask'] or 0):.0f}c  vol {r.get('volume') or 0:,.0f}"
+                     + (f"  best {r['side']} edge {100 * e:+.1f} pts" if e is not None else ""))
     if s.get("availability"):
         L.append(availability_console(s["availability"], s["meta"].get("qb_starts", {})))
     if s.get("players"):

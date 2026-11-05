@@ -133,6 +133,13 @@ def grade(cfg: Config, season: int, week: int, verbose: bool = True) -> list[dic
             w.writerows(rows)
     if verbose:
         print(f"graded {len(rows)} games for {season} week {week}")
+    try:
+        from .scanner import grade_signals
+        n = grade_signals(cfg)
+        if verbose and n:
+            print(f"graded {n} market signals")
+    except Exception as e:
+        print(f"  signal grading skipped: {e}")
     return rows
 
 

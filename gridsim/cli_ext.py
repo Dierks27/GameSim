@@ -126,7 +126,91 @@ def cmd_impact(args) -> int:
     return 0
 
 
+def cmd_scan(args) -> int:
+    from .config import load_config
+    from .scanner import scan
+    cfg = load_config(args.config)
+    sigs = scan(cfg, args.season, args.week, notify_on=args.notify, sims=args.sims)
+    strong = sum(s["confidence"] == "strong" for s in sigs)
+    mod = sum(s["confidence"] == "moderate" for s in sigs)
+    print(f"{len(sigs)} candidates: {strong} strong, {mod} moderate, {len(sigs) - strong - mod} watchlist "
+          f"(READ-ONLY: gridsim never places orders)")
+    return 0
+
+
+def cmd_signals(args) -> int:
+    from .config import load_config
+    from .scanner import grade_signals, signals_report
+    cfg = load_config(args.config)
+    grade_signals(cfg)
+    print(signals_report(cfg, args.season))
+    return 0
+
+
+def cmd_snapshot(args) -> int:
+    from .config import load_config
+    from .scanner import snapshot_markets
+    print(f"saved {snapshot_markets(load_config(args.config), args.season, args.week)}")
+    return 0
+
+
+def cmd_slate(args) -> int:
+    from .config import load_config
+    from .slate import run_slate, write_slate_html
+    cfg = load_config(args.config)
+    res = run_slate(cfg, args.season, args.week, sims=args.sims, workers=args.workers)
+    if res:
+        season = res[0].get("request", {}).get("season")
+        week = res[0].get("request", {}).get("week")
+        path = cfg.resolve_path(args.report or f"out/slate_{season}_wk{week}.html")
+        print(f"slate report: {write_slate_html(res, path, f'Slate {season} week {week}')}")
+    return 0
+
+
+def cmd_season(args) -> int:
+    import json as _json
+
+    from .config import load_config
+    from .season import format_season, season_sim
+    cfg = load_config(args.config)
+    from .data import current_season
+    res = season_sim(cfg, args.season or current_season(), n_seasons=args.n, sims_per_game=args.sims)
+    print(format_season(res))
+    if args.json:
+        Path(args.json).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.json).write_text(_json.dumps(res, indent=1))
+    return 0
+
+
 def register(sub) -> None:
+    sl = sub.add_parser("slate", help="sim every game of a week, one combined report")
+    sl.add_argument("--season", type=int, default=None)
+    sl.add_argument("--week", type=int, default=None)
+    sl.add_argument("--sims", type=int, default=None)
+    sl.add_argument("--workers", type=int, default=None)
+    sl.add_argument("--report", default=None)
+    sl.set_defaults(func=cmd_slate)
+    se = sub.add_parser("season", help="playoff / division / seed odds from the remaining schedule")
+    se.add_argument("--season", type=int, default=None)
+    se.add_argument("--n", type=int, default=2000, help="season simulations")
+    se.add_argument("--sims", type=int, default=200, help="sims per remaining game")
+    se.add_argument("--json", default=None)
+    se.set_defaults(func=cmd_season)
+
+    sc = sub.add_parser("scan", help="check open Kalshi NFL markets against the latest sims (read-only)")
+    sc.add_argument("--season", type=int, default=None)
+    sc.add_argument("--week", type=int, default=None)
+    sc.add_argument("--sims", type=int, default=None)
+    sc.add_argument("--notify", action="store_true", help="push alerts (ntfy / Discord / Windows toast)")
+    sc.set_defaults(func=cmd_scan)
+    sg = sub.add_parser("signals", help="signal ledger record by market type and confidence")
+    sg.add_argument("--season", type=int, default=None)
+    sg.set_defaults(func=cmd_signals)
+    sn = sub.add_parser("snapshot-markets", help="save current Kalshi prices (closing-line value)")
+    sn.add_argument("--season", type=int, default=None)
+    sn.add_argument("--week", type=int, default=None)
+    sn.set_defaults(func=cmd_snapshot)
+
     im = sub.add_parser("impact", help="what-if: game with vs without a player (or a QB swap)")
     im.add_argument("--home", required=True)
     im.add_argument("--away", required=True)

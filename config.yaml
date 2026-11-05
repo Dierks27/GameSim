@@ -148,3 +148,38 @@ tune:
     playcall.pass_logit_shift: {low: -0.2, high: 0.1}
     weather.strength: {low: 0.0, high: 1.5}
     rest_travel.strength: {low: 0.0, high: 2.0}
+
+markets:
+  # READ-ONLY market data. gridsim never places orders and never uses exchange account keys.
+  kalshi:
+    enabled: true
+    base_url: https://api.elections.kalshi.com/trade-api/v2   # Kalshi public market data (confirm in Kalshi docs)
+    timeout: 15
+    # Kalshi quadratic fee: ceil_to_cent(rate * contracts * P * (1 - P)) * fee_multiplier (verify vs kalshi.com fee schedule)
+    taker_fee_rate: 0.07
+    maker_fee_rate: 0.0175
+    fee_multiplier: 1.0
+    series_title_patterns:      # discovery by series title (no hard-coded tickers)
+      moneyline: "Pro Football Game"
+      spread: "Pro Football Spread"
+      total: "Pro Football Total Points|Total Points"
+    series_fallback: {moneyline: KXNFLGAME, spread: KXNFLSPREAD, total: KXNFLTOTAL}
+
+scanner:
+  min_edge: 0.04               # edge after fees, in probability points
+  moe_multiple: 2.0            # edge must also exceed this many sim margins of error (else re-sim with more sims)
+  max_resim_sims: 20000
+  min_depth_dollars: 250       # size available at the quoted price
+  max_spread: 0.04             # bid/ask spread
+  min_volume: 1000             # contracts traded
+  max_sim_age_hours: 6
+  trust_min_graded: 50         # graded signals needed before a market type may alert
+  realert_edge_growth: 0.03    # re-alert only if the edge grows this much, or flips/disappears
+  strong_edge: 0.08
+  key_questionable_positions: [QB]
+  schedule_note: "game weeks: every 30 min Thu-Sun, every 10 min in the last 3 h before kickoff"
+
+notify:
+  ntfy_topic_env: NTFY_TOPIC             # read from .env / environment, never committed
+  discord_webhook_env: DISCORD_WEBHOOK_URL
+  windows_toast: true
