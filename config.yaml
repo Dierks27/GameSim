@@ -6,6 +6,7 @@ data:
   refresh_hours: 12            # re-download the current season if the cached parquet is older than this
   seasons_back: 1              # prior seasons included in addition to the target season
   season_weights: [1.0, 0.35]  # weight for target season, then 1, 2, ... seasons back (weighted sampling)
+  week_decay: 1.0              # within the target season, a play k weeks before the cutoff gets weight decay^k
   include_postseason: true     # postseason plays from prior seasons are included (same weight as their season)
   garbage_time:                # dropped from tendency (play call) and outcome pools only
     quarters: [4]
@@ -32,7 +33,11 @@ sim:
   k_outcome: 60                # team_weight = n / (n + k) at the chosen team bucket level
   k_presnap: 400               # shrinkage of team pre-snap foul rates (snaps)
   league_min_n: 40             # weighted plays needed before a league bucket level is used
-  td_censoring_fix: true       # Kaplan-Meier extension of TD plays sampled from closer to the goal line
+  td_censoring_fix: true
+  # Additive matchup correction (see DECISIONS.md): the off/def mixture halves matchup effects, so sampled
+  # rows are EPA-tilted until the mixture's mean shift = matchup_strength * (shrunk off effect + def effect).
+  matchup_strength: 1.0        # 0 disables the correction (pure spec mixture)
+  k_team_epa: 300              # shrinkage of team/QB EPA-per-play effects (plays)       # Kaplan-Meier extension of TD plays sampled from closer to the goal line
 
 playcall:
   smoothing_m: 25              # hierarchical additive smoothing strength for league P(pass) cells
@@ -100,3 +105,24 @@ players:
 
 backtest:
   out_dir: backtests
+
+tune:
+  sims_per_game: 300
+  seed: 2024
+  weeks: [3, 18]               # train weeks per season (weeks 1-2 have almost no current-season data)
+  validate_weeks: [3, 18]
+  train_every_kth_game: 2      # keep every k-th game (deterministic) to speed up trials
+  trials: 150
+  objective_weights: {log_loss: 1.0, crps_margin: 1.0, crps_total: 1.0}
+  # Keep this list short: every knob is room to overfit.
+  space:
+    sim.k_outcome: {low: 15, high: 400, log: true}
+    sim.w_off: {low: 0.3, high: 0.7}
+    sim.matchup_strength: {low: 0.4, high: 1.4}
+    sim.k_team_epa: {low: 60, high: 1500, log: true}
+    data.season_weights.1: {low: 0.1, high: 0.8}
+    data.week_decay: {low: 0.85, high: 1.0}
+    home_field.tilt: {low: 0.0, high: 0.03}
+    kicking.k_kicker: {low: 3, high: 80, log: true}
+    playcall.k_team_4th: {low: 10, high: 400, log: true}
+    clock.runoff_scale: {low: 0.97, high: 1.09}

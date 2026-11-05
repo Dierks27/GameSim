@@ -104,13 +104,15 @@ def league_sanity(cfg, season: int, sims_per_game: int = 20, seed: int = 7, max_
     plays = load_prepared(season, cfg, verbose=verbose)
     sched = D.load_schedules(cfg)
     model = build_model(cfg, season, None, plays)
-    games = sched.filter((pl.col("season") == season) & (pl.col("game_type") == "REG") & pl.col("home_score").is_not_null())
+    from .backtest import game_list
+    weeks = sorted(sched.filter((pl.col("season") == season) & (pl.col("game_type") == "REG"))["week"].unique().to_list())
+    games = game_list(cfg, season, weeks, plays)       # carries each game's actual starting QBs
     if max_games:
-        games = games.head(max_games)
+        games = games[:max_games]
     chunks = []
-    for i, gm in enumerate(games.iter_rows(named=True)):
+    for i, gm in enumerate(games):
         r = simulate(model, gm["home_team"], gm["away_team"], sims_per_game, seed + i,
-                     neutral=(gm["location"] == "Neutral"))
+                     neutral=(gm["location"] == "Neutral"), starters=(gm["home_qb"], gm["away_qb"]))
         chunks.append(r.stats)
     sim = sim_team_games(np.concatenate(chunks))
     act = actual_team_games(plays, sched, season)

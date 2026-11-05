@@ -63,6 +63,10 @@ class GameSim:
         self.players = players               # optional PlayerModel (phase 4)
         self.avail = availability            # optional Availability: per-game rolls of who plays
         self.k_qb = float(self.cfg.qb["k_qb"])
+        self.m_strength = float(self.cfg.sim.get("matchup_strength", 0.0))
+        self.k_epa = float(self.cfg.sim.get("k_team_epa", 300))
+        self.lam_cache: dict = {}
+        self.aux_gen = np.random.default_rng(seed + 7919)
         if starters is None:
             starters = tuple(model.default_qb.get(t) for t in (home, away))
         self.starters = tuple(starters)
@@ -507,6 +511,8 @@ class GameSim:
             st[DRIVES] += 1
 
         if kneel:
+            if self.players is not None:
+                self.players.kneel(self, off)
             st[KNEELS] += 1
             st[RATT] += 1
             st[RYDS] -= 1
@@ -601,7 +607,73 @@ class GameSim:
         return "punt"
 
     # ---- applying a sampled scrimmage row -------------------------------------------------
+    # ---- additive matchup correction ------------------------------------------------------
+    def _shr(self, key, toward: float = 0.0) -> float:
+        e = self.pools.eff.get(key)
+        if e is None:
+            return toward
+        eff, n = e
+        return (n * eff + self.k_epa * toward) / (n + self.k_epa)
+
+    def matchup_lambda(self, off: int, call: str) -> float:
+        """EPA tilt making the offense/defense mixture's mean shift additive: strength*(off + def)."""
+        qb = self.qb[off] if call == "pass" else None
+        key = (off, call, qb)
+        lam = self.lam_cache.get(key)
+        if lam is not None:
+            return lam
+        if self.m_strength <= 0 or not self.pools.ref_sits.get(call):
+            self.lam_cache[key] = 0.0
+            return 0.0
+        if call == "pass" and qb is not None:
+            # prior for a QB: backup level when he has no sample, fading to league average once he has
+            # backup_max_dropbacks of history (established starters are shrunk toward 0, not toward backups)
+            backup = self.pools.eff.get(("qb", "__BACKUP_QB__", "pass"), (0.0, 0))[0]
+            n_qb = self.pools.eff.get(("qb", qb, "pass"), (0.0, 0.0))[1]
+            prior = backup * max(0.0, 1.0 - n_qb / float(self.cfg.qb["backup_max_dropbacks"]))
+            off_eff = self._shr(("qb", qb, "pass"), toward=prior)
+        else:
+            off_eff = self._shr(("off", self.teams[off], call))
+        def_eff = self._shr(("def", self.teams[1 - off], call))
+        target = self.pools.league_epa[call] + self.m_strength * (off_eff + def_eff)
+        # measure the untilted mixture over league-mix situations (separate RNG: game stream untouched)
+        saved = (self.down, self.togo, self.yl, self.pos, self._buf, self._bi)
+        self._buf, self._bi = self.aux_gen.random(1 << 16).tolist(), 0
+        self.pos = off
+        E = self.rows["epa_c"]
+        es = []
+        for down, togo, yl, tb in self.pools.ref_sits[call]:
+            self.down, self.togo, self.yl = down, togo, yl
+            es.append(E[self._draw(call, tb, 0)])
+        self.down, self.togo, self.yl, self.pos, self._buf, self._bi = saved
+        es = np.asarray(es)
+        lo, hi = -0.6, 0.6
+        for _ in range(40):
+            mid = 0.5 * (lo + hi)
+            wts = np.exp(mid * es)
+            if (es * wts).sum() / wts.sum() < target:
+                lo = mid
+            else:
+                hi = mid
+        lam = 0.5 * (lo + hi)
+        self.lam_cache[key] = lam
+        return lam
+
     def sample_row(self, call: str, tb: int) -> int:
+        off = self.pos
+        lam = self.matchup_lambda(off, call) if self.m_strength > 0 else 0.0
+        variant = self.tilt[off]
+        if lam == 0.0:
+            return self._draw(call, tb, variant)
+        E = self.rows["epa_c"]
+        top = math.exp(abs(lam) * 4.0)
+        for _ in range(60):
+            rid = self._draw(call, tb, variant)
+            if self.u() * top < math.exp(lam * E[rid]):
+                return rid
+        return rid
+
+    def _draw(self, call: str, tb: int, variant: int) -> int:
         off = self.pos
         team_side = self.teams[off] if self.u() < self.w_off else self.teams[1 - off]
         side = "off" if team_side == self.teams[off] else "def"
@@ -623,7 +695,7 @@ class GameSim:
             seg = lseg
         if seg is None:
             seg = tseg
-        return self.pools.sample(seg, self.u(), self.tilt[off])
+        return self.pools.sample(seg, self.u(), variant)
 
     def run_play(self, call: str, diff: int, gsec: float, hsec: float, tb: int) -> None:
         off, dfn = self.pos, 1 - self.pos
@@ -664,6 +736,7 @@ class GameSim:
                     self.last_pen_restart = True
             return
 
+        mult = self.players.attribute(self, rid, off, kind) if self.players is not None else 1.0
         st[PLAYS] += 1
         is_pass_play = kind in (K_INC, K_COMP) or R["int"][rid]
         if is_pass_play:
@@ -701,8 +774,10 @@ class GameSim:
             self.turnover_poss(dfn, 80 if p_end <= 0 else 100 - p_end)
             return
 
-        # --- yardage (with TD censoring extension)
+        # --- yardage (with TD censoring extension; player efficiency split on positive gains)
         gain = R["yards"][rid]
+        if mult != 1.0 and gain > 0 and not R["td"][rid] and kind in (K_COMP, K_RUN):
+            gain = int(round(gain * mult))
         if R["td"][rid]:
             c = R["censor"][rid]
             if c < self.yl:

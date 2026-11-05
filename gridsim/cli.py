@@ -14,79 +14,26 @@ def _season_default() -> int:
     return current_season()
 
 
-def _schedule_game(cfg, season: int, home: str, away: str, week: int | None = None):
-    from .data import load_schedules
-    try:
-        s = load_schedules(cfg)
-    except Exception:
-        return None
-    g = s.filter((pl.col("season") == season) & (pl.col("home_team") == home) & (pl.col("away_team") == away))
-    if week is not None:
-        g = g.filter(pl.col("week") == week)
-    if g.height == 0:
-        return None
-    unplayed = g.filter(pl.col("home_score").is_null())
-    return (unplayed if unplayed.height else g).sort("week").row(0, named=True)
-
-
 def cmd_run(args) -> int:
+    from .api import RunRequest, run_game
+    from .availability import NameMatchError
     from .config import load_config
-    from .engine import simulate
-    from .model import build_model
-    from .report import console, summarize, to_json
+    from .report import console, to_json
 
     cfg = load_config(args.config)
-    season = args.season or _season_default()
-    home, away = args.home.upper(), args.away.upper()
-    t0 = time.time()
-    game = _schedule_game(cfg, season, home, away, args.week)
-    neutral = args.neutral or bool(game and game.get("location") == "Neutral")
-    banners = []
-    if neutral and not args.neutral:
-        banners.append("neutral site detected from the schedule")
-    spread, total = args.spread, args.total
-    market = None
-    if game and game.get("spread_line") is not None:
-        market = {"spread_home": -float(game["spread_line"]), "total": game.get("total_line"), "game_id": game["game_id"]}
-        if spread is None and args.market_lines:
-            spread = market["spread_home"]
-        if total is None and args.market_lines and market["total"] is not None:
-            total = float(market["total"])
-
-    model = build_model(cfg, season, args.through_week, verbose=True)
-    players = None
-    avail = None
-    avail_info = None
-    if not args.no_availability:
-        from .availability import NameMatchError, build_availability
-        try:
-            avail = build_availability(cfg, season, home, away, model, week=(game or {}).get("week") or args.week,
-                                       outs=args.out, ins=args.inn, overrides_path=args.overrides,
-                                       game_date=(game or {}).get("gameday"), verbose=True)
-        except NameMatchError as e:
-            print(f"error: {e}", file=sys.stderr)
-            return 2
-        avail_info = avail.describe()
-        banners += avail.banners
-    if not args.no_players:
-        try:
-            from .players import build_player_model
-            players = build_player_model(cfg, model, season, args.through_week, home, away, avail)
-        except ImportError:
-            players = None
-    n = args.sims or int(cfg.sim["n_sims"])
-    seed = args.seed if args.seed is not None else int(cfg.sim["seed"])
-    res = simulate(model, home, away, n, seed, neutral=neutral, playoff=args.playoff, players=players,
-                   availability=avail)
-    extra = {"banners": banners}
-    if market:
-        extra["market"] = market
-    if avail_info:
-        extra["availability"] = avail_info
-    if args.prop and players is not None:
-        extra["props"] = players.prop_table(res, args.prop)
-    summ = summarize(res, spread, total, model.meta, cfg.hash, extra)
-    summ["meta"]["total_seconds"] = round(time.time() - t0, 2)
+    req = RunRequest(home=args.home, away=args.away, season=args.season or _season_default(), week=args.week,
+                     sims=args.sims, seed=args.seed, spread=args.spread, total=args.total,
+                     market_lines=args.market_lines, neutral=args.neutral, playoff=args.playoff,
+                     through_week=args.through_week, outs=args.out, ins=args.inn, overrides_path=args.overrides,
+                     props=args.prop, use_availability=not args.no_availability, use_players=not args.no_players)
+    try:
+        summ = run_game(req, cfg, verbose=True, use_cache=False)
+    except NameMatchError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
     print(console(summ))
     if args.json:
         Path(args.json).parent.mkdir(parents=True, exist_ok=True)

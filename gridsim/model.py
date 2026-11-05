@@ -106,6 +106,12 @@ def build_model(cfg: Config, season: int, through_week: int | None = None, plays
     win_seasons = list(weights.keys())
     window = D.window_filter(plays, season, through_week, win_seasons)
     window = _with_weights(window, weights)
+    decay = float(cfg.data.get("week_decay", 1.0))
+    if decay < 1.0:
+        cut = through_week if through_week is not None else int(window.filter(pl.col("season") == season)["week"].max() or 0)
+        window = window.with_columns(w=pl.when(pl.col("season") == season)
+                                     .then(pl.col("w") * decay ** (cut - pl.col("week")).clip(0, None))
+                                     .otherwise(pl.col("w")))
     tendency = window.filter(~D.garbage_time_mask(cfg))
 
     teams = sorted(set(window["posteam"].drop_nulls().unique().to_list()))

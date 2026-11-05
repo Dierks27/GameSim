@@ -41,6 +41,9 @@ class OutcomePools:
     n_rows: int = 0
     memo: dict = field(default_factory=dict)
     qb_dropbacks: dict = field(default_factory=dict)
+    league_epa: dict = field(default_factory=dict)
+    eff: dict = field(default_factory=dict)
+    ref_sits: dict = field(default_factory=dict)
 
     def sample(self, seg: Segment, u: float, tilt: int) -> int:
         cum = self.cum[tilt]
@@ -209,6 +212,44 @@ def build_outcome_pools(df: pl.DataFrame, teams: list[str], hfa_tilt: float, bac
 
     out = OutcomePools(rows=rows, idx=idx.tolist(), cum=cum, segs=segs, km=km, teams=teams, n_rows=n)
     out.qb_dropbacks = qb_tot
+
+    # ---- EPA effects for the additive matchup correction (see engine.matchup_lambda)
+    epa_raw = np.clip(g("epa", 0.0).astype(float), -8, 8)
+    rows["epa_c"] = np.clip(epa_raw, -4, 4).tolist()
+    is_pass = (df["call"] == "pass").to_numpy()
+    league = {}
+    for call, m in (("pass", is_pass), ("run", ~is_pass)):
+        league[call] = float((epa_raw[m] * w[m]).sum() / max(w[m].sum(), 1e-9))
+    eff: dict = {}
+    for side, col in (("off", "posteam"), ("def", "defteam")):
+        tcol = df[col].to_numpy()
+        for call, m in (("pass", is_pass), ("run", ~is_pass)):
+            for team in teams:
+                mm = m & (tcol == team)
+                n_ = float(w[mm].sum())
+                if n_ > 0:
+                    eff[(side, team, call)] = (float((epa_raw[mm] * w[mm]).sum() / n_) - league[call], n_)
+    qcol = df["qb_id"].to_numpy() if "qb_id" in df.columns else np.array([None] * n)
+    for qb in qb_tot:
+        mm = is_pass & (qcol == qb)
+        n_ = float(w[mm].sum())
+        if n_ > 0:
+            eff[("qb", qb, "pass")] = (float((epa_raw[mm] * w[mm]).sum() / n_) - league["pass"], n_)
+    low_set = set(low)
+    mm = is_pass & np.array([q in low_set for q in qcol])
+    eff[("qb", BACKUP_QB, "pass")] = ((float((epa_raw[mm] * w[mm]).sum() / max(w[mm].sum(), 1e-9)) - league["pass"]) if mm.any() else -0.1,
+                                      float(w[mm].sum()))
+    out.league_epa = league
+    out.eff = eff
+    # reference situations (league mix) used to measure a matchup's natural EPA shift
+    rng = np.random.default_rng(0)
+    ref = {}
+    sit = df.select(["call", "down", "ydstogo", "yardline_100", "time_b"]).to_numpy()
+    for call in ("pass", "run"):
+        cand = np.where(sit[:, 0] == call)[0]
+        pick = rng.choice(cand, size=min(1500, len(cand)), replace=False) if len(cand) else []
+        ref[call] = [(int(sit[i, 1]), int(sit[i, 2]), int(sit[i, 3]), int(sit[i, 4])) for i in pick]
+    out.ref_sits = ref
     return out
 
 

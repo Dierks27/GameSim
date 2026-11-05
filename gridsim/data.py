@@ -41,7 +41,7 @@ PBP_KEEP = [
     "receiving_yards", "passer_player_id", "passer_player_name", "rusher_player_id", "rusher_player_name",
     "receiver_player_id", "receiver_player_name", "kicker_player_id", "kicker_player_name",
     "punter_player_id", "punter_player_name", "pass_attempt", "rush_attempt", "no_huddle",
-    "drive", "fixed_drive", "roof", "location", "aborted_play",
+    "drive", "fixed_drive", "roof", "location", "aborted_play", "total_home_score", "total_away_score",
 ]
 
 
