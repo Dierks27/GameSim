@@ -1,0 +1,174 @@
+data:
+  cache_dir: data/cache
+  refresh_hours: 12
+  seasons_back: 1
+  season_weights:
+  - 1.0
+  - 0.21018120070083587
+  week_decay: 0.9559849088452507
+  include_postseason: true
+  garbage_time:
+    quarters:
+    - 4
+    wp_low: 0.05
+    wp_high: 0.95
+    apply_to_playcall: true
+kickoff_rules:
+  eras:
+    2023: legacy
+    2024: dk2024
+    2025: dk2025
+    2026: dk2026
+  default_era: dk2026
+  min_era_kickoffs: 400
+  touchback_yardline:
+    legacy: 25
+    dk2024: 30
+    dk2025: 35
+    dk2026: 35
+  landing_zone_touchback_yardline: 20
+  safety_kick_shift: 10
+sim:
+  n_sims: 2000
+  seed: 42
+  w_off: 0.5834570380329616
+  min_bucket_n: 40
+  k_outcome: 63.66913576286507
+  k_presnap: 400
+  league_min_n: 40
+  td_censoring_fix: true
+  matchup_strength: 1.0022513956230925
+  k_team_epa: 184.84301327936237
+playcall:
+  smoothing_m: 25
+  k_team_pass: 300
+  k_team_4th: 33.091254446781896
+  fg_min_make_prob: 0.3
+  pass_logit_shift: -0.12046262190840885
+kicking:
+  k_kicker: 15.870936351839388
+  fg_seasons_back: 3
+  k_punter: 60
+  k_kickoff_team: 150
+  block_return_td_rate: 0.08
+two_point:
+  late_quarter: 4
+  chart:
+  - -2
+  - -5
+  - -10
+  - -13
+  - 1
+  - 5
+  - 12
+  base_rate: 0.04
+clock:
+  hurry_q4_seconds: 300
+  hurry_q4_two_score_seconds: 600
+  hurry_q2_seconds: 120
+  milk_q4_seconds: 300
+  milk_q4_two_score_seconds: 600
+  def_timeout_seconds: 165
+  def_timeout_max_deficit: 16
+  off_timeout_seconds: 75
+  spike_seconds: 40
+  q2_kneel_seconds: 35
+  k_pace: 150
+  runoff_scale: 1.0818443182645001
+qb:
+  k_qb: 100
+  backup_max_dropbacks: 150
+availability:
+  questionable_play_prob: 0.75
+  doubtful_out: true
+  doubtful_play_prob: 0.1
+  no_report_dnp_play_prob: 0.5
+  no_report_limited_play_prob: 0.95
+  practice_dnp_factor: 0.67
+  practice_full_factor: 1.15
+  stale_injury_hours: 24
+home_field:
+  tilt: 0.011900121851093194
+regime:
+  file: regime_changes.yaml
+  pre_change_weight: 0.3
+rest_travel:
+  strength: 1.5729107590668836
+  bye_pts: 0.6
+  short_week_pts: -0.6
+  rest_diff_pts_per_day: 0.0
+  tz_pts_per_hour: -0.25
+  international_pts: 0.0
+  plays_per_team: 62
+weather:
+  enabled: true
+  strength: 0.29755155916766185
+overtime:
+  regular_season_minutes: 10
+  playoff_minutes: 15
+  coin_toss_winner_receives: 0.97
+players:
+  usage_games: 6
+  k_player_eff: 80
+  min_share: 0.01
+backtest:
+  out_dir: backtests
+tune:
+  sims_per_game: 300
+  seed: 2024
+  weeks:
+  - 3
+  - 18
+  validate_weeks:
+  - 3
+  - 18
+  train_every_kth_game: 2
+  trials: 150
+  objective_weights:
+    log_loss: 1.0
+    crps_margin: 1.0
+    crps_total: 1.0
+  space:
+    sim.k_outcome:
+      low: 15
+      high: 400
+      log: true
+    sim.w_off:
+      low: 0.3
+      high: 0.7
+    sim.matchup_strength:
+      low: 0.4
+      high: 1.4
+    sim.k_team_epa:
+      low: 60
+      high: 1500
+      log: true
+    data.season_weights.1:
+      low: 0.1
+      high: 0.8
+    data.week_decay:
+      low: 0.85
+      high: 1.0
+    home_field.tilt:
+      low: 0.0
+      high: 0.03
+    kicking.k_kicker:
+      low: 3
+      high: 80
+      log: true
+    playcall.k_team_4th:
+      low: 10
+      high: 400
+      log: true
+    clock.runoff_scale:
+      low: 0.97
+      high: 1.09
+    playcall.pass_logit_shift:
+      low: -0.2
+      high: 0.1
+    weather.strength:
+      low: 0.0
+      high: 1.5
+    rest_travel.strength:
+      low: 0.0
+      high: 2.0

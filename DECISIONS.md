@@ -227,3 +227,25 @@ Known: FGA runs ~5% high (FG attempts per drive +3%); the diagnose report will t
   reproduces a run exactly (tested).
 * Pools are flat Python lists of row ids and global running cumulative weights; sampling = `bisect` within a
   segment. 2,000 sims of one game take ~4–5 s.
+
+
+## Tuning run 1 (2026-11-05): not promoted
+
+`gridsim tune --train 2023-2024 --validate 2025 --trials 24 --sims 300` (every 2nd train game, weeks 3–18), output in
+`tuning/20261105-074738/`. Objective = log loss + CRPS(margin)/10 + CRPS(total)/10.
+
+| | train 2023–24 objective | validation 2025 objective | 2025 log loss | 2025 Brier | 2025 CRPS margin | 2025 CRPS total | 2025 MAE margin | 2025 MAE total |
+|---|---|---|---|---|---|---|---|---|
+| current config | 2.14565 | **2.08495** | **0.6143** | **0.2107** | **7.192** | **7.515** | **10.03** | 10.54 |
+| best trial (11) | 2.09960 | 2.09523 | 0.6166 | 0.2135 | 7.220 | 7.567 | 10.06 | 10.54 |
+| closing market (2025) | | | 0.6177 | 0.2151 | | | 10.08 | 10.13 |
+
+The best trial (fewer passes, slower pace, less team shrinkage, more recency, more HFA) improved train by 0.046 but
+validation got *worse* — flagged "likely overfit", config.yaml unchanged. With ~240 games per season the objective
+noise between configs is comparable to the gains, so short tuning runs mostly chase noise; run the full
+`--trials 150` with more train seasons overnight, or `--sampling-only` for a faster, lower-dimensional search.
+
+**Held-out result for the current config (2025 weeks 3–18, 240 games, no lookahead): the sim beats the closing
+market on win probability (Brier 0.2107 vs 0.2151, log loss 0.614 vs 0.618) and margin (MAE 10.03 vs 10.08), and
+trails it on totals (MAE 10.54 vs 10.13).** Totals are the main known weakness, together with the margin *shape*
+(one-score games 45% sim vs 50% actual; margin exactly 3: 10.8% vs 14.2%), which diagnose now reports as "key numbers".
