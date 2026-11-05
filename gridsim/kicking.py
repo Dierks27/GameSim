@@ -90,7 +90,7 @@ def punt_bin(yl: int) -> int:
 
 
 def build_kicking(plays: pl.DataFrame, fg_plays: pl.DataFrame, ko_plays: pl.DataFrame, cfg, last_kicker_plays: pl.DataFrame,
-                  onside_plays: pl.DataFrame) -> KickingModel:
+                  onside_plays: pl.DataFrame, era: str | None = None) -> KickingModel:
     kcfg = cfg.kicking
     # ---- field goals + kicker offsets
     fg = fg_plays.filter((pl.col("play_type") == "field_goal") & pl.col("kick_distance").is_not_null())
@@ -149,7 +149,9 @@ def build_kicking(plays: pl.DataFrame, fg_plays: pl.DataFrame, ko_plays: pl.Data
 
     # ---- kickoffs (era-filtered)
     kr = cfg.kickoff_rules
-    tb_yl, lz_yl = int(kr["touchback_yardline"]), int(kr["landing_zone_touchback_yardline"])
+    tby = kr["touchback_yardline"]
+    tb_yl = int(tby.get(era or kr["default_era"], 35) if isinstance(tby, dict) else tby)
+    lz_yl = int(kr["landing_zone_touchback_yardline"])
     ko = ko_plays.filter((pl.col("play_type") == "kickoff") & pl.col("rec_yl").is_not_null())
     ko = ko.with_columns(onside=pl.col("desc").str.contains("(?i)onside").fill_null(False),
                          ret_td=(pl.col("touchdown").fill_null(0) == 1) & (pl.col("td_team") == pl.col("posteam")),
@@ -157,8 +159,10 @@ def build_kicking(plays: pl.DataFrame, fg_plays: pl.DataFrame, ko_plays: pl.Data
                          el=pl.col("elapsed").fill_null(5.0).clip(0, 20))
     normal = ko.filter(~pl.col("onside") & (pl.col("yardline_100") == 35))
     # remap touchback spots to the configured yard lines
+    # remap end-zone touchbacks to the target era's configured spot (rows in the pool come from that era,
+    # so this only matters when the user overrides the spot or an older era is borrowed)
     normal = normal.with_columns(
-        rec_yl=pl.when((pl.col("touchback").fill_null(0) == 1) & ~pl.col("kick_retained") & (pl.col("rec_yl") <= 70) & (pl.col("rec_yl") >= 60))
+        rec_yl=pl.when((pl.col("touchback").fill_null(0) == 1) & ~pl.col("kick_retained") & (pl.col("rec_yl") <= 75) & (pl.col("rec_yl") >= 60))
         .then(100 - tb_yl)
         .when((pl.col("touchback").fill_null(0) == 1) & ~pl.col("kick_retained") & (pl.col("rec_yl") == 80))
         .then(100 - lz_yl).otherwise(pl.col("rec_yl")))

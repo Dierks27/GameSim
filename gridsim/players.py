@@ -251,6 +251,34 @@ class PlayerModel:
         self._arrays = arr
         return res
 
+    def find(self, name: str) -> tuple[int, str]:
+        from .availability import NameMatchError, match_player
+        arr = getattr(self, "_arrays", None) or self.arrays()
+        hits = []
+        for tt in (0, 1):
+            roster = [{"gsis_id": p, "full_name": self.name(t, p), "last_name": self.name(t, p).split()[-1]}
+                      for (t, p) in arr if t == tt and self.name(t, p)]
+            try:
+                hits.append((tt, match_player(name.strip(), roster, self.teams[tt].team)["gsis_id"]))
+            except NameMatchError:
+                pass
+        if len(hits) != 1:
+            cands = ", ".join(sorted({self.name(t, p) for (t, p) in arr}))[:400]
+            raise ValueError(f"player '{name}' matched {len(hits)} players; candidates: {cands}")
+        return hits[0]
+
+    def stat_array(self, name: str, stat: str) -> np.ndarray:
+        arr = getattr(self, "_arrays", None) or self.arrays()
+        key = STAT_ALIASES.get(stat.lower())
+        if key is None:
+            raise ValueError(f"unknown stat {stat!r}; use one of {sorted(set(STAT_ALIASES))}")
+        a = arr[self.find(name)]
+        if key == "anytime_td":
+            return ((a[:, PI["rush_td"]] + a[:, PI["rec_td"]]) > 0).astype(float)
+        if key == "rush_rec_yds":
+            return a[:, PI["rush_yds"]] + a[:, PI["rec_yds"]]
+        return a[:, PI[key]]
+
     def prop_table(self, res, props: list[str]) -> list[dict]:
         from .availability import NameMatchError, match_player
         from .report import moe

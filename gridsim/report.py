@@ -181,6 +181,13 @@ def console(summary: dict) -> str:
         L.append("\nProps:")
         for p in s["props"]:
             L.append(f"  {p['player']} {p['stat']} {p['line']}: over {_fmt_pm(p['over'])} under {100 * p['under']:.1f}%")
+    for c in s.get("combos", []):
+        L.append(f"\nCombo: {c['combo']}")
+        for leg in c["legs"]:
+            L.append(f"  {leg['leg']:<40} {100 * leg['p']:5.1f}%")
+        lift = c.get("correlation_lift")
+        L.append(f"  joint (from sims) {100 * c['joint']['p']:.1f}% ± {100 * c['joint']['moe']:.1f}  vs naive product "
+                 f"{100 * c['naive']:.1f}%  (lift x{lift:.2f})  fair {c['fair_american']}" if lift else "  joint 0%")
     m = s["meta"]
     L.append(f"\nData: seasons {m.get('window_seasons')} weights {m.get('season_weights')} through week "
              f"{m.get('through_week') or m.get('last_week_in_data')} | seed {m.get('seed')} | runtime {m.get('runtime_seconds')}s "

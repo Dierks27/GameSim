@@ -23,7 +23,8 @@ def cmd_run(args) -> int:
                      sims=args.sims, seed=args.seed, spread=args.spread, total=args.total,
                      market_lines=args.market_lines, neutral=args.neutral, playoff=args.playoff,
                      through_week=args.through_week, outs=args.out, ins=args.inn, overrides_path=args.overrides,
-                     props=args.prop, use_availability=not args.no_availability, use_players=not args.no_players)
+                     props=args.prop, use_availability=not args.no_availability, use_players=not args.no_players,
+                     state=args.state, combos=args.combo)
     try:
         summ = run_game(req, cfg, verbose=True, use_cache=False)
     except NameMatchError as e:
@@ -98,6 +99,8 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--prop", action="append", default=[], help='"Player Name:rec_yds:64.5" (repeatable)')
     r.add_argument("--no-players", action="store_true", help="skip player attribution (faster)")
     r.add_argument("--no-availability", action="store_true", help="ignore rosters/injuries (use last game's QBs)")
+    r.add_argument("--state", default=None, help='live state, e.g. "Q3 8:42 MIN 17 GB 13 MIN ball 2nd&6 at GB 34 timeouts 2/3"')
+    r.add_argument("--combo", action="append", default=[], help='"MIN:win; J.Jefferson:rec_yds>79.5; total>44.5" (repeatable)')
     r.set_defaults(func=cmd_run)
 
     rf = sub.add_parser("refresh-data", help="re-download nflverse data into the local cache")

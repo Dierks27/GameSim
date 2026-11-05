@@ -135,7 +135,8 @@ def build_model(cfg: Config, season: int, through_week: int | None = None, plays
         if prev:
             era = era + [max(prev)]
             ko_win = D.window_filter(plays, season, through_week, era).with_columns(w=pl.lit(1.0))
-    kicking = build_kicking(window, fg_win, ko_win, cfg, window, fg_win)
+    eras = {int(k): v for k, v in cfg.kickoff_rules["eras"].items()}
+    kicking = build_kicking(window, fg_win, ko_win, cfg, window, fg_win, era=eras.get(season, cfg.kickoff_rules["default_era"]))
 
     # default starter per team: QB with the most dropbacks in the team's latest game in the window
     last = (window.filter(pl.col("qb_id").is_not_null() & (pl.col("call") == "pass"))

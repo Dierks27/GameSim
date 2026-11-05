@@ -47,7 +47,8 @@ QIDX = {1: Q1, 2: Q2, 3: Q3, 4: Q4}
 
 class GameSim:
     def __init__(self, model: SimModel, home: str, away: str, neutral: bool = False, playoff: bool = False,
-                 seed: int = 42, players=None, availability=None, starters: tuple | None = None):
+                 seed: int = 42, players=None, availability=None, starters: tuple | None = None,
+                 start_state: dict | None = None):
         for t in (home, away):
             if t not in model.teams:
                 raise ValueError(f"unknown team {t!r}; known: {', '.join(model.teams)}")
@@ -62,6 +63,7 @@ class GameSim:
         self._bi = 0
         self.players = players               # optional PlayerModel (phase 4)
         self.avail = availability            # optional Availability: per-game rolls of who plays
+        self.start_state = start_state       # optional live state (gridsim.state.parse_state)
         self.k_qb = float(self.cfg.qb["k_qb"])
         self.m_strength = float(self.cfg.sim.get("matchup_strength", 0.0))
         self.k_epa = float(self.cfg.sim.get("k_team_epa", 300))
@@ -91,7 +93,11 @@ class GameSim:
         self.kickers = tuple(self.kk.team_kicker.get(t) for t in self.teams)
         self.ot_minutes = float(self.cfg.overtime["playoff_minutes" if playoff else "regular_season_minutes"])
         self.fg_min = float(self.cfg.playcall["fg_min_make_prob"])
-        self.range_shift = tuple(self.kk.kicker_range_shift(k) for k in self.kickers)
+        # range shift relative to the average current kicker: the league FG-vs-punt table was learned from
+        # decisions made by (mostly) these kickers, so only the deviation from that average should move it
+        cur = [self.kk.kicker_range_shift(k) for k in self.kk.team_kicker.values()]
+        mean_shift = sum(cur) / len(cur) if cur else 0.0
+        self.range_shift = tuple(self.kk.kicker_range_shift(k) - mean_shift for k in self.kickers)
         self.punt_off = tuple(self.kk.punt_team_offset.get(t, 0.0) for t in self.teams)
         self.ko_off = tuple(self.kk.ko_team_offset.get(t, 0.0) for t in self.teams)
         self.pre_off = tuple(self.pre.p_off.get(t, self.pre.league_off) for t in self.teams)
@@ -201,6 +207,8 @@ class GameSim:
         self.reset()
         self.opening_receiver = 0 if self.u() < 0.5 else 1
         self.pending_kick = (1 - self.opening_receiver, False)
+        if self.start_state is not None:
+            self.apply_state(self.start_state)
         guard = 0
         while not self.over:
             guard += 1
@@ -215,6 +223,30 @@ class GameSim:
             if not self.over and self.clock <= 0:
                 self.end_period()
         return self.stats[0], self.stats[1], list(self.score)
+
+    def apply_state(self, s: dict) -> None:
+        """Start from a live state instead of the opening kickoff. Points already scored are included in the
+        final score; all other box-score stats count only from this state on."""
+        self.qtr, self.clock = int(s["qtr"]), float(s["clock"])
+        self.score = list(s["score"])
+        for t in (0, 1):
+            self.stats[t][PTS] = float(self.score[t])
+        self.to = list(s["timeouts"])
+        self.mw_used = (self.qtr == 2 or self.qtr >= 4) and self.clock <= 120
+        if "receives2h" in s:
+            self.opening_receiver = 1 - s["receives2h"]
+        if self.qtr >= 5:
+            self.ot = OTState(self.playoff)
+            self.ot.sudden = True   # mid-OT: treat as sudden death (possession guarantees already resolved)
+        if "kickoff" in s:
+            self.pending_kick = (s["kickoff"], False)
+            return
+        self.pending_kick = None
+        self.pos = s["pos"]
+        self.yl, self.down, self.togo = int(s["yl"]), int(s["down"]), int(s["togo"])
+        self.clock_running = False
+        self.drive_counted = False
+        self.drive_rz = False
 
     def end_period(self) -> None:
         q = self.qtr
@@ -891,10 +923,10 @@ class SimResults:
 
 def simulate(model: SimModel, home: str, away: str, n_sims: int, seed: int, neutral: bool = False,
              playoff: bool = False, players=None, availability=None, starters: tuple | None = None,
-             progress=None) -> SimResults:
+             progress=None, start_state: dict | None = None) -> SimResults:
     t0 = time.time()
     g = GameSim(model, home, away, neutral=neutral, playoff=playoff, seed=seed, players=players,
-                availability=availability, starters=starters)
+                availability=availability, starters=starters, start_state=start_state)
     out = np.zeros((n_sims, 2, NS), dtype=np.float64)
     for i in range(n_sims):
         h, a, _ = g.play_game()
@@ -907,5 +939,6 @@ def simulate(model: SimModel, home: str, away: str, n_sims: int, seed: int, neut
     names = model.qb_names
     qb_used = [{names.get(q, q): c / n_sims for q, c in sorted(g.qb_starts[t].items(), key=lambda x: -x[1])} for t in (0, 1)]
     meta = {"runtime_seconds": round(time.time() - t0, 2), "seed": seed, "n_sims": n_sims,
-            "neutral": neutral, "playoff": playoff, "qb_starts": {home: qb_used[0], away: qb_used[1]}}
+            "neutral": neutral, "playoff": playoff, "qb_starts": {home: qb_used[0], away: qb_used[1]},
+            "start_state": start_state}
     return SimResults(home, away, out, meta, players.results() if players is not None else None)

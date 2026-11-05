@@ -36,6 +36,8 @@ class RunRequest:
     props: list[str] = field(default_factory=list)
     use_availability: bool = True
     use_players: bool = True
+    state: str | None = None          # live game state, e.g. "Q3 8:42 MIN 17 GB 13 MIN ball 2nd&6 at GB 34"
+    combos: list[str] = field(default_factory=list)
 
     def key(self, cfg_hash: str) -> str:
         blob = json.dumps({**self.__dict__, "cfg": cfg_hash}, sort_keys=True, default=str)
@@ -159,8 +161,13 @@ def run_game(req: RunRequest, cfg: Config | None = None, progress=None, verbose:
             players = None
     n = req.sims or int(cfg.sim["n_sims"])
     seed = req.seed if req.seed is not None else int(cfg.sim["seed"])
+    start_state = None
+    if req.state:
+        from .state import parse_state
+        start_state = parse_state(req.state, home, away)
+        banners.append(f"live state: {req.state} (box-score stats count from this point; scores are final scores)")
     res = simulate(model, home, away, n, seed, neutral=neutral, playoff=req.playoff, players=players,
-                   availability=avail, progress=progress)
+                   availability=avail, progress=progress, start_state=start_state)
     extra = {"banners": banners, "game": {k: game.get(k) for k in ("game_id", "gameday", "gametime", "week", "roof",
                                                                   "stadium", "location")} if game else None}
     if market:
@@ -169,6 +176,9 @@ def run_game(req: RunRequest, cfg: Config | None = None, progress=None, verbose:
         extra["availability"] = avail_info
     if req.props and players is not None:
         extra["props"] = players.prop_table(res, req.props)
+    if req.combos:
+        from .combos import evaluate
+        extra["combos"] = [evaluate(c, res, players) for c in req.combos]
     summ = summarize(res, spread, total, model.meta, cfg.hash, extra)
     summ["meta"]["total_seconds"] = round(time.time() - t0, 2)
     summ["request"] = {**req.__dict__, "season": season}

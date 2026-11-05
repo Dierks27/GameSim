@@ -102,6 +102,7 @@ class PlayCallModel:
     team_go_offset: dict[str, float]
     fg_by_yl: list[float]          # P(FG | not going for it), index yardline_100 0..100
     memo: dict
+    pass_shift: float = 0.0        # global logit calibration of P(pass) (config playcall.pass_logit_shift)
 
     def p_pass(self, team: str, down: int, togo: int, yl: int, diff: int, tb: int) -> float:
         key = (team, down, B.dist_b(togo), B.zone_b(yl), B.score_b(diff), tb)
@@ -109,7 +110,7 @@ class PlayCallModel:
         if v is None:
             vals = {"down": key[1], "dist_b": key[2], "zone_b": key[3], "score_b": key[4], "time_b": tb}
             base = lookup(self.pass_table, PASS_LEVELS, vals)
-            v = _sigmoid(_logit(base) + self.team_pass_offset.get(team, 0.0))
+            v = _sigmoid(_logit(base) + self.team_pass_offset.get(team, 0.0) + self.pass_shift)
             self.memo[key] = v
         return v
 
@@ -172,7 +173,8 @@ def build_playcall(plays: pl.DataFrame, cfg) -> PlayCallModel:
     f4 = f4.with_columns(p_exp=pl.Series(exp_go))
     team_go = _team_offsets(f4, "is_go", "p_exp", float(cfg.playcall["k_team_4th"]))
 
-    # FG vs punt by yardline (kicks only), smoothed with a +/-3 yard window and a logistic tail
+    # FG vs punt by yardline (kicks only), smoothed with a +/-1 yard window (a wider window leaks the high
+    # attempt rate at 35-37 across the range cliff and inflates 55+ yard attempts)
     kicks = f4.filter(pl.col("dec") != "go").with_columns(is_fg=(pl.col("dec") == "fg").cast(pl.Float64))
     by = kicks.group_by("yardline_100").agg((pl.col("is_fg") * pl.col("w")).sum().alias("s"), pl.col("w").sum().alias("n"))
     s_arr = [0.0] * 101
@@ -184,8 +186,9 @@ def build_playcall(plays: pl.DataFrame, cfg) -> PlayCallModel:
             n_arr[y] += r["n"]
     fg_by_yl = [0.0] * 101
     for y in range(101):
-        lo, hi = max(0, y - 3), min(100, y + 3)
+        lo, hi = max(0, y - 1), min(100, y + 1)
         s, n = sum(s_arr[lo:hi + 1]), sum(n_arr[lo:hi + 1])
         prior = 1.0 if y <= 30 else (0.0 if y >= 45 else 1.0 - (y - 30) / 15)
         fg_by_yl[y] = (s + 2 * prior) / (n + 2)
-    return PlayCallModel(pass_table, team_pass, go_table, team_go, fg_by_yl, {})
+    return PlayCallModel(pass_table, team_pass, go_table, team_go, fg_by_yl, {},
+                         float(cfg.playcall.get("pass_logit_shift", 0.0)))

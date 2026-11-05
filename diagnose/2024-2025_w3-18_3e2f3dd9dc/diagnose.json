@@ -1,0 +1,3916 @@
+{
+  "metrics": {
+    "games": 480,
+    "brier": 0.21398180555555554,
+    "log_loss": 0.6187204510035704,
+    "mae_margin": 10.209895833333333,
+    "mae_total": 10.344812499999998,
+    "crps_margin": 7.356206504629629,
+    "crps_total": 7.441101087962962,
+    "crps_points": 5.273105219907407,
+    "bias_margin": -1.0313263888888888,
+    "bias_total": 1.5797291666666666,
+    "corr_margin_vs_spread": 0.8285907891604085,
+    "corr_total_vs_line": 0.684863772047007,
+    "coverage_80_margin": 0.8125,
+    "coverage_80_total": 0.7979166666666667,
+    "coverage_80_points": 0.8052083333333333,
+    "sd_pred_margin": 5.449059635781538,
+    "sd_mkt_margin": 6.080929890512908,
+    "calibration": [
+      {
+        "bin": "0.1-0.2",
+        "n": 7,
+        "pred": 0.16523809523809524,
+        "actual": 0.14285714285714285
+      },
+      {
+        "bin": "0.2-0.3",
+        "n": 32,
+        "pred": 0.26375000000000004,
+        "actual": 0.28125
+      },
+      {
+        "bin": "0.3-0.4",
+        "n": 55,
+        "pred": 0.3524848484848484,
+        "actual": 0.20909090909090908
+      },
+      {
+        "bin": "0.4-0.5",
+        "n": 116,
+        "pred": 0.44515804597701136,
+        "actual": 0.46551724137931033
+      },
+      {
+        "bin": "0.5-0.6",
+        "n": 105,
+        "pred": 0.5528095238095239,
+        "actual": 0.5523809523809524
+      },
+      {
+        "bin": "0.6-0.7",
+        "n": 93,
+        "pred": 0.6481182795698924,
+        "actual": 0.7204301075268817
+      },
+      {
+        "bin": "0.7-0.8",
+        "n": 53,
+        "pred": 0.7409748427672956,
+        "actual": 0.8113207547169812
+      },
+      {
+        "bin": "0.8-0.9",
+        "n": 18,
+        "pred": 0.8351851851851851,
+        "actual": 0.7777777777777778
+      },
+      {
+        "bin": "0.9-1.0",
+        "n": 1,
+        "pred": 0.9,
+        "actual": 1.0
+      }
+    ],
+    "market": {
+      "games": 480,
+      "brier": 0.2041865481837153,
+      "log_loss": 0.5948314465669146,
+      "mae_margin": 9.814583333333333,
+      "mae_total": 9.9625
+    },
+    "ats_pick_rate": 0.5273109243697479
+  },
+  "summary": [
+    "kickoff_start_yl is too low by 1.26 (-1.8%, 8.2 SE) \u2014 look at kickoff era pool / touchback_yardline / k_kickoff_team.",
+    "pass_rate is too high by 0.0134 (+2.4%, 4.0 SE) \u2014 look at play-call model: league P(pass) table (smoothing_m) and team PROE shrinkage (k_team_pass).",
+    "fg_att is too high by 0.149 (+7.5%, 3.6 SE) \u2014 look at 4th-down FG decision (fg_by_yl, kicker range shift, fg_min_make_prob) and end-of-half FG logic."
+  ],
+  "components": [
+    {
+      "component": "kickoff_start_yl",
+      "sim": 68.08490542910118,
+      "actual": 69.34138354482194,
+      "bias": -1.2564781157207534,
+      "se": 0.15319877304561355,
+      "t": -8.201619965628892,
+      "rel_bias": -0.018120176602887828,
+      "flag": "True",
+      "points_to": "kickoff era pool / touchback_yardline / k_kickoff_team"
+    },
+    {
+      "component": "pass_rate",
+      "sim": 0.577597660518572,
+      "actual": 0.5641531048889787,
+      "bias": 0.013444555629593236,
+      "se": 0.00334340880800883,
+      "t": 4.02121200296776,
+      "rel_bias": 0.023831395259694667,
+      "flag": "True",
+      "points_to": "play-call model: league P(pass) table (smoothing_m) and team PROE shrinkage (k_team_pass)"
+    },
+    {
+      "component": "fg_att",
+      "sim": 2.1370694444444442,
+      "actual": 1.9885416666666667,
+      "bias": 0.1485277777777776,
+      "se": 0.04157564180935719,
+      "t": 3.5724710747423583,
+      "rel_bias": 0.07469181072114536,
+      "flag": "True",
+      "points_to": "4th-down FG decision (fg_by_yl, kicker range shift, fg_min_make_prob) and end-of-half FG logic"
+    },
+    {
+      "component": "pts_q4",
+      "sim": 7.149600694444445,
+      "actual": 6.652083333333334,
+      "bias": 0.497517361111111,
+      "se": 0.1720389049610565,
+      "t": 2.8918886761324787,
+      "rel_bias": 0.07479120993840692,
+      "flag": "True",
+      "points_to": "late-game management: garbage-time filter, milk/hurry tempo, defensive timeouts, onside logic"
+    },
+    {
+      "component": "points",
+      "sim": 23.871114583333334,
+      "actual": 23.08125,
+      "bias": 0.7898645833333333,
+      "se": 0.30584308193927057,
+      "t": 2.5825811665413836,
+      "rel_bias": 0.03422104883112194,
+      "flag": "True",
+      "points_to": "overall scoring: drive count (clock: runoff_scale, team pace) and per-drive efficiency (outcome pools)"
+    },
+    {
+      "component": "punt_start_yl",
+      "sim": 76.77735297954332,
+      "actual": 76.10883961992513,
+      "bias": 0.6685133596181885,
+      "se": 0.27247626850294937,
+      "t": 2.4534737035675174,
+      "rel_bias": 0.008783649349492554,
+      "flag": "True",
+      "points_to": "punt pool by line of scrimmage / k_punter"
+    },
+    {
+      "component": "pts_q1",
+      "sim": 4.800482638888889,
+      "actual": 4.478125,
+      "bias": 0.3223576388888887,
+      "se": 0.13994443503149706,
+      "t": 2.303468793284536,
+      "rel_bias": 0.07198495774211051,
+      "flag": "True",
+      "points_to": "early-game scoring: outcome pools / opening-script tendencies"
+    },
+    {
+      "component": "ypc",
+      "sim": 4.647746690486281,
+      "actual": 4.556846671176728,
+      "bias": 0.09090001930955349,
+      "se": 0.04063802104803918,
+      "t": 2.2368219949022223,
+      "rel_bias": 0.019948009197790304,
+      "flag": "True",
+      "points_to": "run outcome pools: w_off, k_outcome, team back-off levels"
+    },
+    {
+      "component": "penalties",
+      "sim": 5.70014236111111,
+      "actual": 5.5375,
+      "bias": 0.16264236111111074,
+      "se": 0.09067565306654173,
+      "t": 1.7936717918288025,
+      "rel_bias": 0.029371081013293138,
+      "flag": "False",
+      "points_to": "pre-snap foul rates (k_presnap) and post-snap no-play rows"
+    },
+    {
+      "component": "third_down_pct",
+      "sim": 0.39623802691114407,
+      "actual": 0.40304720672716676,
+      "bias": -0.006809179816022692,
+      "se": 0.00456001022315552,
+      "t": -1.4932378400043917,
+      "rel_bias": -0.016894248868053824,
+      "flag": "False",
+      "points_to": "3rd-down team buckets (TEAM_LEVELS downgrp3 x distgrp3) and min_bucket_n"
+    },
+    {
+      "component": "sack_rate",
+      "sim": 0.07044198193701194,
+      "actual": 0.06826529698091797,
+      "bias": 0.002176684956093966,
+      "se": 0.0015214401375496112,
+      "t": 1.4306740714752495,
+      "rel_bias": 0.03188567328290404,
+      "flag": "False",
+      "points_to": "dropback pools: QB pool (k_qb, backup_max_dropbacks) and defense side weight (w_off)"
+    },
+    {
+      "component": "int_rate",
+      "sim": 0.022846037965599458,
+      "actual": 0.02182099063435358,
+      "bias": 0.001025047331245879,
+      "se": 0.0008414118459483972,
+      "t": 1.2182468504356474,
+      "rel_bias": 0.046975288538555614,
+      "flag": "False",
+      "points_to": "dropback pools: QB pool (k_qb) and k_outcome"
+    },
+    {
+      "component": "turnovers",
+      "sim": 1.1767291666666668,
+      "actual": 1.1322916666666667,
+      "bias": 0.04443750000000013,
+      "se": 0.038976327278991786,
+      "t": 1.1401151186441292,
+      "rel_bias": 0.03924563017479312,
+      "flag": "False",
+      "points_to": "outcome pools: turnover rows, QB pool"
+    },
+    {
+      "component": "ypa",
+      "sim": 7.066988419907434,
+      "actual": 7.127546586849474,
+      "bias": -0.06055816694203919,
+      "se": 0.05567236851888174,
+      "t": -1.0877598448411692,
+      "rel_bias": -0.00849635512081685,
+      "flag": "False",
+      "points_to": "pass outcome pools: matchup blend w_off, team shrinkage k_outcome, QB pool k_qb"
+    },
+    {
+      "component": "plays",
+      "sim": 61.563975694444444,
+      "actual": 61.83125,
+      "bias": -0.26727430555555287,
+      "se": 0.26210907164824543,
+      "t": -1.0197064293686076,
+      "rel_bias": -0.004322641149185127,
+      "flag": "False",
+      "points_to": "clock model: runoff_scale, team pace (k_pace), incompletion/out-of-bounds stop rules"
+    },
+    {
+      "component": "punts",
+      "sim": 3.6001388888888886,
+      "actual": 3.654166666666667,
+      "bias": -0.05402777777777823,
+      "se": 0.056943432078526424,
+      "t": -0.9487973556506494,
+      "rel_bias": -0.014785252755606356,
+      "flag": "False",
+      "points_to": "4th-down punt decision and drive outcomes"
+    },
+    {
+      "component": "top_min",
+      "sim": 30.17507637756854,
+      "actual": 30.28125,
+      "bias": -0.10617362243145934,
+      "se": 0.14368309191665476,
+      "t": -0.738943051789606,
+      "rel_bias": -0.003506249657179256,
+      "flag": "False",
+      "points_to": "clock model: runoff by tempo, team pace"
+    },
+    {
+      "component": "fg_pct",
+      "sim": 0.8464278054708876,
+      "actual": 0.8407543216343636,
+      "bias": 0.005673483836523996,
+      "se": 0.008553967025423482,
+      "t": 0.6632576230024827,
+      "rel_bias": 0.006748087628613276,
+      "flag": "False",
+      "points_to": "FG logistic and kicker offsets (k_kicker)"
+    },
+    {
+      "component": "rz_trips",
+      "sim": 3.3236111111111115,
+      "actual": 3.353125,
+      "bias": -0.029513888888888395,
+      "se": 0.04664728901412064,
+      "t": -0.6327031969629409,
+      "rel_bias": -0.008801905353629345,
+      "flag": "False",
+      "points_to": "field position / drive efficiency between the 20s (outcome pools, kickoff/punt starts)"
+    },
+    {
+      "component": "pts_q2",
+      "sim": 6.937413194444444,
+      "actual": 7.003125,
+      "bias": -0.06571180555555589,
+      "se": 0.1733846644455891,
+      "t": -0.3789943347393178,
+      "rel_bias": -0.009383211859784867,
+      "flag": "False",
+      "points_to": "end of first half management: hurry_q2_seconds, q2_kneel_seconds, end-of-half FG logic"
+    },
+    {
+      "component": "pts_q3",
+      "sim": 4.836357638888889,
+      "actual": 4.791666666666667,
+      "bias": 0.04469097222222196,
+      "se": 0.1462824813211485,
+      "t": 0.305511444833284,
+      "rel_bias": 0.009326811594202842,
+      "flag": "False",
+      "points_to": "second-half opening: outcome pools / halftime kickoff"
+    },
+    {
+      "component": "fourth_down_att",
+      "sim": 1.5322569444444445,
+      "actual": 1.521875,
+      "bias": 0.010381944444444402,
+      "se": 0.04348197871339964,
+      "t": 0.2387643053890058,
+      "rel_bias": 0.0068218115446041245,
+      "flag": "False",
+      "points_to": "4th-down go model: league go table, k_team_4th, forced late-game logic"
+    },
+    {
+      "component": "rz_td_pct",
+      "sim": 0.5701399916422899,
+      "actual": 0.570363466915191,
+      "bias": -0.00022347527290111913,
+      "se": 0.008859824767114544,
+      "t": -0.025223441634038123,
+      "rel_bias": -0.0003918120389263086,
+      "flag": "False",
+      "points_to": "red-zone and goal-to-go outcome pools, TD censoring (Kaplan-Meier per zone), team rz split"
+    },
+    {
+      "component": "fumbles_lost",
+      "sim": 0.42651041666666667,
+      "actual": 0.42604166666666665,
+      "bias": 0.00046875000000001776,
+      "se": 0.021681840995245054,
+      "t": 0.02161947410751777,
+      "rel_bias": 0.001100244498777548,
+      "flag": "False",
+      "points_to": "outcome pools (turnover rows) / k_outcome"
+    }
+  ],
+  "residuals": [
+    {
+      "group": "weeks 5+",
+      "metric": "favorite margin error",
+      "n": 416,
+      "mean_error": -2.8137339743589744,
+      "se": 0.6138168837019196,
+      "t": -4.583995730761576,
+      "flag": true
+    },
+    {
+      "group": "home favorite",
+      "metric": "margin (home) error",
+      "n": 278,
+      "mean_error": -3.097074340527578,
+      "se": 0.7883320893065507,
+      "t": -3.928641726676243,
+      "flag": true
+    },
+    {
+      "group": "home favorite",
+      "metric": "favorite margin error",
+      "n": 278,
+      "mean_error": -3.097074340527578,
+      "se": 0.7883320893065507,
+      "t": -3.928641726676243,
+      "flag": true
+    },
+    {
+      "group": "non-divisional",
+      "metric": "favorite margin error",
+      "n": 308,
+      "mean_error": -3.0052705627705625,
+      "se": 0.7725997278221941,
+      "t": -3.889815715107519,
+      "flag": true
+    },
+    {
+      "group": "outdoors/open",
+      "metric": "favorite margin error",
+      "n": 317,
+      "mean_error": -2.626235541535226,
+      "se": 0.7088599294447528,
+      "t": -3.7048723343585603,
+      "flag": true
+    },
+    {
+      "group": "spread 7+",
+      "metric": "favorite margin error",
+      "n": 137,
+      "mean_error": -4.263625304136254,
+      "se": 1.2023871880537353,
+      "t": -3.545967011705809,
+      "flag": true
+    },
+    {
+      "group": "spread 3-7",
+      "metric": "favorite margin error",
+      "n": 228,
+      "mean_error": -2.8415350877192984,
+      "se": 0.8031948656589636,
+      "t": -3.5377904033139247,
+      "flag": true
+    },
+    {
+      "group": "spread 7+",
+      "metric": "margin (home) error",
+      "n": 137,
+      "mean_error": -3.8972992700729923,
+      "se": 1.2114937071435459,
+      "t": -3.2169372792385573,
+      "flag": true
+    },
+    {
+      "group": "outdoors/open",
+      "metric": "total error",
+      "n": 317,
+      "mean_error": 2.289453207150368,
+      "se": 0.747972065465322,
+      "t": 3.060880630249303,
+      "flag": true
+    },
+    {
+      "group": "primetime",
+      "metric": "favorite margin error",
+      "n": 122,
+      "mean_error": -3.1164754098360663,
+      "se": 1.0388621536112548,
+      "t": -2.999893103240587,
+      "flag": true
+    },
+    {
+      "group": "spread < 3",
+      "metric": "total error",
+      "n": 115,
+      "mean_error": 3.0235652173913037,
+      "se": 1.1883537950893002,
+      "t": 2.544330846491801,
+      "flag": true
+    },
+    {
+      "group": "outdoors/open",
+      "metric": "margin (home) error",
+      "n": 317,
+      "mean_error": -1.6737854889589907,
+      "se": 0.7179436032676715,
+      "t": -2.331360682567363,
+      "flag": true
+    },
+    {
+      "group": "dome/closed",
+      "metric": "favorite margin error",
+      "n": 163,
+      "mean_error": -2.4197546012269937,
+      "se": 1.046184757999595,
+      "t": -2.3129323790319742,
+      "flag": true
+    },
+    {
+      "group": "weeks 5+",
+      "metric": "total error",
+      "n": 416,
+      "mean_error": 1.4227724358974356,
+      "se": 0.6465665339008845,
+      "t": 2.200504296616657,
+      "flag": true
+    },
+    {
+      "group": "primetime",
+      "metric": "total error",
+      "n": 122,
+      "mean_error": 2.5721038251366117,
+      "se": 1.2363685025186106,
+      "t": 2.080369905814464,
+      "flag": true
+    },
+    {
+      "group": "away favorite",
+      "metric": "margin (home) error",
+      "n": 202,
+      "mean_error": 1.8116336633663368,
+      "se": 0.8764729645472985,
+      "t": 2.0669589783662663,
+      "flag": true
+    },
+    {
+      "group": "away favorite",
+      "metric": "favorite margin error",
+      "n": 202,
+      "mean_error": -1.8116336633663368,
+      "se": 0.8764729645472985,
+      "t": -2.0669589783662663,
+      "flag": true
+    },
+    {
+      "group": "away favorite",
+      "metric": "total error",
+      "n": 202,
+      "mean_error": 1.9488943894389437,
+      "se": 0.9495622499142989,
+      "t": 2.052413509082567,
+      "flag": true
+    },
+    {
+      "group": "weeks 1-4",
+      "metric": "margin (home) error",
+      "n": 64,
+      "mean_error": -3.6427604166666665,
+      "se": 1.8085676623750382,
+      "t": -2.014168721718124,
+      "flag": true
+    },
+    {
+      "group": "divisional",
+      "metric": "favorite margin error",
+      "n": 172,
+      "mean_error": -1.7518217054263563,
+      "se": 0.8770816746544491,
+      "t": -1.9973301871989693,
+      "flag": false
+    },
+    {
+      "group": "divisional",
+      "metric": "total error",
+      "n": 172,
+      "mean_error": 2.0926744186046515,
+      "se": 1.0478498722577523,
+      "t": 1.9971128250420698,
+      "flag": false
+    },
+    {
+      "group": "QB change (either team)",
+      "metric": "total error",
+      "n": 111,
+      "mean_error": 2.486936936936937,
+      "se": 1.2556070173246596,
+      "t": 1.98066505094555,
+      "flag": false
+    },
+    {
+      "group": "QB change (either team)",
+      "metric": "favorite margin error",
+      "n": 111,
+      "mean_error": -2.5546846846846845,
+      "se": 1.3495741416383957,
+      "t": -1.8929561599211386,
+      "flag": false
+    },
+    {
+      "group": "non-divisional",
+      "metric": "total error",
+      "n": 308,
+      "mean_error": 1.2932792207792205,
+      "se": 0.7284728907292743,
+      "t": 1.775329236321366,
+      "flag": false
+    },
+    {
+      "group": "short rest (<6 days)",
+      "metric": "total error",
+      "n": 38,
+      "mean_error": 3.8053508771929816,
+      "se": 2.2283108941790455,
+      "t": 1.7077288843013754,
+      "flag": false
+    },
+    {
+      "group": "home favorite",
+      "metric": "total error",
+      "n": 278,
+      "mean_error": 1.311486810551559,
+      "se": 0.7719282057685432,
+      "t": 1.6989751129068063,
+      "flag": false
+    },
+    {
+      "group": "weeks 1-4",
+      "metric": "total error",
+      "n": 64,
+      "mean_error": 2.5999479166666664,
+      "se": 1.5978474457668712,
+      "t": 1.6271565370991015,
+      "flag": false
+    },
+    {
+      "group": "neutral site",
+      "metric": "total error",
+      "n": 10,
+      "mean_error": 5.503666666666666,
+      "se": 3.4074139736249127,
+      "t": 1.6152034091741705,
+      "flag": false
+    },
+    {
+      "group": "spread 7+",
+      "metric": "total error",
+      "n": 137,
+      "mean_error": 1.6893673965936744,
+      "se": 1.0513000393494187,
+      "t": 1.6069317353389563,
+      "flag": false
+    },
+    {
+      "group": "non-divisional",
+      "metric": "margin (home) error",
+      "n": 308,
+      "mean_error": -1.2246428571428571,
+      "se": 0.7883173339465835,
+      "t": -1.5534896981294073,
+      "flag": false
+    },
+    {
+      "group": "weeks 5+",
+      "metric": "margin (home) error",
+      "n": 416,
+      "mean_error": -0.6295673076923076,
+      "se": 0.6284054751000515,
+      "t": -1.0018488581629101,
+      "flag": false
+    },
+    {
+      "group": "spread 3-7",
+      "metric": "total error",
+      "n": 228,
+      "mean_error": 0.7855994152046782,
+      "se": 0.9120376185626088,
+      "t": 0.861367337503907,
+      "flag": false
+    },
+    {
+      "group": "divisional",
+      "metric": "margin (home) error",
+      "n": 172,
+      "mean_error": -0.6851550387596899,
+      "se": 0.8857051870703578,
+      "t": -0.7735700871595586,
+      "flag": false
+    },
+    {
+      "group": "neutral site",
+      "metric": "margin (home) error",
+      "n": 10,
+      "mean_error": -2.489666666666666,
+      "se": 3.6846578630723954,
+      "t": -0.6756846250551729,
+      "flag": false
+    },
+    {
+      "group": "QB change (either team)",
+      "metric": "margin (home) error",
+      "n": 111,
+      "mean_error": -0.7690390390390389,
+      "se": 1.3694177024304486,
+      "t": -0.5615810557101351,
+      "flag": false
+    },
+    {
+      "group": "weeks 1-4",
+      "metric": "favorite margin error",
+      "n": 64,
+      "mean_error": -0.8816145833333333,
+      "se": 1.8625815397562846,
+      "t": -0.47332938962161675,
+      "flag": false
+    },
+    {
+      "group": "primetime",
+      "metric": "margin (home) error",
+      "n": 122,
+      "mean_error": -0.44243169398907134,
+      "se": 1.0760505405162013,
+      "t": -0.4111625591274074,
+      "flag": false
+    },
+    {
+      "group": "spread 3-7",
+      "metric": "margin (home) error",
+      "n": 228,
+      "mean_error": 0.3239035087719299,
+      "se": 0.8247602786304526,
+      "t": 0.39272442813296565,
+      "flag": false
+    },
+    {
+      "group": "short rest (<6 days)",
+      "metric": "favorite margin error",
+      "n": 38,
+      "mean_error": -0.6899122807017545,
+      "se": 2.078085249426886,
+      "t": -0.3319942148148277,
+      "flag": false
+    },
+    {
+      "group": "spread < 3",
+      "metric": "margin (home) error",
+      "n": 115,
+      "mean_error": -0.3039710144927537,
+      "se": 1.1622393660172083,
+      "t": -0.26153907996973924,
+      "flag": false
+    },
+    {
+      "group": "dome/closed",
+      "metric": "margin (home) error",
+      "n": 163,
+      "mean_error": 0.21811860940695266,
+      "se": 1.0631802088674323,
+      "t": 0.20515676231342436,
+      "flag": false
+    },
+    {
+      "group": "dome/closed",
+      "metric": "total error",
+      "n": 163,
+      "mean_error": 0.19946830265848664,
+      "se": 0.9928591697629305,
+      "t": 0.2009029162777583,
+      "flag": false
+    },
+    {
+      "group": "short rest (<6 days)",
+      "metric": "margin (home) error",
+      "n": 38,
+      "mean_error": 0.405,
+      "se": 2.0801128555586312,
+      "t": 0.19470097447728815,
+      "flag": false
+    },
+    {
+      "group": "neutral site",
+      "metric": "favorite margin error",
+      "n": 10,
+      "mean_error": -0.5730000000000002,
+      "se": 3.772126473993478,
+      "t": -0.15190370841234707,
+      "flag": false
+    },
+    {
+      "group": "spread < 3",
+      "metric": "favorite margin error",
+      "n": 115,
+      "mean_error": 0.04391304347826119,
+      "se": 1.1625807243398674,
+      "t": 0.03777203815519627,
+      "flag": false
+    }
+  ],
+  "worst_misses": [
+    {
+      "game_id": "2025_03_ATL_CAR",
+      "score": "ATL 0 @ CAR 30",
+      "pred": "ATL 27.2 @ CAR 23.7",
+      "p_home": 0.4,
+      "market_margin": -5.5,
+      "miss": 43.946666666666665,
+      "components": {
+        "CAR": {
+          "points": {
+            "sim": 23.706666666666667,
+            "actual": 30.0
+          },
+          "pts_q1": {
+            "sim": 4.683333333333334,
+            "actual": 7.0
+          },
+          "pts_q2": {
+            "sim": 6.863333333333333,
+            "actual": 3.0
+          },
+          "pts_q3": {
+            "sim": 5.13,
+            "actual": 10.0
+          },
+          "pts_q4": {
+            "sim": 6.913333333333333,
+            "actual": 10.0
+          },
+          "plays": {
+            "sim": 60.21333333333333,
+            "actual": 55.0
+          },
+          "pass_rate": {
+            "sim": 0.5720770593445527,
+            "actual": 0.45454545454545453
+          },
+          "ypa": {
+            "sim": 7.003561328165916,
+            "actual": 5.041666666666667
+          },
+          "ypc": {
+            "sim": 4.77745435300344,
+            "actual": 3.8275862068965516
+          },
+          "sack_rate": {
+            "sim": 0.06870524482291465,
+            "actual": 0.04
+          },
+          "int_rate": {
+            "sim": 0.02136796899549597,
+            "actual": 0.0
+          },
+          "fumbles_lost": {
+            "sim": 0.38666666666666666,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.40853318460680427,
+            "actual": 0.2727272727272727
+          },
+          "fourth_down_att": {
+            "sim": 1.71,
+            "actual": 2.0
+          },
+          "rz_trips": {
+            "sim": 3.2933333333333334,
+            "actual": 3.0
+          },
+          "rz_td_pct": {
+            "sim": 0.6163967611336032,
+            "actual": 0.6666666666666666
+          },
+          "fg_att": {
+            "sim": 1.9866666666666666,
+            "actual": 3.0
+          },
+          "fg_pct": {
+            "sim": 0.8338926174496645,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 3.27,
+            "actual": 3.0
+          },
+          "kickoff_start_yl": {
+            "sim": 66.77162238552856,
+            "actual": 71.0
+          },
+          "punt_start_yl": {
+            "sim": 76.86643835616438,
+            "actual": 78.0
+          },
+          "penalties": {
+            "sim": 5.88,
+            "actual": 6.0
+          },
+          "top_min": {
+            "sim": 29.429116532051964,
+            "actual": 31.966666666666665
+          },
+          "turnovers": {
+            "sim": 1.0666666666666667,
+            "actual": 0.0
+          }
+        },
+        "ATL": {
+          "points": {
+            "sim": 27.2,
+            "actual": 0.0
+          },
+          "pts_q1": {
+            "sim": 5.006666666666667,
+            "actual": 0.0
+          },
+          "pts_q2": {
+            "sim": 8.306666666666667,
+            "actual": 0.0
+          },
+          "pts_q3": {
+            "sim": 5.16,
+            "actual": 0.0
+          },
+          "pts_q4": {
+            "sim": 8.59,
+            "actual": 0.0
+          },
+          "plays": {
+            "sim": 62.50666666666666,
+            "actual": 66.0
+          },
+          "pass_rate": {
+            "sim": 0.5545008532423208,
+            "actual": 0.6515151515151515
+          },
+          "ypa": {
+            "sim": 7.407712930501134,
+            "actual": 4.674418604651163
+          },
+          "ypc": {
+            "sim": 5.31137062077443,
+            "actual": 5.695652173913044
+          },
+          "sack_rate": {
+            "sim": 0.060684747066743615,
+            "actual": 0.0
+          },
+          "int_rate": {
+            "sim": 0.0160857908847185,
+            "actual": 0.046511627906976744
+          },
+          "fumbles_lost": {
+            "sim": 0.35,
+            "actual": 1.0
+          },
+          "third_down_pct": {
+            "sim": 0.43007092198581565,
+            "actual": 0.38461538461538464
+          },
+          "fourth_down_att": {
+            "sim": 1.5466666666666666,
+            "actual": 3.0
+          },
+          "rz_trips": {
+            "sim": 3.816666666666667,
+            "actual": 0.0
+          },
+          "rz_td_pct": {
+            "sim": 0.6061135371179039,
+            "actual": null
+          },
+          "fg_att": {
+            "sim": 2.11,
+            "actual": 2.0
+          },
+          "fg_pct": {
+            "sim": 0.8657187993680885,
+            "actual": 0.0
+          },
+          "punts": {
+            "sim": 2.953333333333333,
+            "actual": 3.0
+          },
+          "kickoff_start_yl": {
+            "sim": 66.92429022082018,
+            "actual": 80.71428571428571
+          },
+          "punt_start_yl": {
+            "sim": 76.62783505154638,
+            "actual": 85.0
+          },
+          "penalties": {
+            "sim": 6.37,
+            "actual": 3.0
+          },
+          "top_min": {
+            "sim": 30.885401723188547,
+            "actual": 28.033333333333335
+          },
+          "turnovers": {
+            "sim": 0.87,
+            "actual": 3.0
+          }
+        }
+      }
+    },
+    {
+      "game_id": "2025_03_CIN_MIN",
+      "score": "CIN 10 @ MIN 48",
+      "pred": "CIN 21.3 @ MIN 23.5",
+      "p_home": 0.57,
+      "market_margin": 3.0,
+      "miss": 42.46,
+      "components": {
+        "MIN": {
+          "points": {
+            "sim": 23.453333333333333,
+            "actual": 48.0
+          },
+          "pts_q1": {
+            "sim": 4.753333333333333,
+            "actual": 14.0
+          },
+          "pts_q2": {
+            "sim": 6.613333333333333,
+            "actual": 20.0
+          },
+          "pts_q3": {
+            "sim": 4.92,
+            "actual": 14.0
+          },
+          "pts_q4": {
+            "sim": 7.07,
+            "actual": 0.0
+          },
+          "plays": {
+            "sim": 63.17333333333333,
+            "actual": 58.0
+          },
+          "pass_rate": {
+            "sim": 0.5882756437315323,
+            "actual": 0.46551724137931033
+          },
+          "ypa": {
+            "sim": 6.772696312153352,
+            "actual": 8.416666666666666
+          },
+          "ypc": {
+            "sim": 4.6882996966099455,
+            "actual": 5.451612903225806
+          },
+          "sack_rate": {
+            "sim": 0.07184500852094358,
+            "actual": 0.1111111111111111
+          },
+          "int_rate": {
+            "sim": 0.025299211832246763,
+            "actual": 0.0
+          },
+          "fumbles_lost": {
+            "sim": 0.36,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.38521199586349536,
+            "actual": 0.3333333333333333
+          },
+          "fourth_down_att": {
+            "sim": 1.4533333333333334,
+            "actual": 1.0
+          },
+          "rz_trips": {
+            "sim": 3.3666666666666667,
+            "actual": 5.0
+          },
+          "rz_td_pct": {
+            "sim": 0.5485148514851486,
+            "actual": 0.8
+          },
+          "fg_att": {
+            "sim": 2.4066666666666667,
+            "actual": 2.0
+          },
+          "fg_pct": {
+            "sim": 0.8227146814404431,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 3.9133333333333336,
+            "actual": 5.0
+          },
+          "kickoff_start_yl": {
+            "sim": 67.10704607046071,
+            "actual": 68.66666666666667
+          },
+          "punt_start_yl": {
+            "sim": 76.83810375670842,
+            "actual": 60.166666666666664
+          },
+          "penalties": {
+            "sim": 6.333333333333333,
+            "actual": 12.0
+          },
+          "top_min": {
+            "sim": 31.032957193496316,
+            "actual": 30.933333333333334
+          },
+          "turnovers": {
+            "sim": 1.2266666666666666,
+            "actual": 0.0
+          }
+        },
+        "CIN": {
+          "points": {
+            "sim": 21.28,
+            "actual": 10.0
+          },
+          "pts_q1": {
+            "sim": 4.423333333333333,
+            "actual": 0.0
+          },
+          "pts_q2": {
+            "sim": 6.09,
+            "actual": 3.0
+          },
+          "pts_q3": {
+            "sim": 4.503333333333333,
+            "actual": 0.0
+          },
+          "pts_q4": {
+            "sim": 6.113333333333333,
+            "actual": 7.0
+          },
+          "plays": {
+            "sim": 60.79333333333333,
+            "actual": 52.0
+          },
+          "pass_rate": {
+            "sim": 0.6363088057901085,
+            "actual": 0.5961538461538461
+          },
+          "ypa": {
+            "sim": 6.626910454758557,
+            "actual": 5.185185185185185
+          },
+          "ypc": {
+            "sim": 4.421838544097061,
+            "actual": 2.5238095238095237
+          },
+          "sack_rate": {
+            "sim": 0.07514002585092633,
+            "actual": 0.12903225806451613
+          },
+          "int_rate": {
+            "sim": 0.03788091889357712,
+            "actual": 0.07407407407407407
+          },
+          "fumbles_lost": {
+            "sim": 0.5,
+            "actual": 3.0
+          },
+          "third_down_pct": {
+            "sim": 0.37316675719717546,
+            "actual": 0.2727272727272727
+          },
+          "fourth_down_att": {
+            "sim": 1.5733333333333333,
+            "actual": 0.0
+          },
+          "rz_trips": {
+            "sim": 3.12,
+            "actual": 1.0
+          },
+          "rz_td_pct": {
+            "sim": 0.5747863247863247,
+            "actual": 1.0
+          },
+          "fg_att": {
+            "sim": 2.013333333333333,
+            "actual": 1.0
+          },
+          "fg_pct": {
+            "sim": 0.8195364238410596,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 3.78,
+            "actual": 6.0
+          },
+          "kickoff_start_yl": {
+            "sim": 65.82158185162477,
+            "actual": 67.77777777777777
+          },
+          "punt_start_yl": {
+            "sim": 76.9453599306158,
+            "actual": 72.8
+          },
+          "penalties": {
+            "sim": 5.583333333333333,
+            "actual": 3.0
+          },
+          "top_min": {
+            "sim": 29.355682368296105,
+            "actual": 29.066666666666666
+          },
+          "turnovers": {
+            "sim": 1.8466666666666667,
+            "actual": 5.0
+          }
+        }
+      }
+    },
+    {
+      "game_id": "2024_11_JAX_DET",
+      "score": "JAX 6 @ DET 52",
+      "pred": "JAX 21.4 @ DET 29.1",
+      "p_home": 0.72,
+      "market_margin": 14.0,
+      "miss": 42.13166666666666,
+      "components": {
+        "DET": {
+          "points": {
+            "sim": 29.05666666666667,
+            "actual": 52.0
+          },
+          "pts_q1": {
+            "sim": 5.943333333333333,
+            "actual": 7.0
+          },
+          "pts_q2": {
+            "sim": 8.443333333333333,
+            "actual": 21.0
+          },
+          "pts_q3": {
+            "sim": 5.84,
+            "actual": 14.0
+          },
+          "pts_q4": {
+            "sim": 8.693333333333333,
+            "actual": 10.0
+          },
+          "plays": {
+            "sim": 64.1,
+            "actual": 76.0
+          },
+          "pass_rate": {
+            "sim": 0.5284971398855954,
+            "actual": 0.4342105263157895
+          },
+          "ypa": {
+            "sim": 7.82818777754282,
+            "actual": 13.606060606060606
+          },
+          "ypc": {
+            "sim": 5.061055731762573,
+            "actual": 4.829268292682927
+          },
+          "sack_rate": {
+            "sim": 0.06405588900915084,
+            "actual": 0.0
+          },
+          "int_rate": {
+            "sim": 0.015330936773102136,
+            "actual": 0.0
+          },
+          "fumbles_lost": {
+            "sim": 0.32,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.43322475570032576,
+            "actual": 0.6
+          },
+          "fourth_down_att": {
+            "sim": 1.4033333333333333,
+            "actual": 3.0
+          },
+          "rz_trips": {
+            "sim": 3.92,
+            "actual": 6.0
+          },
+          "rz_td_pct": {
+            "sim": 0.5807823129251701,
+            "actual": 0.8333333333333334
+          },
+          "fg_att": {
+            "sim": 2.3466666666666667,
+            "actual": 1.0
+          },
+          "fg_pct": {
+            "sim": 0.859375,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 3.19,
+            "actual": 0.0
+          },
+          "kickoff_start_yl": {
+            "sim": 66.57085828343314,
+            "actual": 75.0
+          },
+          "punt_start_yl": {
+            "sim": 78.81170018281536,
+            "actual": 79.6
+          },
+          "penalties": {
+            "sim": 5.536666666666667,
+            "actual": 3.0
+          },
+          "top_min": {
+            "sim": 32.05749609305461,
+            "actual": 39.1
+          },
+          "turnovers": {
+            "sim": 0.8033333333333333,
+            "actual": 0.0
+          }
+        },
+        "JAX": {
+          "points": {
+            "sim": 21.433333333333334,
+            "actual": 6.0
+          },
+          "pts_q1": {
+            "sim": 4.216666666666667,
+            "actual": 3.0
+          },
+          "pts_q2": {
+            "sim": 5.6866666666666665,
+            "actual": 3.0
+          },
+          "pts_q3": {
+            "sim": 4.453333333333333,
+            "actual": 0.0
+          },
+          "pts_q4": {
+            "sim": 6.906666666666666,
+            "actual": 0.0
+          },
+          "plays": {
+            "sim": 59.266666666666666,
+            "actual": 47.0
+          },
+          "pass_rate": {
+            "sim": 0.6122047244094488,
+            "actual": 0.6382978723404256
+          },
+          "ypa": {
+            "sim": 7.0198523543495615,
+            "actual": 4.758620689655173
+          },
+          "ypc": {
+            "sim": 4.338109305760709,
+            "actual": 2.411764705882353
+          },
+          "sack_rate": {
+            "sim": 0.0714745062011943,
+            "actual": 0.03333333333333333
+          },
+          "int_rate": {
+            "sim": 0.02613727055067837,
+            "actual": 0.034482758620689655
+          },
+          "fumbles_lost": {
+            "sim": 0.41,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.3683179401063532,
+            "actual": 0.2
+          },
+          "fourth_down_att": {
+            "sim": 1.6466666666666667,
+            "actual": 2.0
+          },
+          "rz_trips": {
+            "sim": 3.01,
+            "actual": 1.0
+          },
+          "rz_td_pct": {
+            "sim": 0.5514950166112957,
+            "actual": 0.0
+          },
+          "fg_att": {
+            "sim": 2.0366666666666666,
+            "actual": 2.0
+          },
+          "fg_pct": {
+            "sim": 0.8265139116202946,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 3.7133333333333334,
+            "actual": 5.0
+          },
+          "kickoff_start_yl": {
+            "sim": 67.16934619506968,
+            "actual": 69.88888888888889
+          },
+          "punt_start_yl": {
+            "sim": 78.49255319148936,
+            "actual": null
+          },
+          "penalties": {
+            "sim": 5.34,
+            "actual": 6.0
+          },
+          "top_min": {
+            "sim": 28.252306326796027,
+            "actual": 20.9
+          },
+          "turnovers": {
+            "sim": 1.2833333333333332,
+            "actual": 1.0
+          }
+        }
+      }
+    },
+    {
+      "game_id": "2024_06_DET_DAL",
+      "score": "DET 47 @ DAL 9",
+      "pred": "DET 27.6 @ DAL 29.1",
+      "p_home": 0.5433333333333333,
+      "market_margin": -3.5,
+      "miss": 39.89,
+      "components": {
+        "DAL": {
+          "points": {
+            "sim": 29.113333333333333,
+            "actual": 9.0
+          },
+          "pts_q1": {
+            "sim": 6.47,
+            "actual": 3.0
+          },
+          "pts_q2": {
+            "sim": 7.43,
+            "actual": 3.0
+          },
+          "pts_q3": {
+            "sim": 6.306666666666667,
+            "actual": 3.0
+          },
+          "pts_q4": {
+            "sim": 8.773333333333333,
+            "actual": 0.0
+          },
+          "plays": {
+            "sim": 63.07,
+            "actual": 65.0
+          },
+          "pass_rate": {
+            "sim": 0.5863854975952645,
+            "actual": 0.7384615384615385
+          },
+          "ypa": {
+            "sim": 7.716771387143548,
+            "actual": 5.090909090909091
+          },
+          "ypc": {
+            "sim": 4.593269357171027,
+            "actual": 3.1176470588235294
+          },
+          "sack_rate": {
+            "sim": 0.06327174402884181,
+            "actual": 0.08333333333333333
+          },
+          "int_rate": {
+            "sim": 0.017593040115998066,
+            "actual": 0.06818181818181818
+          },
+          "fumbles_lost": {
+            "sim": 0.2866666666666667,
+            "actual": 2.0
+          },
+          "third_down_pct": {
+            "sim": 0.44120077113742767,
+            "actual": 0.23076923076923078
+          },
+          "fourth_down_att": {
+            "sim": 1.3566666666666667,
+            "actual": 4.0
+          },
+          "rz_trips": {
+            "sim": 3.9266666666666667,
+            "actual": 3.0
+          },
+          "rz_td_pct": {
+            "sim": 0.6383701188455009,
+            "actual": 0.0
+          },
+          "fg_att": {
+            "sim": 2.1933333333333334,
+            "actual": 3.0
+          },
+          "fg_pct": {
+            "sim": 0.8556231003039514,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 3.1133333333333333,
+            "actual": 2.0
+          },
+          "kickoff_start_yl": {
+            "sim": 66.52102272727274,
+            "actual": 65.2
+          },
+          "punt_start_yl": {
+            "sim": 78.69063180827887,
+            "actual": null
+          },
+          "penalties": {
+            "sim": 5.786666666666667,
+            "actual": 3.0
+          },
+          "top_min": {
+            "sim": 29.910400169662047,
+            "actual": 25.283333333333335
+          },
+          "turnovers": {
+            "sim": 0.8933333333333333,
+            "actual": 5.0
+          }
+        },
+        "DET": {
+          "points": {
+            "sim": 27.56,
+            "actual": 47.0
+          },
+          "pts_q1": {
+            "sim": 5.3566666666666665,
+            "actual": 7.0
+          },
+          "pts_q2": {
+            "sim": 8.376666666666667,
+            "actual": 20.0
+          },
+          "pts_q3": {
+            "sim": 5.573333333333333,
+            "actual": 10.0
+          },
+          "pts_q4": {
+            "sim": 8.18,
+            "actual": 10.0
+          },
+          "plays": {
+            "sim": 63.153333333333336,
+            "actual": 66.0
+          },
+          "pass_rate": {
+            "sim": 0.5574791512720364,
+            "actual": 0.45454545454545453
+          },
+          "ypa": {
+            "sim": 7.4901560746710185,
+            "actual": 12.37037037037037
+          },
+          "ypc": {
+            "sim": 5.118910999877916,
+            "actual": 5.470588235294118
+          },
+          "sack_rate": {
+            "sim": 0.06428706684340087,
+            "actual": 0.1
+          },
+          "int_rate": {
+            "sim": 0.023156176680607977,
+            "actual": 0.0
+          },
+          "fumbles_lost": {
+            "sim": 0.36,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.42147117296222664,
+            "actual": 0.4
+          },
+          "fourth_down_att": {
+            "sim": 1.51,
+            "actual": 2.0
+          },
+          "rz_trips": {
+            "sim": 3.8,
+            "actual": 5.0
+          },
+          "rz_td_pct": {
+            "sim": 0.6157894736842106,
+            "actual": 0.6
+          },
+          "fg_att": {
+            "sim": 2.1066666666666665,
+            "actual": 4.0
+          },
+          "fg_pct": {
+            "sim": 0.829113924050633,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 3.1033333333333335,
+            "actual": 0.0
+          },
+          "kickoff_start_yl": {
+            "sim": 66.4904839586732,
+            "actual": 67.25
+          },
+          "punt_start_yl": {
+            "sim": 76.85854189336234,
+            "actual": 66.0
+          },
+          "penalties": {
+            "sim": 5.79,
+            "actual": 8.0
+          },
+          "top_min": {
+            "sim": 30.414105640835803,
+            "actual": 34.71666666666667
+          },
+          "turnovers": {
+            "sim": 1.1166666666666667,
+            "actual": 0.0
+          }
+        }
+      }
+    },
+    {
+      "game_id": "2024_08_TEN_DET",
+      "score": "TEN 14 @ DET 52",
+      "pred": "TEN 21.0 @ DET 27.7",
+      "p_home": 0.7566666666666667,
+      "market_margin": 12.5,
+      "miss": 39.88166666666666,
+      "components": {
+        "DET": {
+          "points": {
+            "sim": 27.74,
+            "actual": 52.0
+          },
+          "pts_q1": {
+            "sim": 5.363333333333333,
+            "actual": 14.0
+          },
+          "pts_q2": {
+            "sim": 8.396666666666667,
+            "actual": 21.0
+          },
+          "pts_q3": {
+            "sim": 5.65,
+            "actual": 17.0
+          },
+          "pts_q4": {
+            "sim": 8.236666666666666,
+            "actual": 0.0
+          },
+          "plays": {
+            "sim": 63.903333333333336,
+            "actual": 47.0
+          },
+          "pass_rate": {
+            "sim": 0.5487976631370298,
+            "actual": 0.48936170212765956
+          },
+          "ypa": {
+            "sim": 7.710700805875752,
+            "actual": 4.947368421052632
+          },
+          "ypc": {
+            "sim": 4.4426934097421205,
+            "actual": 6.833333333333333
+          },
+          "sack_rate": {
+            "sim": 0.0630168234958654,
+            "actual": 0.17391304347826086
+          },
+          "int_rate": {
+            "sim": 0.014689380801795366,
+            "actual": 0.0
+          },
+          "fumbles_lost": {
+            "sim": 0.3233333333333333,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.43645529318121523,
+            "actual": 0.3333333333333333
+          },
+          "fourth_down_att": {
+            "sim": 1.4366666666666668,
+            "actual": 0.0
+          },
+          "rz_trips": {
+            "sim": 3.84,
+            "actual": 5.0
+          },
+          "rz_td_pct": {
+            "sim": 0.564236111111111,
+            "actual": 1.0
+          },
+          "fg_att": {
+            "sim": 2.4833333333333334,
+            "actual": 1.0
+          },
+          "fg_pct": {
+            "sim": 0.8845637583892617,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 3.1533333333333333,
+            "actual": 5.0
+          },
+          "kickoff_start_yl": {
+            "sim": 66.1781914893617,
+            "actual": 55.0
+          },
+          "punt_start_yl": {
+            "sim": 75.9475113122172,
+            "actual": 59.333333333333336
+          },
+          "penalties": {
+            "sim": 5.433333333333334,
+            "actual": 2.0
+          },
+          "top_min": {
+            "sim": 31.3933914233102,
+            "actual": 24.383333333333333
+          },
+          "turnovers": {
+            "sim": 0.8033333333333332,
+            "actual": 0.0
+          }
+        },
+        "TEN": {
+          "points": {
+            "sim": 20.983333333333334,
+            "actual": 14.0
+          },
+          "pts_q1": {
+            "sim": 3.953333333333333,
+            "actual": 7.0
+          },
+          "pts_q2": {
+            "sim": 6.44,
+            "actual": 7.0
+          },
+          "pts_q3": {
+            "sim": 4.19,
+            "actual": 0.0
+          },
+          "pts_q4": {
+            "sim": 6.276666666666666,
+            "actual": 0.0
+          },
+          "plays": {
+            "sim": 58.55,
+            "actual": 71.0
+          },
+          "pass_rate": {
+            "sim": 0.5815542271562767,
+            "actual": 0.5492957746478874
+          },
+          "ypa": {
+            "sim": 6.913842864778194,
+            "actual": 7.0
+          },
+          "ypc": {
+            "sim": 4.46612278761062,
+            "actual": 4.9375
+          },
+          "sack_rate": {
+            "sim": 0.0756730298580519,
+            "actual": 0.02564102564102564
+          },
+          "int_rate": {
+            "sim": 0.024585783003741316,
+            "actual": 0.05263157894736842
+          },
+          "fumbles_lost": {
+            "sim": 0.4633333333333333,
+            "actual": 2.0
+          },
+          "third_down_pct": {
+            "sim": 0.35864387783692914,
+            "actual": 0.2727272727272727
+          },
+          "fourth_down_att": {
+            "sim": 1.6466666666666667,
+            "actual": 2.0
+          },
+          "rz_trips": {
+            "sim": 2.92,
+            "actual": 4.0
+          },
+          "rz_td_pct": {
+            "sim": 0.5479452054794521,
+            "actual": 0.5
+          },
+          "fg_att": {
+            "sim": 2.1433333333333335,
+            "actual": 0.0
+          },
+          "fg_pct": {
+            "sim": 0.869362363919129,
+            "actual": null
+          },
+          "punts": {
+            "sim": 3.74,
+            "actual": 6.0
+          },
+          "kickoff_start_yl": {
+            "sim": 67.07135016465423,
+            "actual": 70.66666666666667
+          },
+          "punt_start_yl": {
+            "sim": 78.1228448275862,
+            "actual": 82.8
+          },
+          "penalties": {
+            "sim": 6.22,
+            "actual": 6.0
+          },
+          "top_min": {
+            "sim": 28.834110599963303,
+            "actual": 35.61666666666667
+          },
+          "turnovers": {
+            "sim": 1.23,
+            "actual": 4.0
+          }
+        }
+      }
+    },
+    {
+      "game_id": "2024_06_TB_NO",
+      "score": "TB 51 @ NO 27",
+      "pred": "TB 23.1 @ NO 21.8",
+      "p_home": 0.44333333333333336,
+      "market_margin": -3.5,
+      "miss": 39.30833333333334,
+      "components": {
+        "NO": {
+          "points": {
+            "sim": 21.816666666666666,
+            "actual": 27.0
+          },
+          "pts_q1": {
+            "sim": 4.493333333333333,
+            "actual": 0.0
+          },
+          "pts_q2": {
+            "sim": 6.74,
+            "actual": 27.0
+          },
+          "pts_q3": {
+            "sim": 4.156666666666666,
+            "actual": 0.0
+          },
+          "pts_q4": {
+            "sim": 6.193333333333333,
+            "actual": 0.0
+          },
+          "plays": {
+            "sim": 62.276666666666664,
+            "actual": 66.0
+          },
+          "pass_rate": {
+            "sim": 0.5658084890006958,
+            "actual": 0.6818181818181818
+          },
+          "ypa": {
+            "sim": 6.7655541821178415,
+            "actual": 6.075
+          },
+          "ypc": {
+            "sim": 4.530848652732309,
+            "actual": 3.857142857142857
+          },
+          "sack_rate": {
+            "sim": 0.07624633431085044,
+            "actual": 0.1111111111111111
+          },
+          "int_rate": {
+            "sim": 0.026473011948908116,
+            "actual": 0.05
+          },
+          "fumbles_lost": {
+            "sim": 0.43,
+            "actual": 1.0
+          },
+          "third_down_pct": {
+            "sim": 0.37398160315374507,
+            "actual": 0.3076923076923077
+          },
+          "fourth_down_att": {
+            "sim": 1.6433333333333333,
+            "actual": 1.0
+          },
+          "rz_trips": {
+            "sim": 3.1466666666666665,
+            "actual": 4.0
+          },
+          "rz_td_pct": {
+            "sim": 0.5434322033898306,
+            "actual": 0.5
+          },
+          "fg_att": {
+            "sim": 2.1733333333333333,
+            "actual": 2.0
+          },
+          "fg_pct": {
+            "sim": 0.8266871165644172,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 3.8866666666666667,
+            "actual": 6.0
+          },
+          "kickoff_start_yl": {
+            "sim": 66.69078540507113,
+            "actual": 71.22222222222223
+          },
+          "punt_start_yl": {
+            "sim": 77.17057761732852,
+            "actual": 50.0
+          },
+          "penalties": {
+            "sim": 5.13,
+            "actual": 7.0
+          },
+          "top_min": {
+            "sim": 30.093587788892417,
+            "actual": 25.966666666666665
+          },
+          "turnovers": {
+            "sim": 1.2866666666666666,
+            "actual": 3.0
+          }
+        },
+        "TB": {
+          "points": {
+            "sim": 23.066666666666666,
+            "actual": 51.0
+          },
+          "pts_q1": {
+            "sim": 4.48,
+            "actual": 17.0
+          },
+          "pts_q2": {
+            "sim": 6.9,
+            "actual": 7.0
+          },
+          "pts_q3": {
+            "sim": 4.76,
+            "actual": 7.0
+          },
+          "pts_q4": {
+            "sim": 6.73,
+            "actual": 20.0
+          },
+          "plays": {
+            "sim": 62.596666666666664,
+            "actual": 72.0
+          },
+          "pass_rate": {
+            "sim": 0.5915650460620907,
+            "actual": 0.5138888888888888
+          },
+          "ypa": {
+            "sim": 6.833740592317467,
+            "actual": 9.027777777777779
+          },
+          "ypc": {
+            "sim": 4.602897773007781,
+            "actual": 7.914285714285715
+          },
+          "sack_rate": {
+            "sim": 0.07354397335493743,
+            "actual": 0.02702702702702703
+          },
+          "int_rate": {
+            "sim": 0.02619489785944678,
+            "actual": 0.08333333333333333
+          },
+          "fumbles_lost": {
+            "sim": 0.41,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.40031520882584715,
+            "actual": 0.6
+          },
+          "fourth_down_att": {
+            "sim": 1.26,
+            "actual": 0.0
+          },
+          "rz_trips": {
+            "sim": 3.3633333333333333,
+            "actual": 5.0
+          },
+          "rz_td_pct": {
+            "sim": 0.5421209117938552,
+            "actual": 0.8
+          },
+          "fg_att": {
+            "sim": 2.4033333333333333,
+            "actual": 1.0
+          },
+          "fg_pct": {
+            "sim": 0.8488210818307906,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 3.756666666666667,
+            "actual": 3.0
+          },
+          "kickoff_start_yl": {
+            "sim": 67.10870988867059,
+            "actual": 73.83333333333333
+          },
+          "punt_start_yl": {
+            "sim": 77.29195804195804,
+            "actual": 81.83333333333333
+          },
+          "penalties": {
+            "sim": 5.283333333333333,
+            "actual": 12.0
+          },
+          "top_min": {
+            "sim": 30.428678518075056,
+            "actual": 34.03333333333333
+          },
+          "turnovers": {
+            "sim": 1.3033333333333332,
+            "actual": 3.0
+          }
+        }
+      }
+    },
+    {
+      "game_id": "2024_18_KC_DEN",
+      "score": "KC 0 @ DEN 38",
+      "pred": "KC 20.9 @ DEN 24.5",
+      "p_home": 0.59,
+      "market_margin": 10.5,
+      "miss": 38.056666666666665,
+      "components": {
+        "DEN": {
+          "points": {
+            "sim": 24.536666666666665,
+            "actual": 38.0
+          },
+          "pts_q1": {
+            "sim": 4.876666666666667,
+            "actual": 14.0
+          },
+          "pts_q2": {
+            "sim": 6.973333333333334,
+            "actual": 10.0
+          },
+          "pts_q3": {
+            "sim": 4.963333333333333,
+            "actual": 7.0
+          },
+          "pts_q4": {
+            "sim": 7.596666666666667,
+            "actual": 7.0
+          },
+          "plays": {
+            "sim": 64.60666666666665,
+            "actual": 72.0
+          },
+          "pass_rate": {
+            "sim": 0.5836858941285729,
+            "actual": 0.4027777777777778
+          },
+          "ypa": {
+            "sim": 6.7120373903090425,
+            "actual": 11.068965517241379
+          },
+          "ypc": {
+            "sim": 4.34839446630283,
+            "actual": 3.7857142857142856
+          },
+          "sack_rate": {
+            "sim": 0.06700256342261117,
+            "actual": 0.0
+          },
+          "int_rate": {
+            "sim": 0.022796642502861505,
+            "actual": 0.0
+          },
+          "fumbles_lost": {
+            "sim": 0.42,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.37924151696606784,
+            "actual": 0.7692307692307693
+          },
+          "fourth_down_att": {
+            "sim": 1.46,
+            "actual": 2.0
+          },
+          "rz_trips": {
+            "sim": 3.31,
+            "actual": 5.0
+          },
+          "rz_td_pct": {
+            "sim": 0.5357502517623364,
+            "actual": 0.8
+          },
+          "fg_att": {
+            "sim": 2.6066666666666665,
+            "actual": 1.0
+          },
+          "fg_pct": {
+            "sim": 0.8401534526854221,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 4.01,
+            "actual": 2.0
+          },
+          "kickoff_start_yl": {
+            "sim": 66.59298477829252,
+            "actual": 70.0
+          },
+          "punt_start_yl": {
+            "sim": 76.52530120481927,
+            "actual": 83.0
+          },
+          "penalties": {
+            "sim": 5.733333333333333,
+            "actual": 5.0
+          },
+          "top_min": {
+            "sim": 31.444077628092078,
+            "actual": 41.81666666666667
+          },
+          "turnovers": {
+            "sim": 1.2166666666666666,
+            "actual": 0.0
+          }
+        },
+        "KC": {
+          "points": {
+            "sim": 20.883333333333333,
+            "actual": 0.0
+          },
+          "pts_q1": {
+            "sim": 4.1466666666666665,
+            "actual": 0.0
+          },
+          "pts_q2": {
+            "sim": 6.053333333333334,
+            "actual": 0.0
+          },
+          "pts_q3": {
+            "sim": 4.216666666666667,
+            "actual": 0.0
+          },
+          "pts_q4": {
+            "sim": 6.3566666666666665,
+            "actual": 0.0
+          },
+          "plays": {
+            "sim": 62.32333333333334,
+            "actual": 33.0
+          },
+          "pass_rate": {
+            "sim": 0.6271594373428891,
+            "actual": 0.6666666666666666
+          },
+          "ypa": {
+            "sim": 6.5425621773815115,
+            "actual": 5.764705882352941
+          },
+          "ypc": {
+            "sim": 4.296372751400766,
+            "actual": 2.4545454545454546
+          },
+          "sack_rate": {
+            "sim": 0.08553641480470749,
+            "actual": 0.22727272727272727
+          },
+          "int_rate": {
+            "sim": 0.030314406381980293,
+            "actual": 0.0
+          },
+          "fumbles_lost": {
+            "sim": 0.49,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.350832266325224,
+            "actual": 0.1111111111111111
+          },
+          "fourth_down_att": {
+            "sim": 1.6833333333333333,
+            "actual": 2.0
+          },
+          "rz_trips": {
+            "sim": 3.13,
+            "actual": 0.0
+          },
+          "rz_td_pct": {
+            "sim": 0.5111821086261982,
+            "actual": null
+          },
+          "fg_att": {
+            "sim": 2.23,
+            "actual": 1.0
+          },
+          "fg_pct": {
+            "sim": 0.8460388639760837,
+            "actual": 0.0
+          },
+          "punts": {
+            "sim": 4.196666666666666,
+            "actual": 5.0
+          },
+          "kickoff_start_yl": {
+            "sim": 66.81663737551258,
+            "actual": 65.0
+          },
+          "punt_start_yl": {
+            "sim": 78.01782682512734,
+            "actual": 76.5
+          },
+          "penalties": {
+            "sim": 5.12,
+            "actual": 2.0
+          },
+          "top_min": {
+            "sim": 28.80823163664708,
+            "actual": 18.183333333333334
+          },
+          "turnovers": {
+            "sim": 1.5666666666666667,
+            "actual": 0.0
+          }
+        }
+      }
+    },
+    {
+      "game_id": "2024_07_CAR_WAS",
+      "score": "CAR 7 @ WAS 40",
+      "pred": "CAR 26.3 @ WAS 23.0",
+      "p_home": 0.3933333333333333,
+      "market_margin": 10.0,
+      "miss": 37.44166666666666,
+      "components": {
+        "WAS": {
+          "points": {
+            "sim": 23.016666666666666,
+            "actual": 40.0
+          },
+          "pts_q1": {
+            "sim": 4.586666666666667,
+            "actual": 10.0
+          },
+          "pts_q2": {
+            "sim": 7.04,
+            "actual": 17.0
+          },
+          "pts_q3": {
+            "sim": 4.56,
+            "actual": 10.0
+          },
+          "pts_q4": {
+            "sim": 6.706666666666667,
+            "actual": 3.0
+          },
+          "plays": {
+            "sim": 61.78666666666666,
+            "actual": 63.0
+          },
+          "pass_rate": {
+            "sim": 0.6067112645662495,
+            "actual": 0.4126984126984127
+          },
+          "ypa": {
+            "sim": 6.607307692307693,
+            "actual": 8.44
+          },
+          "ypc": {
+            "sim": 5.086107599381935,
+            "actual": 6.2
+          },
+          "sack_rate": {
+            "sim": 0.06873555041792638,
+            "actual": 0.038461538461538464
+          },
+          "int_rate": {
+            "sim": 0.02634615384615385,
+            "actual": 0.0
+          },
+          "fumbles_lost": {
+            "sim": 0.4,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.3936944219886823,
+            "actual": 0.5
+          },
+          "fourth_down_att": {
+            "sim": 1.72,
+            "actual": 0.0
+          },
+          "rz_trips": {
+            "sim": 3.26,
+            "actual": 6.0
+          },
+          "rz_td_pct": {
+            "sim": 0.547034764826176,
+            "actual": 0.5
+          },
+          "fg_att": {
+            "sim": 2.1766666666666667,
+            "actual": 4.0
+          },
+          "fg_pct": {
+            "sim": 0.8192955589586524,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 3.3833333333333333,
+            "actual": 1.0
+          },
+          "kickoff_start_yl": {
+            "sim": 66.86151182919792,
+            "actual": 64.5
+          },
+          "punt_start_yl": {
+            "sim": 75.69687814702921,
+            "actual": 77.0
+          },
+          "penalties": {
+            "sim": 5.04,
+            "actual": 8.0
+          },
+          "top_min": {
+            "sim": 29.244965323577674,
+            "actual": 35.083333333333336
+          },
+          "turnovers": {
+            "sim": 1.3133333333333335,
+            "actual": 0.0
+          }
+        },
+        "CAR": {
+          "points": {
+            "sim": 26.3,
+            "actual": 7.0
+          },
+          "pts_q1": {
+            "sim": 5.36,
+            "actual": 0.0
+          },
+          "pts_q2": {
+            "sim": 7.85,
+            "actual": 0.0
+          },
+          "pts_q3": {
+            "sim": 5.223333333333334,
+            "actual": 0.0
+          },
+          "pts_q4": {
+            "sim": 7.783333333333333,
+            "actual": 7.0
+          },
+          "plays": {
+            "sim": 62.266666666666666,
+            "actual": 43.0
+          },
+          "pass_rate": {
+            "sim": 0.5574946466809422,
+            "actual": 0.46511627906976744
+          },
+          "ypa": {
+            "sim": 7.548380441510212,
+            "actual": 4.944444444444445
+          },
+          "ypc": {
+            "sim": 4.419543084181773,
+            "actual": 4.363636363636363
+          },
+          "sack_rate": {
+            "sim": 0.06366429806030344,
+            "actual": 0.1
+          },
+          "int_rate": {
+            "sim": 0.015782958531050134,
+            "actual": 0.1111111111111111
+          },
+          "fumbles_lost": {
+            "sim": 0.4633333333333333,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.4215738758029979,
+            "actual": 0.3
+          },
+          "fourth_down_att": {
+            "sim": 1.4566666666666668,
+            "actual": 1.0
+          },
+          "rz_trips": {
+            "sim": 3.566666666666667,
+            "actual": 1.0
+          },
+          "rz_td_pct": {
+            "sim": 0.5934579439252337,
+            "actual": 1.0
+          },
+          "fg_att": {
+            "sim": 2.283333333333333,
+            "actual": 0.0
+          },
+          "fg_pct": {
+            "sim": 0.8496350364963504,
+            "actual": null
+          },
+          "punts": {
+            "sim": 3.3466666666666667,
+            "actual": 5.0
+          },
+          "kickoff_start_yl": {
+            "sim": 66.47900763358778,
+            "actual": 73.22222222222223
+          },
+          "punt_start_yl": {
+            "sim": 77.21943887775551,
+            "actual": 89.0
+          },
+          "penalties": {
+            "sim": 5.403333333333333,
+            "actual": 5.0
+          },
+          "top_min": {
+            "sim": 31.059329840430255,
+            "actual": 24.916666666666668
+          },
+          "turnovers": {
+            "sim": 0.9733333333333334,
+            "actual": 2.0
+          }
+        }
+      }
+    },
+    {
+      "game_id": "2024_10_NYJ_ARI",
+      "score": "NYJ 6 @ ARI 31",
+      "pred": "NYJ 27.2 @ ARI 20.4",
+      "p_home": 0.2966666666666667,
+      "market_margin": -2.0,
+      "miss": 37.18833333333333,
+      "components": {
+        "ARI": {
+          "points": {
+            "sim": 20.35333333333333,
+            "actual": 31.0
+          },
+          "pts_q1": {
+            "sim": 4.35,
+            "actual": 14.0
+          },
+          "pts_q2": {
+            "sim": 5.74,
+            "actual": 10.0
+          },
+          "pts_q3": {
+            "sim": 3.94,
+            "actual": 7.0
+          },
+          "pts_q4": {
+            "sim": 6.213333333333333,
+            "actual": 0.0
+          },
+          "plays": {
+            "sim": 59.00666666666666,
+            "actual": 57.0
+          },
+          "pass_rate": {
+            "sim": 0.5629872330810078,
+            "actual": 0.43859649122807015
+          },
+          "ypa": {
+            "sim": 6.461234784515846,
+            "actual": 11.083333333333334
+          },
+          "ypc": {
+            "sim": 4.95408365219686,
+            "actual": 4.774193548387097
+          },
+          "sack_rate": {
+            "sim": 0.07746337547662051,
+            "actual": 0.04
+          },
+          "int_rate": {
+            "sim": 0.020835617940563655,
+            "actual": 0.0
+          },
+          "fumbles_lost": {
+            "sim": 0.35,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.3495934959349593,
+            "actual": 0.7142857142857143
+          },
+          "fourth_down_att": {
+            "sim": 1.65,
+            "actual": 1.0
+          },
+          "rz_trips": {
+            "sim": 2.9966666666666666,
+            "actual": 5.0
+          },
+          "rz_td_pct": {
+            "sim": 0.5383759733036707,
+            "actual": 0.8
+          },
+          "fg_att": {
+            "sim": 1.9733333333333334,
+            "actual": 1.0
+          },
+          "fg_pct": {
+            "sim": 0.8344594594594594,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 4.013333333333334,
+            "actual": 1.0
+          },
+          "kickoff_start_yl": {
+            "sim": 66.86611111111111,
+            "actual": 70.0
+          },
+          "punt_start_yl": {
+            "sim": 76.67047817047818,
+            "actual": 76.5
+          },
+          "penalties": {
+            "sim": 5.61,
+            "actual": 4.0
+          },
+          "top_min": {
+            "sim": 28.380997144679093,
+            "actual": 32.7
+          },
+          "turnovers": {
+            "sim": 0.9833333333333333,
+            "actual": 0.0
+          }
+        },
+        "NYJ": {
+          "points": {
+            "sim": 27.243333333333332,
+            "actual": 6.0
+          },
+          "pts_q1": {
+            "sim": 5.69,
+            "actual": 3.0
+          },
+          "pts_q2": {
+            "sim": 8.063333333333333,
+            "actual": 3.0
+          },
+          "pts_q3": {
+            "sim": 5.64,
+            "actual": 0.0
+          },
+          "pts_q4": {
+            "sim": 7.703333333333333,
+            "actual": 0.0
+          },
+          "plays": {
+            "sim": 62.78666666666666,
+            "actual": 55.0
+          },
+          "pass_rate": {
+            "sim": 0.5660437460182629,
+            "actual": 0.6909090909090909
+          },
+          "ypa": {
+            "sim": 7.757651530306061,
+            "actual": 4.314285714285714
+          },
+          "ypc": {
+            "sim": 4.432897712993214,
+            "actual": 4.647058823529412
+          },
+          "sack_rate": {
+            "sim": 0.05758769461639468,
+            "actual": 0.07894736842105263
+          },
+          "int_rate": {
+            "sim": 0.016603320664132826,
+            "actual": 0.0
+          },
+          "fumbles_lost": {
+            "sim": 0.32666666666666666,
+            "actual": 1.0
+          },
+          "third_down_pct": {
+            "sim": 0.45284552845528453,
+            "actual": 0.46153846153846156
+          },
+          "fourth_down_att": {
+            "sim": 0.95,
+            "actual": 3.0
+          },
+          "rz_trips": {
+            "sim": 3.6666666666666665,
+            "actual": 3.0
+          },
+          "rz_td_pct": {
+            "sim": 0.5809090909090909,
+            "actual": 0.0
+          },
+          "fg_att": {
+            "sim": 2.3933333333333335,
+            "actual": 2.0
+          },
+          "fg_pct": {
+            "sim": 0.873259052924791,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 3.263333333333333,
+            "actual": 2.0
+          },
+          "kickoff_start_yl": {
+            "sim": 65.71041666666667,
+            "actual": 70.0
+          },
+          "punt_start_yl": {
+            "sim": 78.88936170212767,
+            "actual": 73.0
+          },
+          "penalties": {
+            "sim": 5.69,
+            "actual": 3.0
+          },
+          "top_min": {
+            "sim": 31.857809068221755,
+            "actual": 27.3
+          },
+          "turnovers": {
+            "sim": 0.88,
+            "actual": 1.0
+          }
+        }
+      }
+    },
+    {
+      "game_id": "2025_15_BAL_CIN",
+      "score": "BAL 24 @ CIN 0",
+      "pred": "BAL 27.2 @ CIN 25.6",
+      "p_home": 0.47333333333333333,
+      "market_margin": -2.5,
+      "miss": 36.79333333333334,
+      "components": {
+        "CIN": {
+          "points": {
+            "sim": 25.586666666666666,
+            "actual": 0.0
+          },
+          "pts_q1": {
+            "sim": 4.886666666666667,
+            "actual": 0.0
+          },
+          "pts_q2": {
+            "sim": 7.613333333333333,
+            "actual": 0.0
+          },
+          "pts_q3": {
+            "sim": 5.153333333333333,
+            "actual": 0.0
+          },
+          "pts_q4": {
+            "sim": 7.766666666666667,
+            "actual": 0.0
+          },
+          "plays": {
+            "sim": 61.53333333333333,
+            "actual": 71.0
+          },
+          "pass_rate": {
+            "sim": 0.6218309859154929,
+            "actual": 0.5915492957746479
+          },
+          "ypa": {
+            "sim": 7.394307046196922,
+            "actual": 5.769230769230769
+          },
+          "ypc": {
+            "sim": 4.892114959469418,
+            "actual": 3.4482758620689653
+          },
+          "sack_rate": {
+            "sim": 0.060893806080669056,
+            "actual": 0.07142857142857142
+          },
+          "int_rate": {
+            "sim": 0.019878674755016333,
+            "actual": 0.05128205128205128
+          },
+          "fumbles_lost": {
+            "sim": 0.29,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.4396790260099613,
+            "actual": 0.2
+          },
+          "fourth_down_att": {
+            "sim": 1.5266666666666666,
+            "actual": 5.0
+          },
+          "rz_trips": {
+            "sim": 3.6333333333333333,
+            "actual": 1.0
+          },
+          "rz_td_pct": {
+            "sim": 0.5559633027522936,
+            "actual": 0.0
+          },
+          "fg_att": {
+            "sim": 2.3133333333333335,
+            "actual": 0.0
+          },
+          "fg_pct": {
+            "sim": 0.8573487031700288,
+            "actual": null
+          },
+          "punts": {
+            "sim": 2.9,
+            "actual": 4.0
+          },
+          "kickoff_start_yl": {
+            "sim": 68.62260869565218,
+            "actual": 72.0
+          },
+          "punt_start_yl": {
+            "sim": 78.38407494145198,
+            "actual": 74.66666666666667
+          },
+          "penalties": {
+            "sim": 5.476666666666667,
+            "actual": 4.0
+          },
+          "top_min": {
+            "sim": 30.371689625101304,
+            "actual": 39.31666666666667
+          },
+          "turnovers": {
+            "sim": 1.0,
+            "actual": 2.0
+          }
+        },
+        "BAL": {
+          "points": {
+            "sim": 27.173333333333332,
+            "actual": 24.0
+          },
+          "pts_q1": {
+            "sim": 5.29,
+            "actual": 0.0
+          },
+          "pts_q2": {
+            "sim": 8.046666666666667,
+            "actual": 14.0
+          },
+          "pts_q3": {
+            "sim": 5.413333333333333,
+            "actual": 3.0
+          },
+          "pts_q4": {
+            "sim": 8.17,
+            "actual": 7.0
+          },
+          "plays": {
+            "sim": 60.06666666666666,
+            "actual": 40.0
+          },
+          "pass_rate": {
+            "sim": 0.5394006659267481,
+            "actual": 0.4
+          },
+          "ypa": {
+            "sim": 7.516679511174722,
+            "actual": 12.5
+          },
+          "ypc": {
+            "sim": 5.504630201259414,
+            "actual": 9.142857142857142
+          },
+          "sack_rate": {
+            "sim": 0.06018518518518519,
+            "actual": 0.25
+          },
+          "int_rate": {
+            "sim": 0.01750522954970825,
+            "actual": 0.08333333333333333
+          },
+          "fumbles_lost": {
+            "sim": 0.48,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.4435366209512693,
+            "actual": 0.3333333333333333
+          },
+          "fourth_down_att": {
+            "sim": 1.4433333333333334,
+            "actual": 0.0
+          },
+          "rz_trips": {
+            "sim": 3.5566666666666666,
+            "actual": 1.0
+          },
+          "rz_td_pct": {
+            "sim": 0.6288659793814434,
+            "actual": 0.0
+          },
+          "fg_att": {
+            "sim": 1.9666666666666666,
+            "actual": 1.0
+          },
+          "fg_pct": {
+            "sim": 0.8440677966101695,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 2.8866666666666667,
+            "actual": 3.0
+          },
+          "kickoff_start_yl": {
+            "sim": 68.6453692848769,
+            "actual": 66.0
+          },
+          "punt_start_yl": {
+            "sim": 77.15635939323221,
+            "actual": 84.0
+          },
+          "penalties": {
+            "sim": 5.583333333333333,
+            "actual": 2.0
+          },
+          "top_min": {
+            "sim": 30.1254811562203,
+            "actual": 20.683333333333334
+          },
+          "turnovers": {
+            "sim": 1.01,
+            "actual": 1.0
+          }
+        }
+      }
+    },
+    {
+      "game_id": "2024_03_JAX_BUF",
+      "score": "JAX 10 @ BUF 47",
+      "pred": "JAX 18.7 @ BUF 26.0",
+      "p_home": 0.7166666666666667,
+      "market_margin": 4.0,
+      "miss": 35.81166666666667,
+      "components": {
+        "BUF": {
+          "points": {
+            "sim": 26.02,
+            "actual": 47.0
+          },
+          "pts_q1": {
+            "sim": 5.63,
+            "actual": 13.0
+          },
+          "pts_q2": {
+            "sim": 7.123333333333333,
+            "actual": 21.0
+          },
+          "pts_q3": {
+            "sim": 4.946666666666666,
+            "actual": 3.0
+          },
+          "pts_q4": {
+            "sim": 8.106666666666667,
+            "actual": 10.0
+          },
+          "plays": {
+            "sim": 63.40333333333333,
+            "actual": 60.0
+          },
+          "pass_rate": {
+            "sim": 0.5747857631039377,
+            "actual": 0.5166666666666667
+          },
+          "ypa": {
+            "sim": 7.150058962264152,
+            "actual": 8.580645161290322
+          },
+          "ypc": {
+            "sim": 4.810436769933976,
+            "actual": 4.392857142857143
+          },
+          "sack_rate": {
+            "sim": 0.06503247050214947,
+            "actual": 0.0
+          },
+          "int_rate": {
+            "sim": 0.019162735849056606,
+            "actual": 0.0
+          },
+          "fumbles_lost": {
+            "sim": 0.4066666666666667,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.4212201591511936,
+            "actual": 0.5454545454545454
+          },
+          "fourth_down_att": {
+            "sim": 1.2866666666666666,
+            "actual": 2.0
+          },
+          "rz_trips": {
+            "sim": 3.38,
+            "actual": 5.0
+          },
+          "rz_td_pct": {
+            "sim": 0.606508875739645,
+            "actual": 0.8
+          },
+          "fg_att": {
+            "sim": 2.04,
+            "actual": 2.0
+          },
+          "fg_pct": {
+            "sim": 0.8725490196078431,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 3.8866666666666667,
+            "actual": 1.0
+          },
+          "kickoff_start_yl": {
+            "sim": 73.2097014925373,
+            "actual": 69.33333333333333
+          },
+          "punt_start_yl": {
+            "sim": 76.03739837398375,
+            "actual": 64.5
+          },
+          "penalties": {
+            "sim": 5.663333333333333,
+            "actual": 5.0
+          },
+          "top_min": {
+            "sim": 31.03496961333035,
+            "actual": 31.666666666666668
+          },
+          "turnovers": {
+            "sim": 1.0566666666666666,
+            "actual": 0.0
+          }
+        },
+        "JAX": {
+          "points": {
+            "sim": 18.683333333333334,
+            "actual": 10.0
+          },
+          "pts_q1": {
+            "sim": 3.6033333333333335,
+            "actual": 0.0
+          },
+          "pts_q2": {
+            "sim": 5.713333333333333,
+            "actual": 3.0
+          },
+          "pts_q3": {
+            "sim": 3.9233333333333333,
+            "actual": 7.0
+          },
+          "pts_q4": {
+            "sim": 5.376666666666667,
+            "actual": 0.0
+          },
+          "plays": {
+            "sim": 61.786666666666676,
+            "actual": 68.0
+          },
+          "pass_rate": {
+            "sim": 0.6066033664220976,
+            "actual": 0.75
+          },
+          "ypa": {
+            "sim": 6.588023719257316,
+            "actual": 4.3478260869565215
+          },
+          "ypc": {
+            "sim": 4.567832167832167,
+            "actual": 5.411764705882353
+          },
+          "sack_rate": {
+            "sim": 0.07853077196727143,
+            "actual": 0.09803921568627451
+          },
+          "int_rate": {
+            "sim": 0.03295421405657626,
+            "actual": 0.021739130434782608
+          },
+          "fumbles_lost": {
+            "sim": 0.6833333333333333,
+            "actual": 1.0
+          },
+          "third_down_pct": {
+            "sim": 0.36696522655426767,
+            "actual": 0.15384615384615385
+          },
+          "fourth_down_att": {
+            "sim": 1.6266666666666667,
+            "actual": 8.0
+          },
+          "rz_trips": {
+            "sim": 2.7333333333333334,
+            "actual": 4.0
+          },
+          "rz_td_pct": {
+            "sim": 0.5414634146341464,
+            "actual": 0.25
+          },
+          "fg_att": {
+            "sim": 1.8766666666666667,
+            "actual": 1.0
+          },
+          "fg_pct": {
+            "sim": 0.8170515097690941,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 4.153333333333333,
+            "actual": 2.0
+          },
+          "kickoff_start_yl": {
+            "sim": 73.67565982404692,
+            "actual": 70.33333333333333
+          },
+          "punt_start_yl": {
+            "sim": 76.4592013888889,
+            "actual": 68.0
+          },
+          "penalties": {
+            "sim": 5.39,
+            "actual": 7.0
+          },
+          "top_min": {
+            "sim": 29.279960086319434,
+            "actual": 28.333333333333332
+          },
+          "turnovers": {
+            "sim": 1.8133333333333332,
+            "actual": 2.0
+          }
+        }
+      }
+    },
+    {
+      "game_id": "2025_07_MIA_CLE",
+      "score": "MIA 6 @ CLE 31",
+      "pred": "MIA 26.3 @ CLE 20.2",
+      "p_home": 0.2966666666666667,
+      "market_margin": 2.5,
+      "miss": 35.765,
+      "components": {
+        "CLE": {
+          "points": {
+            "sim": 20.24,
+            "actual": 31.0
+          },
+          "pts_q1": {
+            "sim": 4.073333333333333,
+            "actual": 3.0
+          },
+          "pts_q2": {
+            "sim": 5.71,
+            "actual": 14.0
+          },
+          "pts_q3": {
+            "sim": 3.8233333333333333,
+            "actual": 7.0
+          },
+          "pts_q4": {
+            "sim": 6.41,
+            "actual": 7.0
+          },
+          "plays": {
+            "sim": 60.80666666666666,
+            "actual": 53.0
+          },
+          "pass_rate": {
+            "sim": 0.6058546212038154,
+            "actual": 0.37735849056603776
+          },
+          "ypa": {
+            "sim": 6.766934220830072,
+            "actual": 6.444444444444445
+          },
+          "ypc": {
+            "sim": 4.891097543660372,
+            "actual": 3.28125
+          },
+          "sack_rate": {
+            "sim": 0.06768005790807094,
+            "actual": 0.1
+          },
+          "int_rate": {
+            "sim": 0.018402505873140178,
+            "actual": 0.0
+          },
+          "fumbles_lost": {
+            "sim": 0.4533333333333333,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.3783411408101406,
+            "actual": 0.36363636363636365
+          },
+          "fourth_down_att": {
+            "sim": 1.87,
+            "actual": 0.0
+          },
+          "rz_trips": {
+            "sim": 3.09,
+            "actual": 3.0
+          },
+          "rz_td_pct": {
+            "sim": 0.5555555555555556,
+            "actual": 0.6666666666666666
+          },
+          "fg_att": {
+            "sim": 1.9033333333333333,
+            "actual": 1.0
+          },
+          "fg_pct": {
+            "sim": 0.8108581436077057,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 3.6366666666666667,
+            "actual": 6.0
+          },
+          "kickoff_start_yl": {
+            "sim": 70.19482048263686,
+            "actual": 75.0
+          },
+          "punt_start_yl": {
+            "sim": 77.37920168067227,
+            "actual": 66.25
+          },
+          "penalties": {
+            "sim": 6.536666666666667,
+            "actual": 5.0
+          },
+          "top_min": {
+            "sim": 29.62568791822981,
+            "actual": 31.75
+          },
+          "turnovers": {
+            "sim": 1.08,
+            "actual": 0.0
+          }
+        },
+        "MIA": {
+          "points": {
+            "sim": 26.256666666666668,
+            "actual": 6.0
+          },
+          "pts_q1": {
+            "sim": 5.456666666666667,
+            "actual": 0.0
+          },
+          "pts_q2": {
+            "sim": 7.86,
+            "actual": 6.0
+          },
+          "pts_q3": {
+            "sim": 5.256666666666667,
+            "actual": 0.0
+          },
+          "pts_q4": {
+            "sim": 7.52,
+            "actual": 0.0
+          },
+          "plays": {
+            "sim": 60.773333333333326,
+            "actual": 57.0
+          },
+          "pass_rate": {
+            "sim": 0.56494076349276,
+            "actual": 0.6140350877192983
+          },
+          "ypa": {
+            "sim": 7.776865516524632,
+            "actual": 4.935483870967742
+          },
+          "ypc": {
+            "sim": 4.348283931357254,
+            "actual": 4.5
+          },
+          "sack_rate": {
+            "sim": 0.06087378640776699,
+            "actual": 0.11428571428571428
+          },
+          "int_rate": {
+            "sim": 0.014134275618374558,
+            "actual": 0.0967741935483871
+          },
+          "fumbles_lost": {
+            "sim": 0.30333333333333334,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.4341627061783617,
+            "actual": 0.07692307692307693
+          },
+          "fourth_down_att": {
+            "sim": 1.3933333333333333,
+            "actual": 4.0
+          },
+          "rz_trips": {
+            "sim": 3.54,
+            "actual": 2.0
+          },
+          "rz_td_pct": {
+            "sim": 0.620527306967985,
+            "actual": 0.0
+          },
+          "fg_att": {
+            "sim": 2.07,
+            "actual": 2.0
+          },
+          "fg_pct": {
+            "sim": 0.8083735909822867,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 3.25,
+            "actual": 4.0
+          },
+          "kickoff_start_yl": {
+            "sim": 69.22292545710268,
+            "actual": 70.2
+          },
+          "punt_start_yl": {
+            "sim": 75.80428704566636,
+            "actual": 81.33333333333333
+          },
+          "penalties": {
+            "sim": 5.6466666666666665,
+            "actual": 8.0
+          },
+          "top_min": {
+            "sim": 30.79749336288413,
+            "actual": 28.25
+          },
+          "turnovers": {
+            "sim": 0.7566666666666666,
+            "actual": 3.0
+          }
+        }
+      }
+    },
+    {
+      "game_id": "2025_11_LAC_JAX",
+      "score": "LAC 6 @ JAX 35",
+      "pred": "LAC 24.7 @ JAX 20.2",
+      "p_home": 0.36333333333333334,
+      "market_margin": -3.0,
+      "miss": 35.4,
+      "components": {
+        "JAX": {
+          "points": {
+            "sim": 20.16,
+            "actual": 35.0
+          },
+          "pts_q1": {
+            "sim": 4.48,
+            "actual": 7.0
+          },
+          "pts_q2": {
+            "sim": 5.736666666666666,
+            "actual": 7.0
+          },
+          "pts_q3": {
+            "sim": 3.8066666666666666,
+            "actual": 7.0
+          },
+          "pts_q4": {
+            "sim": 6.003333333333333,
+            "actual": 14.0
+          },
+          "plays": {
+            "sim": 59.31333333333333,
+            "actual": 69.0
+          },
+          "pass_rate": {
+            "sim": 0.5945262448016185,
+            "actual": 0.3188405797101449
+          },
+          "ypa": {
+            "sim": 6.321912845461132,
+            "actual": 6.954545454545454
+          },
+          "ypc": {
+            "sim": 5.078373015873016,
+            "actual": 4.085106382978723
+          },
+          "sack_rate": {
+            "sim": 0.08053691275167785,
+            "actual": 0.0
+          },
+          "int_rate": {
+            "sim": 0.028982506986854364,
+            "actual": 0.045454545454545456
+          },
+          "fumbles_lost": {
+            "sim": 0.39,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.35248618784530383,
+            "actual": 0.5
+          },
+          "fourth_down_att": {
+            "sim": 1.6666666666666667,
+            "actual": 5.0
+          },
+          "rz_trips": {
+            "sim": 2.7866666666666666,
+            "actual": 6.0
+          },
+          "rz_td_pct": {
+            "sim": 0.5263157894736842,
+            "actual": 0.8333333333333334
+          },
+          "fg_att": {
+            "sim": 2.0566666666666666,
+            "actual": 0.0
+          },
+          "fg_pct": {
+            "sim": 0.833063209076175,
+            "actual": null
+          },
+          "punts": {
+            "sim": 3.8766666666666665,
+            "actual": 0.0
+          },
+          "kickoff_start_yl": {
+            "sim": 69.54711425206125,
+            "actual": 66.33333333333333
+          },
+          "punt_start_yl": {
+            "sim": 75.88061127029607,
+            "actual": 82.5
+          },
+          "penalties": {
+            "sim": 5.953333333333333,
+            "actual": 1.0
+          },
+          "top_min": {
+            "sim": 29.211911914828285,
+            "actual": 37.916666666666664
+          },
+          "turnovers": {
+            "sim": 1.3233333333333333,
+            "actual": 1.0
+          }
+        },
+        "LAC": {
+          "points": {
+            "sim": 24.653333333333332,
+            "actual": 6.0
+          },
+          "pts_q1": {
+            "sim": 4.993333333333333,
+            "actual": 3.0
+          },
+          "pts_q2": {
+            "sim": 7.0,
+            "actual": 3.0
+          },
+          "pts_q3": {
+            "sim": 5.1866666666666665,
+            "actual": 0.0
+          },
+          "pts_q4": {
+            "sim": 7.31,
+            "actual": 0.0
+          },
+          "plays": {
+            "sim": 62.513333333333335,
+            "actual": 45.0
+          },
+          "pass_rate": {
+            "sim": 0.5992854857630372,
+            "actual": 0.6444444444444445
+          },
+          "ypa": {
+            "sim": 7.103395357759449,
+            "actual": 4.538461538461538
+          },
+          "ypc": {
+            "sim": 4.642056330325404,
+            "actual": 2.625
+          },
+          "sack_rate": {
+            "sim": 0.06673191565085862,
+            "actual": 0.10344827586206896
+          },
+          "int_rate": {
+            "sim": 0.021772491847304818,
+            "actual": 0.038461538461538464
+          },
+          "fumbles_lost": {
+            "sim": 0.27666666666666667,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.40101252331468157,
+            "actual": 0.25
+          },
+          "fourth_down_att": {
+            "sim": 1.3133333333333332,
+            "actual": 3.0
+          },
+          "rz_trips": {
+            "sim": 3.4033333333333333,
+            "actual": 1.0
+          },
+          "rz_td_pct": {
+            "sim": 0.5592556317335945,
+            "actual": 0.0
+          },
+          "fg_att": {
+            "sim": 2.4833333333333334,
+            "actual": 2.0
+          },
+          "fg_pct": {
+            "sim": 0.8429530201342281,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 3.5566666666666666,
+            "actual": 4.0
+          },
+          "kickoff_start_yl": {
+            "sim": 69.17884481558804,
+            "actual": 73.33333333333333
+          },
+          "punt_start_yl": {
+            "sim": 78.37185056472633,
+            "actual": null
+          },
+          "penalties": {
+            "sim": 5.793333333333333,
+            "actual": 5.0
+          },
+          "top_min": {
+            "sim": 31.216266873671195,
+            "actual": 22.083333333333332
+          },
+          "turnovers": {
+            "sim": 1.0333333333333334,
+            "actual": 1.0
+          }
+        }
+      }
+    },
+    {
+      "game_id": "2024_11_ATL_DEN",
+      "score": "ATL 6 @ DEN 38",
+      "pred": "ATL 23.8 @ DEN 21.1",
+      "p_home": 0.43666666666666665,
+      "market_margin": 2.0,
+      "miss": 35.165,
+      "components": {
+        "DEN": {
+          "points": {
+            "sim": 21.1,
+            "actual": 38.0
+          },
+          "pts_q1": {
+            "sim": 4.23,
+            "actual": 7.0
+          },
+          "pts_q2": {
+            "sim": 5.593333333333334,
+            "actual": 14.0
+          },
+          "pts_q3": {
+            "sim": 4.47,
+            "actual": 7.0
+          },
+          "pts_q4": {
+            "sim": 6.623333333333333,
+            "actual": 10.0
+          },
+          "plays": {
+            "sim": 61.373333333333335,
+            "actual": 60.0
+          },
+          "pass_rate": {
+            "sim": 0.5832609167933956,
+            "actual": 0.5666666666666667
+          },
+          "ypa": {
+            "sim": 6.51089466813937,
+            "actual": 9.303030303030303
+          },
+          "ypc": {
+            "sim": 4.57099012543368,
+            "actual": 4.038461538461538
+          },
+          "sack_rate": {
+            "sim": 0.06620728186982028,
+            "actual": 0.029411764705882353
+          },
+          "int_rate": {
+            "sim": 0.02199015965458379,
+            "actual": 0.0
+          },
+          "fumbles_lost": {
+            "sim": 0.48,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.3756291390728477,
+            "actual": 0.5454545454545454
+          },
+          "fourth_down_att": {
+            "sim": 1.6133333333333333,
+            "actual": 1.0
+          },
+          "rz_trips": {
+            "sim": 3.2,
+            "actual": 4.0
+          },
+          "rz_td_pct": {
+            "sim": 0.5072916666666666,
+            "actual": 1.0
+          },
+          "fg_att": {
+            "sim": 2.1466666666666665,
+            "actual": 1.0
+          },
+          "fg_pct": {
+            "sim": 0.8260869565217392,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 3.953333333333333,
+            "actual": 3.0
+          },
+          "kickoff_start_yl": {
+            "sim": 66.7265625,
+            "actual": 70.0
+          },
+          "punt_start_yl": {
+            "sim": 76.28148854961833,
+            "actual": 69.0
+          },
+          "penalties": {
+            "sim": 5.8566666666666665,
+            "actual": 4.0
+          },
+          "top_min": {
+            "sim": 29.727827378365934,
+            "actual": 30.083333333333332
+          },
+          "turnovers": {
+            "sim": 1.21,
+            "actual": 0.0
+          }
+        },
+        "ATL": {
+          "points": {
+            "sim": 23.81,
+            "actual": 6.0
+          },
+          "pts_q1": {
+            "sim": 4.326666666666667,
+            "actual": 3.0
+          },
+          "pts_q2": {
+            "sim": 7.236666666666666,
+            "actual": 3.0
+          },
+          "pts_q3": {
+            "sim": 5.07,
+            "actual": 0.0
+          },
+          "pts_q4": {
+            "sim": 7.08,
+            "actual": 0.0
+          },
+          "plays": {
+            "sim": 63.57666666666667,
+            "actual": 56.0
+          },
+          "pass_rate": {
+            "sim": 0.5455880039846904,
+            "actual": 0.625
+          },
+          "ypa": {
+            "sim": 7.19958376690947,
+            "actual": 6.566666666666666
+          },
+          "ypc": {
+            "sim": 4.79648211545272,
+            "actual": 2.380952380952381
+          },
+          "sack_rate": {
+            "sim": 0.0693830482413992,
+            "actual": 0.11428571428571428
+          },
+          "int_rate": {
+            "sim": 0.018626430801248702,
+            "actual": 0.03333333333333333
+          },
+          "fumbles_lost": {
+            "sim": 0.4766666666666667,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.4002095337873232,
+            "actual": 0.3076923076923077
+          },
+          "fourth_down_att": {
+            "sim": 1.6,
+            "actual": 2.0
+          },
+          "rz_trips": {
+            "sim": 3.5733333333333333,
+            "actual": 1.0
+          },
+          "rz_td_pct": {
+            "sim": 0.5214552238805971,
+            "actual": 0.0
+          },
+          "fg_att": {
+            "sim": 2.39,
+            "actual": 2.0
+          },
+          "fg_pct": {
+            "sim": 0.8577405857740584,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 3.5366666666666666,
+            "actual": 5.0
+          },
+          "kickoff_start_yl": {
+            "sim": 66.50168123739071,
+            "actual": 70.0
+          },
+          "punt_start_yl": {
+            "sim": 78.25881341358556,
+            "actual": 76.0
+          },
+          "penalties": {
+            "sim": 6.043333333333333,
+            "actual": 5.0
+          },
+          "top_min": {
+            "sim": 30.674077816622532,
+            "actual": 29.916666666666668
+          },
+          "turnovers": {
+            "sim": 1.0733333333333333,
+            "actual": 1.0
+          }
+        }
+      }
+    },
+    {
+      "game_id": "2025_08_MIA_ATL",
+      "score": "MIA 34 @ ATL 10",
+      "pred": "MIA 19.2 @ ATL 28.4",
+      "p_home": 0.7833333333333333,
+      "market_margin": 7.0,
+      "miss": 34.980000000000004,
+      "components": {
+        "ATL": {
+          "points": {
+            "sim": 28.39,
+            "actual": 10.0
+          },
+          "pts_q1": {
+            "sim": 5.793333333333333,
+            "actual": 0.0
+          },
+          "pts_q2": {
+            "sim": 8.493333333333334,
+            "actual": 3.0
+          },
+          "pts_q3": {
+            "sim": 5.886666666666667,
+            "actual": 0.0
+          },
+          "pts_q4": {
+            "sim": 8.103333333333333,
+            "actual": 7.0
+          },
+          "plays": {
+            "sim": 61.986666666666665,
+            "actual": 49.0
+          },
+          "pass_rate": {
+            "sim": 0.5426973542697354,
+            "actual": 0.6530612244897959
+          },
+          "ypa": {
+            "sim": 7.476129718234982,
+            "actual": 5.580645161290323
+          },
+          "ypc": {
+            "sim": 5.290205562273277,
+            "actual": 2.875
+          },
+          "sack_rate": {
+            "sim": 0.06371383273880302,
+            "actual": 0.03125
+          },
+          "int_rate": {
+            "sim": 0.01573631047315258,
+            "actual": 0.0
+          },
+          "fumbles_lost": {
+            "sim": 0.3233333333333333,
+            "actual": 1.0
+          },
+          "third_down_pct": {
+            "sim": 0.45446880269814505,
+            "actual": 0.18181818181818182
+          },
+          "fourth_down_att": {
+            "sim": 1.3766666666666667,
+            "actual": 4.0
+          },
+          "rz_trips": {
+            "sim": 3.8633333333333333,
+            "actual": 2.0
+          },
+          "rz_td_pct": {
+            "sim": 0.6151855047454702,
+            "actual": 0.5
+          },
+          "fg_att": {
+            "sim": 2.03,
+            "actual": 1.0
+          },
+          "fg_pct": {
+            "sim": 0.839080459770115,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 3.0,
+            "actual": 4.0
+          },
+          "kickoff_start_yl": {
+            "sim": 69.60434782608696,
+            "actual": 72.42857142857143
+          },
+          "punt_start_yl": {
+            "sim": 77.19579751671442,
+            "actual": 79.66666666666667
+          },
+          "penalties": {
+            "sim": 5.943333333333333,
+            "actual": 5.0
+          },
+          "top_min": {
+            "sim": 32.036988512497174,
+            "actual": 22.033333333333335
+          },
+          "turnovers": {
+            "sim": 0.8166666666666667,
+            "actual": 1.0
+          }
+        },
+        "MIA": {
+          "points": {
+            "sim": 19.21,
+            "actual": 34.0
+          },
+          "pts_q1": {
+            "sim": 4.14,
+            "actual": 7.0
+          },
+          "pts_q2": {
+            "sim": 5.6466666666666665,
+            "actual": 10.0
+          },
+          "pts_q3": {
+            "sim": 3.8133333333333335,
+            "actual": 7.0
+          },
+          "pts_q4": {
+            "sim": 5.53,
+            "actual": 10.0
+          },
+          "plays": {
+            "sim": 58.400000000000006,
+            "actual": 65.0
+          },
+          "pass_rate": {
+            "sim": 0.5955479452054794,
+            "actual": 0.4307692307692308
+          },
+          "ypa": {
+            "sim": 6.382759696371011,
+            "actual": 7.592592592592593
+          },
+          "ypc": {
+            "sim": 4.597044900301248,
+            "actual": 3.810810810810811
+          },
+          "sack_rate": {
+            "sim": 0.07092198581560284,
+            "actual": 0.03571428571428571
+          },
+          "int_rate": {
+            "sim": 0.0351460954559634,
+            "actual": 0.0
+          },
+          "fumbles_lost": {
+            "sim": 0.31333333333333335,
+            "actual": 0.0
+          },
+          "third_down_pct": {
+            "sim": 0.374076179647527,
+            "actual": 0.46153846153846156
+          },
+          "fourth_down_att": {
+            "sim": 1.83,
+            "actual": 2.0
+          },
+          "rz_trips": {
+            "sim": 2.8233333333333333,
+            "actual": 5.0
+          },
+          "rz_td_pct": {
+            "sim": 0.551357733175915,
+            "actual": 0.6
+          },
+          "fg_att": {
+            "sim": 1.83,
+            "actual": 2.0
+          },
+          "fg_pct": {
+            "sim": 0.8397085610200363,
+            "actual": 1.0
+          },
+          "punts": {
+            "sim": 3.5366666666666666,
+            "actual": 3.0
+          },
+          "kickoff_start_yl": {
+            "sim": 69.67946577629382,
+            "actual": 62.333333333333336
+          },
+          "punt_start_yl": {
+            "sim": 76.28813559322033,
+            "actual": 71.75
+          },
+          "penalties": {
+            "sim": 5.74,
+            "actual": 4.0
+          },
+          "top_min": {
+            "sim": 28.249735724526168,
+            "actual": 37.96666666666667
+          },
+          "turnovers": {
+            "sim": 1.44,
+            "actual": 0.0
+          }
+        }
+      }
+    }
+  ],
+  "coverage": {
+    "coverage_80_margin": 0.8125,
+    "coverage_80_total": 0.7979166666666667,
+    "coverage_80_points": 0.8052083333333333
+  },
+  "calibration": [
+    {
+      "bin": "0.1-0.2",
+      "n": 7,
+      "pred": 0.16523809523809524,
+      "actual": 0.14285714285714285
+    },
+    {
+      "bin": "0.2-0.3",
+      "n": 32,
+      "pred": 0.26375000000000004,
+      "actual": 0.28125
+    },
+    {
+      "bin": "0.3-0.4",
+      "n": 55,
+      "pred": 0.3524848484848484,
+      "actual": 0.20909090909090908
+    },
+    {
+      "bin": "0.4-0.5",
+      "n": 116,
+      "pred": 0.44515804597701136,
+      "actual": 0.46551724137931033
+    },
+    {
+      "bin": "0.5-0.6",
+      "n": 105,
+      "pred": 0.5528095238095239,
+      "actual": 0.5523809523809524
+    },
+    {
+      "bin": "0.6-0.7",
+      "n": 93,
+      "pred": 0.6481182795698924,
+      "actual": 0.7204301075268817
+    },
+    {
+      "bin": "0.7-0.8",
+      "n": 53,
+      "pred": 0.7409748427672956,
+      "actual": 0.8113207547169812
+    },
+    {
+      "bin": "0.8-0.9",
+      "n": 18,
+      "pred": 0.8351851851851851,
+      "actual": 0.7777777777777778
+    },
+    {
+      "bin": "0.9-1.0",
+      "n": 1,
+      "pred": 0.9,
+      "actual": 1.0
+    }
+  ]
+}

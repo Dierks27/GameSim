@@ -21,7 +21,7 @@ kickoff_rules:
   eras: {2023: legacy, 2024: dk2024, 2025: dk2025, 2026: dk2026}
   default_era: dk2026          # used for seasons not listed (future seasons)
   min_era_kickoffs: 400        # if the era has fewer weighted kickoffs than this, add the previous era
-  touchback_yardline: 35       # receiving team's own yard line after an end-zone touchback
+  touchback_yardline: {legacy: 25, dk2024: 30, dk2025: 35, dk2026: 35}   # per era: receiving team's yard line after an end-zone touchback
   landing_zone_touchback_yardline: 20
   safety_kick_shift: 10        # free kick after a safety: receiving team starts this many yards better
 
@@ -44,6 +44,7 @@ playcall:
   k_team_pass: 300             # shrinkage of team pass-rate-over-expected offsets (plays)
   k_team_4th: 60               # shrinkage of team 4th-down aggressiveness offsets (4th downs)
   fg_min_make_prob: 0.30       # never attempt a FG with lower kicker-specific make probability
+  pass_logit_shift: 0.0        # global calibration of P(pass) in logit units (diagnose: pass_rate bias)
 
 kicking:
   k_kicker: 15                 # prior information (in logit-Fisher units) for kicker offsets; larger = shrink harder
@@ -126,3 +127,4 @@ tune:
     kicking.k_kicker: {low: 3, high: 80, log: true}
     playcall.k_team_4th: {low: 10, high: 400, log: true}
     clock.runoff_scale: {low: 0.97, high: 1.09}
+    playcall.pass_logit_shift: {low: -0.2, high: 0.1}
