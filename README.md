@@ -22,7 +22,7 @@ If PowerShell blocks the activation script, run once:
 ## Run
 
 ```powershell
-gridsim refresh-data                      # first run: downloads ~5 seasons of play-by-play into data\cache
+gridsim refresh-data                      # first run: downloads play-by-play (2019+), schedules, rosters, injuries
 gridsim run --home MIN --away BUF --sims 2000 --seed 42
 gridsim run --home MIN --away GB --spread -2.5 --total 44.5 --json out\MIN_GB.json --report out\MIN_GB.html
 gridsim run --home BAL --away JAX --market-lines          # use the nflverse schedule's spread/total
@@ -37,6 +37,85 @@ gridsim sanity --season 2025 --sims 20                     # league-average sani
   nflverse `spread_line` uses the opposite sign).
 * Every percentage is printed with its 95% Monte Carlo margin of error; anything within the error of 50% is
   flagged "too close to call at this sim count".
+* Every run pulls rosters / depth charts / injury reports, prints who it assumed in, out and questionable (with the
+  play % used) and how fresh each source is, adds the stadium forecast (Open-Meteo, outdoor games only), rest/travel
+  edges, and — for upcoming games — the Kalshi prices next to the sim (read-only).
+
+### Players, props, combos, what-if, live games
+
+```powershell
+gridsim run --home MIN --away BUF --prop "J.Jefferson:rec_yds:64.5" --prop "Josh Allen:pass_yds:229.5"
+gridsim run --home MIN --away BUF --out "J.Jefferson" --in "BUF:Joshua Palmer"      # injury overrides (CLI wins)
+gridsim run --home MIN --away BUF --combo "BUF:win; Josh Allen:pass_yds>229.5; total>45.5"
+gridsim run --home MIN --away BUF --state "Q4 1:55 MIN 20 BUF 24 MIN ball 1st&10 at MIN 25 timeouts 2/1"
+gridsim impact --home KC --away NYJ --player "Patrick Mahomes"       # with vs without, same seed
+gridsim impact --home BAL --away JAX --player "Lamar Jackson" --qb "Tyler Huntley"   # QB swap
+```
+
+Weekly overrides live in `overrides\<season>_wk<NN>.yaml` (the GUI's lineup toggles write the same file):
+
+```yaml
+MIN: {out: ["J.Jefferson"], qb: "S.Darnold"}
+BUF: {in: ["Joshua Palmer"]}
+```
+
+Names are fuzzy-matched to that team's roster and fail loudly if they match nobody (or more than one player).
+Coaching / play-caller changes go in `regime_changes.yaml`.
+
+### Backtest, diagnose, tune
+
+```powershell
+gridsim backtest --season 2025 --weeks 3-18 --sims 1000     # walk-forward, no lookahead; saved to backtests\
+gridsim diagnose --seasons 2024-2025                         # where is it wrong? HTML + JSON in diagnose\
+gridsim tune --train 2022-2024 --validate 2025 --trials 150  # Optuna; writes tuning\<ts>\ and config.tuned.yaml
+gridsim tune --apply                                         # promote config.tuned.yaml (backs up config.yaml)
+```
+
+### Live grading (the honest scoreboard)
+
+```powershell
+gridsim predict-week --season 2026 --week 10   # frozen, timestamped predictions in predictions\ (never edited)
+gridsim grade --season 2026 --week 10          # score the pre-kickoff predictions + Kalshi signals once final
+gridsim scorecard                              # cumulative live performance by config version
+gridsim weekly [--tune]                        # refresh -> grade -> diagnose -> (tune) -> predict next week
+```
+
+### Markets, scanner, alerts (READ-ONLY: gridsim never places orders)
+
+```powershell
+gridsim scan [--notify]          # open Kalshi NFL markets vs the latest sims; strong / moderate / watchlist
+gridsim signals --season 2026    # signal ledger record: CLV, hit rate, flat-unit P&L by market type
+gridsim snapshot-markets         # save Kalshi prices (run near kickoff for closing-line value)
+gridsim slate --week 10          # every game of the week in parallel, one combined report
+gridsim season                   # playoff / division / seed odds from the remaining schedule
+```
+
+Push alerts: create a `.env` file next to `config.yaml` (it is git-ignored) with
+`NTFY_TOPIC=your-private-topic-name` and install the free ntfy app on your phone, subscribed to that topic.
+Optional: `DISCORD_WEBHOOK_URL=...`. A market type (moneyline, spread, total) only sends alerts after it has a
+positive live record (≥ 50 graded signals with positive closing-line value); until then it shows as "watchlist".
+
+## Scheduling on Windows (Task Scheduler)
+
+Create one task per line below (Task Scheduler → *Create Basic Task* → *Start a program*). Program:
+`C:\path\to\GameSim\.venv\Scripts\gridsim.exe`, *Start in*: `C:\path\to\GameSim`, arguments as shown.
+
+| When | Arguments | What it does |
+|---|---|---|
+| Tuesday 9:00 | `weekly` | refresh data, grade last week, diagnose, predict the next week |
+| Friday 19:00 (after final injury reports) | `predict-week` | fresh frozen predictions with Friday statuses |
+| Thu–Sun every 30 min (game weeks) | `scan --notify` | re-price Kalshi markets, push alerts |
+| ~60 min before each kickoff window (Thu 19:15, Sun 12:00 / 15:05 / 19:20, Mon 19:15) | `snapshot-markets` | prices for closing-line value |
+| Every few weeks, overnight | `weekly --tune` | adds a tuning run (hours) |
+
+Or from PowerShell (example for the scan task):
+
+```powershell
+schtasks /Create /TN "GridSim scan" /SC MINUTE /MO 30 /TR "C:\path\to\GameSim\.venv\Scripts\gridsim.exe scan --notify" /ST 08:00
+```
+
+`scan` re-sims only when inputs changed (the cache key includes the config and the week's overrides file) or the
+sim is older than `scanner.max_sim_age_hours`; otherwise it re-prices against the cached sim.
 
 ## Tests
 

@@ -7,3 +7,6 @@ data/cache/
 out/
 build/
 dist/
+.env
+*.bak
+signals/alert_state.json

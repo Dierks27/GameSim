@@ -205,7 +205,7 @@ def run_game(req: RunRequest, cfg: Config | None = None, progress=None, verbose:
         extra["combos"] = [evaluate(c, res, players) for c in req.combos]
     if game and game.get("home_score") is None and bool(cfg.markets["kalshi"].get("enabled", True)) and req.state is None:
         try:
-            from .markets import Kalshi, edges, game_markets, sim_probs
+            from .markets import Kalshi, game_markets
             mk = game_markets(Kalshi(cfg), game)
             extra["_kalshi_raw"] = mk
         except Exception as e:

@@ -117,7 +117,102 @@ from league pre-snap rows; half-the-distance enforced near the goal lines.
 ## Home field (`home_field.tilt`)
 
 Exponential tilt of scrimmage sampling weights by EPA: home offense × exp(+0.006·EPA), away offense × exp(−0.006·EPA).
-Initial value targets ~1.5–2 points of home margin (2023–26 average home margin 1.9); calibrated in Phase 3.
+Backtest sweep (2025 wk 3–18, same games/seeds): each +0.006 adds ≈ 1.75 pts of home margin. 0.006 ≈ 1.75 pts,
+in line with the 2023–26 average home margin (1.9) and market HFA (~1.5–2). 2025 alone wanted more
+(bias −1.2 pts at 0.006, 0 at 0.012) but Brier/log loss got slightly worse at 0.012 and 2025's home margin was
+above the long-run average, so 0.006 is kept and left to the multi-season tuner.
+
+## Additive matchup correction (`sim.matchup_strength`, `sim.k_team_epa`) — the biggest accuracy fix
+
+The spec's matchup blend samples the offense's plays with prob w_off, else the defense's allowed plays. That is a
+*mixture*: if the offense is +a better than average and the defense allows +b more, the mixture's mean shift is
+w·a + (1−w)·b, i.e. **half** the additive matchup effect a + b. The first backtest showed exactly that: predicted
+margins had sd 2.4 vs the market's 6.4.
+
+Fix (keeps the mixture, so team-specific play *shapes* stay): sampled rows are EPA-tilted (rejection sampling,
+accept ∝ exp(λ·EPA), EPA clipped to ±4) with λ solved per matchup and play type so the tilted mixture's mean EPA
+equals league + strength × (shrunk offense effect + shrunk defense effect). The offense pass effect comes from the
+*starting QB's* dropbacks (prior: backup level for a QB with no sample, fading to league average once he has
+`backup_max_dropbacks`); shrinkage n/(n + k_team_epa), k = 300. λ is measured on 1,500 league-mix situations with a
+separate RNG so the game stream is untouched. Weather and rest/travel shifts enter the same target.
+
+| 2025 wk 3–18, 240 games, 300 sims | Brier | log loss | MAE margin | MAE total | corr vs spread | sd pred margin |
+|---|---|---|---|---|---|---|
+| mixture only (baseline) | 0.2339 | 0.6624 | 10.85 | 10.71 | 0.77 | 2.39 |
+| + additive correction | **0.2087** | **0.6084** | **9.98** | 10.65 | 0.86 | 6.16 |
+| closing market | 0.2151 | 0.6177 | 10.08 | 10.13 | — | 6.41 |
+
+(First version shrank every QB toward the backup level, which tilted all matchups negative: INT rate +19% in the
+sanity check. Fixed before the numbers above.) 80% interval coverage: margin 0.83, total 0.76, points 0.80.
+
+## QB availability (`qb`)
+
+Team-specific dropback samples come from the starting QB's own dropbacks (from any team in the window, so traded
+QBs carry their history) with weight n/(n + k_qb), k = 100; otherwise from a league pool of low-sample QBs
+(< 150 weighted dropbacks). Sack, INT and scramble rates therefore move with the QB. Default starter = the main
+passer of the team's latest game. Backtests use the QB who actually started (public before kickoff); other
+injuries are not replayed in backtests.
+
+## Availability (`availability`)
+
+Out / IR / reserve → 0; Doubtful → 0 (configurable); Questionable → 0.75, × 0.67 if the last practice was DNP,
+× 1.15 (cap 0.95) if full; no game status yet: DNP → 0.5, Limited → 0.95. Roster status `INA` is last week's
+game-day inactive list and is *not* treated as out. Each sim rolls availability independently. Overrides
+(`overrides/<season>_wk<NN>.yaml`, `--out/--in`) always win; names are fuzzy-matched and fail loudly. Data freshness
+printed every run (download time, latest injury week, depth-chart snapshot; nflverse release timestamps when the
+GitHub API is reachable).
+
+## Players (`players`)
+
+Usage shares over the team's last 6 games, computed over the games each player appeared in (a missed game does not
+dilute a healthy player's role); out players' shares are redistributed proportionally; players new to the team ramp
+from a depth-chart prior. Yards-per-opportunity efficiency vs league, shrunk with k = 80, is applied as a
+multiplier to positive gains and **normalized to a usage-weighted mean of 1 per team**, so team totals stay what
+the pools say and player stats sum to the team box score. Not yet modeled: the team-efficiency effect of losing a
+non-QB player (with/without splits are too noisy at this sample size; left for the tuner later).
+
+## Kicking decisions (diagnose-driven fixes)
+
+* Touchback yard line is per kickoff era (`legacy 25, dk2024 30, dk2025/dk2026 35`). One global 35 was wrong for 2024
+  weeks: diagnose flagged kickoff start position at 8 SE.
+* FG-vs-punt table smoothed ±1 yard (±3 leaked the 35–37 attempt rate across the range cliff) and the kicker range
+  shift is relative to the *average current kicker* (survivorship: current kickers average +0.8 yd). 55–62-yard
+  attempt rate: 23% → 17% (actual 17%). Sanity FGA +7.5% → +2.8%.
+
+## Weather (`weather`)
+
+Ridge-shrunk effects fit on 2022–26 outdoor games: FG/XP logit −0.010·(wind−8)·dist/40, −0.18 per 10°F below 45,
+−0.04 for precipitation; dropback EPA −0.004 per mph over 8, −0.006 per 10°F below 45, −0.037 with precipitation
+(a 25°F / 22 mph / rain game: FG −0.55 logit at 45 yd, −0.10 EPA per dropback). Upcoming games use Open-Meteo at
+the stadium (lat/lon table in `weather.py`) averaged over kickoff +0–2 h; backtests use recorded game weather (the
+schedule has temp/wind but no precipitation text, so backtests ignore rain). Domes, closed and retractable roofs
+skip. `weather.strength` (default 1) is tunable.
+
+## Rest / travel (`rest_travel`)
+
+Off a bye +0.6 pts, short week −0.6, visitor −0.25 per time zone crossed (max 3), applied as EPA shifts (half to
+each offense). Defaults from common estimates; `rest_travel.strength` is tunable and diagnose's residual breakdown
+checks short-rest games.
+
+## Coaching changes (`regime`)
+
+`regime_changes.yaml` entries downweight a team's plays before the change date to 0.3 for play-call tendencies
+only (pass rate over expected, 4th-down aggressiveness); outcome pools (talent) are unaffected.
+
+## Reproducibility
+
+Backtests must be identical across runs and worker counts or tuning compares noise. Found and fixed: polars joins do
+not preserve order (re-sorted after every join; no join before index-sampled lists), polars group order is
+thread-dependent (pool segments laid out in sorted key order with per-segment cumulative weights), tie-broken
+sorts, rounded aggregate tables. Verified: identical results across 3 runs with 2 vs 3 workers.
+
+## Markets (READ-ONLY)
+
+Kalshi public market data only (GET, no key, no orders, no account). Series discovered by title, events matched by
+team names + date. Fee = ceil_to_cent(0.07 × C × P × (1−P)) taker / 0.0175 maker (from Kalshi's fee schedule as
+reported by several sources; verify on kalshi.com before relying on it — it is in config). Edge = sim prob −
+(ask you'd actually pay + fee). Scanner rules in `scanner` config; a market type alerts only after ≥ 50 graded
+signals with positive CLV.
 
 ## Sanity check (2025 regular season, every game × 8–20 sims, in-sample)
 

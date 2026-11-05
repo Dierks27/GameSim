@@ -165,7 +165,7 @@ def fee(price: float, cfg, contracts: int = 1, maker: bool = False) -> float:
 def sim_probs(summary: dict, mk: dict) -> list[dict]:
     """Every Kalshi contract for the game with the sim probability of YES and the edge of buying YES or NO."""
     from .api import cover_from_hist
-    H, A = summary["matchup"]["home"], summary["matchup"]["away"]
+    H = summary["matchup"]["home"]
     n = summary["n_sims"]
     out = []
     p_home = summary["win"]["home"]["p"]

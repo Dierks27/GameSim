@@ -803,8 +803,14 @@ class GameSim:
                 st[FUML] += 1
             self.run_clock(dur, live=True)
             self.clock_running = False
+            # a completion or run that ends in a lost fumble still counts (yards up to the fumble)
+            if kind == K_COMP and not R["int"][rid]:     # interception rows also carry kind K_COMP
+                st[COMP] += 1
+                st[PYDS] += R["pass_yds"][rid]
+            elif kind in (K_RUN, K_SCR):
+                st[RYDS] += R["rush_yds"][rid]
             if self.players is not None:
-                self.players.record(self, rid, 0, False, off)
+                self.players.record(self, rid, R["yards"][rid] if kind in (K_COMP, K_RUN, K_SCR) else 0, False, off)
             if R["td_def"][rid]:
                 self.pos = dfn
                 self.touchdown(dfn, offensive=False)

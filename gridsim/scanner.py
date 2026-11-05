@@ -22,7 +22,7 @@ import polars as pl
 
 from .api import RunRequest, cached_summary, run_game, week_slate
 from .config import Config
-from .markets import Kalshi, edges, fee, game_markets, sim_probs
+from .markets import Kalshi, edges, game_markets, sim_probs
 
 LEDGER_FIELDS = ["ts_utc", "season", "week", "game_id", "kickoff_utc", "market", "ticker", "label", "side", "price",
                  "fee", "p_side", "edge", "moe", "depth_dollars", "spread", "volume", "confidence", "reason",

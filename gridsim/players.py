@@ -152,6 +152,9 @@ class PlayerModel:
         R = game.rows
         kind = R["kind"][rid]
         qb = game.qb[off]
+        # stat yards exclude penalty yardage tacked onto the play (same convention as the team box score)
+        pen_part = R["yards"][rid] - (R["pass_yds"][rid] if kind == K_COMP else R["rush_yds"][rid])
+        stat_gain = gain - pen_part
         what, pid = self.pick or ("qb", None)
         self.pick = None
         if kind == K_SACK:
@@ -160,7 +163,7 @@ class PlayerModel:
             if qb:
                 a = self._acc(off, qb)
                 a[PI["rush_att"]] += 1
-                a[PI["rush_yds"]] += gain
+                a[PI["rush_yds"]] += stat_gain
                 if td:
                     a[PI["rush_td"]] += 1
             return
@@ -168,7 +171,7 @@ class PlayerModel:
             if pid:
                 a = self._acc(off, pid)
                 a[PI["rush_att"]] += 1
-                a[PI["rush_yds"]] += gain
+                a[PI["rush_yds"]] += stat_gain
                 if td:
                     a[PI["rush_td"]] += 1
             return
@@ -188,12 +191,12 @@ class PlayerModel:
         if kind == K_COMP:
             if qb:
                 q[PI["comp"]] += 1
-                q[PI["pass_yds"]] += gain
+                q[PI["pass_yds"]] += stat_gain
                 if td:
                     q[PI["pass_td"]] += 1
             if pid:
                 r[PI["rec"]] += 1
-                r[PI["rec_yds"]] += gain
+                r[PI["rec_yds"]] += stat_gain
                 if td:
                     r[PI["rec_td"]] += 1
 
@@ -235,16 +238,23 @@ class PlayerModel:
                 vol = a[:, PI["pass_att"]].mean() + a[:, PI["rush_att"]].mean() + a[:, PI["targets"]].mean()
                 if vol < 0.5:
                     continue
-                stats = {}
+                stats, hist = {}, {}
                 for k in PSTATS:
                     x = a[:, PI[k]]
                     q = np.percentile(x, [10, 25, 50, 75, 90])
                     stats[k] = {"mean": float(x.mean()), "p10": float(q[0]), "p25": float(q[1]), "p50": float(q[2]),
                                 "p75": float(q[3]), "p90": float(q[4])}
+                    if x.any():
+                        vals, cnts = np.unique(np.rint(x).astype(int), return_counts=True)
+                        hist[k] = {"values": vals.tolist(), "counts": cnts.tolist()}
+                x = a[:, PI["rush_yds"]] + a[:, PI["rec_yds"]]
+                if x.any():
+                    vals, cnts = np.unique(np.rint(x).astype(int), return_counts=True)
+                    hist["rush_rec_yds"] = {"values": vals.tolist(), "counts": cnts.tolist()}
                 anytd = float(np.mean((a[:, PI["rush_td"]] + a[:, PI["rec_td"]]) > 0))
                 pos = self.teams[t].pos.get(pid) or ("QB" if a[:, PI["pass_att"]].mean() > 3 else "")
                 plist.append({"id": pid, "name": self.name(t, pid), "pos": pos, "stats": stats, "anytime_td": anytd,
-                              "volume": float(vol), "games": n})
+                              "volume": float(vol), "games": n, "hist": hist})
             order = {"QB": 0, "RB": 1, "WR": 2, "TE": 3}
             plist.sort(key=lambda p: (order.get(p["pos"], 4), -p["volume"]))
             res[self.teams[t].team] = plist
