@@ -1,0 +1,86 @@
+# gridsim configuration. Every tunable lives here; see DECISIONS.md for why each default was chosen.
+# The config hash printed in reports/backtests is computed from this file's parsed contents.
+
+data:
+  cache_dir: data/cache
+  refresh_hours: 12            # re-download the current season if the cached parquet is older than this
+  seasons_back: 1              # prior seasons included in addition to the target season
+  season_weights: [1.0, 0.35]  # weight for target season, then 1, 2, ... seasons back (weighted sampling)
+  include_postseason: true     # postseason plays from prior seasons are included (same weight as their season)
+  garbage_time:                # dropped from tendency (play call) and outcome pools only
+    quarters: [4]
+    wp_low: 0.05
+    wp_high: 0.95
+    apply_to_playcall: true    # also drop garbage time from play-call tendencies (spec default)
+
+kickoff_rules:
+  # Kickoff outcomes come only from seasons in the same rules era as the simulated season.
+  # 2024 = first dynamic kickoff year (touchback to 30); 2025 = touchback to 35;
+  # 2026 = onside allowed any time + 5-3-2 return alignment.
+  eras: {2023: legacy, 2024: dk2024, 2025: dk2025, 2026: dk2026}
+  default_era: dk2026          # used for seasons not listed (future seasons)
+  min_era_kickoffs: 400        # if the era has fewer weighted kickoffs than this, add the previous era
+  touchback_yardline: 35       # receiving team's own yard line after an end-zone touchback
+  landing_zone_touchback_yardline: 20
+  safety_kick_shift: 10        # free kick after a safety: receiving team starts this many yards better
+
+sim:
+  n_sims: 2000
+  seed: 42
+  w_off: 0.5                   # matchup blend: P(sample from offense's own plays) vs plays the defense allowed
+  min_bucket_n: 40             # weighted plays needed before a team bucket level is used
+  k_outcome: 60                # team_weight = n / (n + k) at the chosen team bucket level
+  k_presnap: 400               # shrinkage of team pre-snap foul rates (snaps)
+  league_min_n: 40             # weighted plays needed before a league bucket level is used
+  td_censoring_fix: true       # Kaplan-Meier extension of TD plays sampled from closer to the goal line
+
+playcall:
+  smoothing_m: 25              # hierarchical additive smoothing strength for league P(pass) cells
+  k_team_pass: 300             # shrinkage of team pass-rate-over-expected offsets (plays)
+  k_team_4th: 60               # shrinkage of team 4th-down aggressiveness offsets (4th downs)
+  fg_min_make_prob: 0.30       # never attempt a FG with lower kicker-specific make probability
+
+kicking:
+  k_kicker: 15                 # prior information (in logit-Fisher units) for kicker offsets; larger = shrink harder
+  fg_seasons_back: 3           # FG/XP/2pt league models use more seasons for stability
+  k_punter: 60                 # punts; shrinkage of punting team net-yard offset
+  k_kickoff_team: 150          # kickoffs; shrinkage of kicking team field-position offset
+  block_return_td_rate: 0.08   # P(return TD | blocked FG); blocked FGs otherwise go to the spot
+
+two_point:
+  # Go for 2 when (score diff after the TD, before the try) is in this list, from quarter >= late_quarter.
+  late_quarter: 4
+  chart: [-2, -5, -10, -13, 1, 5, 12]
+  base_rate: 0.04              # random 2-pt attempt rate outside the chart (league tendency)
+
+clock:
+  hurry_q4_seconds: 300        # trailing offense in hurry-up in the last N seconds of Q4/OT
+  hurry_q4_two_score_seconds: 600
+  hurry_q2_seconds: 120        # every offense hurries in the last N seconds of the first half
+  milk_q4_seconds: 300         # leading offense drains the play clock in the last N seconds
+  milk_q4_two_score_seconds: 600
+  def_timeout_seconds: 165     # trailing defense starts using timeouts when <= N game seconds remain (Q4/OT)
+  def_timeout_max_deficit: 16
+  off_timeout_seconds: 75      # hurrying offense uses timeouts after in-bounds plays when <= N half seconds
+  spike_seconds: 40            # hurrying offense with no timeouts spikes when <= N seconds and clock running
+  q2_kneel_seconds: 35         # first half: kneel out when <= N seconds and the ball is in own territory
+  k_pace: 150                  # shrinkage (running-clock snaps) of team neutral-pace factors
+  runoff_scale: 1.03           # global multiplier on between-snap runoff (calibrated, see DECISIONS.md)
+
+home_field:
+  # Exponential tilt of scrimmage outcome sampling by EPA: home offense weights *= exp(+tilt*epa),
+  # away offense weights *= exp(-tilt*epa). Calibrated in the backtest (see DECISIONS.md).
+  tilt: 0.006
+
+overtime:
+  regular_season_minutes: 10
+  playoff_minutes: 15
+  coin_toss_winner_receives: 0.97   # P(toss winner elects to receive)
+
+players:
+  usage_games: 6               # recent games used for usage shares
+  k_player_eff: 80             # shrinkage of per-player yards-per-touch efficiency (touches)
+  min_share: 0.01
+
+backtest:
+  out_dir: backtests

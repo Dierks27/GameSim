@@ -1,0 +1,134 @@
+# DECISIONS
+
+Every default and modeling choice, with the reason. Tunables live in `config.yaml`; section names below match it.
+
+## Rules research (verified 2026-11-05)
+
+* **Overtime, regular season (2025 rule, unchanged in 2026):** one 10-minute period; both teams are guaranteed a
+  possession; the second possession ends the game the moment the second team leads; if the second team's
+  possession ends and it trails, the first team wins; level after both → sudden death; a defensive score ends
+  the game; ties possible when time expires; 2 timeouts each; two-minute warning; no onside kicks.
+  Source: [Football Zebras, 2025 OT rules](https://www.footballzebras.com/2025/04/everything-you-need-to-know-about-the-new-overtime-rules/),
+  [NBC Sports / PFT](https://www.nbcsports.com/nfl/profootballtalk/news/2025-nfl-overtime-rules-how-does-it-work-rule-changes-for-2025-season-explained).
+* **Overtime, postseason:** same possession rules, 15-minute periods, play continues until a winner; 3 timeouts per
+  two-period "half". Implemented as `--playoff`.
+* **Kickoffs:** dynamic kickoff since 2024. 2025: end-zone touchback to the 35 (verified in data: `yardline_100` 65
+  after touchbacks), landing-zone touchback to the 20. 2026 changes ([Football Zebras 2026](https://www.footballzebras.com/2026/04/nfl-owners-approve-rule-changes-for-the-2026-season/)):
+  onside kick may be declared at any time, touchback after a penalty-moved kickoff goes to the 20, receiving team
+  setup zone limited to 5 players (5-3-2 returns). Data shows the return rate rose (73.9% → 79.7%) and touchbacks fell
+  (20.9% → 16.3%) in 2026, so **2026 is its own kickoff era** (`kickoff_rules.eras`). If an era has fewer than
+  `min_era_kickoffs` (400) kickoffs in the no-lookahead window, the previous era is added.
+* **Spread convention:** nflverse `spread_line` is positive = home favored (verified against moneylines).
+  `--spread` uses home perspective, negative = home favored, so `--spread = -spread_line`.
+
+## Data (`data`)
+
+* **Window:** target season (through `--through-week`) + 1 prior season, weights 1.0 / 0.35 (spec default).
+  Weighted sampling (cumulative weights), never duplication. Postseason plays of prior seasons included at their
+  season's weight (they are real football against good teams).
+* **FG / XP / 2PT** use 3 prior seasons with weights 0.8^k: kicking rates need more data than one season gives
+  and change slowly.
+* **Garbage time** (Q4, offense wp < 0.05 or > 0.95) removed from outcome pools and play-call tendencies (spec).
+  Kept for clock and special-teams pools. Measured effect of also filtering play calling: pass rate +2.5% vs +1.8%
+  without, points unchanged — kept the spec default, configurable via `garbage_time.apply_to_playcall`.
+* **Cache:** `data/cache/pbp_<season>.parquet`, `schedules.parquet`. Completed seasons never re-download; the
+  current season re-downloads when older than 12 h. On network failure the stale cache is used with a warning.
+* **End spot of every play comes from the next snap** (penalty enforcement, fumble recoveries, returns are all in
+  it). See SCHEMA_NOTES.md for validation.
+
+## Situation buckets (`buckets.py`)
+
+Spec buckets: down 1–4; distance 1–2 / 3–6 / 7–10 / 11+; zone own 1–20 / own 21–50 / opp 49–21 / RZ 20–6 / goal-to-go 5–1;
+score down 9+ / down 1–8 / tied / up 1–8 / up 9+; time normal / last 2:00 of a half / Q4 last 5:00 (outside 2:00).
+
+**Score buckets are used for play calling but not outcomes.** Once play type, down, distance and field zone are
+fixed, the score adds little to the outcome distribution and would thin every outcome cell 5×.
+
+### Back-off chain (outcome pools)
+
+Sampling a scrimmage outcome:
+1. **Side:** offense's own plays with probability `w_off` (0.5), else plays the defense allowed.
+2. **Team level:** the finest level with ≥ `min_bucket_n` (40) weighted plays, in order:
+   `(down 1/2/3+4, distance 1–2/3–6/7+, red zone y/n)` → `(early/late down, red zone)` → `(red zone)` → `(all plays of that type)`.
+3. **Team vs league:** with probability `n/(n + k_outcome)` (k = 60) sample the team pool at that level, else the
+   league pool.
+4. **League level:** the finest with ≥ `league_min_n` (40) weighted plays:
+   `(down, distance, zone, time)` → `(down, distance, zone)` → `(early/late, distance, zone)` → `(distance, zone)` → `(zone)`.
+
+Team pools always keep the red-zone split, because rows sampled from midfield and applied inside the 20 would
+overstate red-zone efficiency.
+
+### TD censoring (Kaplan-Meier extension)
+
+A TD row only says the gain was ≥ its yard line. When such a row, sampled from closer to the goal line than the
+sim's ball, is applied, the extra distance is drawn from P(G ≥ y | G ≥ c) using a weighted Kaplan-Meier survival
+curve of gains, estimated **per field zone** (compressed field near the goal line). Without the extension, points
+were −7.5% vs actual; with a single pooled curve +5%; per-zone is used.
+
+## Play calling (`playcall`)
+
+* League P(pass | down, distance, zone, score, time): hierarchical additive smoothing toward the parent cell
+  (m = 25). On real 2025 Q1–Q3 situations the table predicts 60.4% pass vs 60.1% actual.
+* Team offset in logit space = pass rate over expected, shrunk by n/(n + 300).
+* 4th down: league P(go | distance, yardline bin, score, time) + shrunk team offset (k = 60 4th downs).
+  FG vs punt by yardline, evaluated at a kicker-range-adjusted yardline. Forced logic: trailing in the last 2:00
+  (or the second OT possession) → FG if within 3 and in range, else go; trailing by 9+ in the last 5:00 → go unless
+  a FG makes it one score; tied in the last 2:00 and in range → FG. Never attempt a FG under 30% make probability.
+
+## Clock (`clock`)
+
+* Snap-to-snap deltas are split into **live duration** (from snaps after which the clock stopped anyway:
+  incompletions, out of bounds inside the stop windows, timeout called, change of possession) and **runoff**
+  (delta − mean duration of that play kind) for running-clock snaps, by tempo.
+* Tempo: hurry = trailing in Q4/OT last 5:00 (or down 9+ in the last 10:00), tied in the last 2:00, everyone in the
+  last 2:00 of the first half. Milk = leading in Q4 last 5:00 (or up 9+ in the last 10:00). Measured means:
+  normal 31.7 s, hurry 21.4 s, milk 33.8 s runoff.
+* Out of bounds stops the clock only in the last 2:00 of the first half and last 5:00 of the second half;
+  otherwise the clock restarts on the ready signal (27.9 s runoff).
+* Penalties: runoff after a foul is sampled only from fouls where the previous snap left the clock running.
+* **Team pace:** each offense's neutral-situation runoff (normal tempo, score within 7) relative to league,
+  shrunk with k = 150 snaps (2026 range: NO 0.94 to PIT 1.03).
+* **`runoff_scale` = 1.03:** per-kind elapsed time matches data, but the sim's pass rate runs ~2–3% high (more
+  incompletions → more clock stops), giving ~4% too many possessions. 1.03 brings drives/game to +1.6% and
+  plays/game to −0.3% on the 2025 sanity run. Tunable in Phase 3.
+* Two-minute warning: a play in progress at 2:00 completes; otherwise the clock stops at 2:00.
+
+## Kicking (`kicking`)
+
+* FG: logistic in distance and distance² (IRLS). Kicker logit offset = Σ(made − p)/(Σ p(1−p) + k_kicker), k = 15
+  information units ≈ τ = 0.26 logits, "shrunk hard"; FG and XP attempts both inform it. Current kicker = the team's
+  most recent FG/XP kicker in the window.
+* Missed FG: ball at the spot of the kick (LOS + 7), or the 20 if the kick was from inside the 20. Blocked share of
+  misses from data (12%); 8% of blocks returned for TDs (config).
+* XP: league rate (95.2%) with kicker offset. 2PT: league rate (48%) over 3 seasons.
+* 2-point chart (Q4+): go when the post-TD margin is −2, −5, −10, −13, +1, +5, +12; plus a 4% random rate elsewhere.
+  Second OT possession down 1 or 2: go for 2.
+* Punts: league rows by 5-yard line-of-scrimmage bin; net yards translated to the sim's spot; touchback if past
+  the goal line; muffs/penalty retentions and return TDs from the row; punting-team net offset shrunk (k = 60).
+* Kickoffs: league rows from the kickoff era only, kicking-team start-position offset shrunk (k = 150). Onside:
+  Q4 trailing with ≤ 2:30 left, or trailing by 9+ with ≤ 5:30; outcomes pooled over 2024+ (129 attempts, 6% recovered).
+* Safety free kick: receiving team starts 10 yards better (config) than a normal kickoff (too rare to sample).
+
+## Pre-snap fouls
+
+Separate per-snap event (2.6% offense, 0.5% defense league rates), team rates shrunk with k = 400 snaps; yardage
+from league pre-snap rows; half-the-distance enforced near the goal lines.
+
+## Home field (`home_field.tilt`)
+
+Exponential tilt of scrimmage sampling weights by EPA: home offense × exp(+0.006·EPA), away offense × exp(−0.006·EPA).
+Initial value targets ~1.5–2 points of home margin (2023–26 average home margin 1.9); calibrated in Phase 3.
+
+## Sanity check (2025 regular season, every game × 8–20 sims, in-sample)
+
+See `tests/test_sanity.py`. Latest: points +2.4%, plays −0.3%, pass rate +2.4%, sack rate −1.5%, INT rate −2.2%,
+comp% +0.2%, YPA +0.6%, punts −4.2%, FGA +5.5%, FG% −1.7%, 3rd down −0.5%, RZ TD% +1.8%, turnovers 0.0%,
+drives +1.6%, kickoff start −0.4%, punt start +0.9%.
+Known: FGA runs ~5% high (FG attempts per drive +3%); the diagnose report will track it.
+
+## Engineering
+
+* One `numpy.random.Generator(seed)` per run; uniforms drawn in blocks of 65,536 and consumed in order, so a seed
+  reproduces a run exactly (tested).
+* Pools are flat Python lists of row ids and global running cumulative weights; sampling = `bisect` within a
+  segment. 2,000 sims of one game take ~4–5 s.
