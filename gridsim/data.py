@@ -42,6 +42,7 @@ PBP_KEEP = [
     "receiver_player_id", "receiver_player_name", "kicker_player_id", "kicker_player_name",
     "punter_player_id", "punter_player_name", "pass_attempt", "rush_attempt", "no_huddle",
     "drive", "fixed_drive", "roof", "location", "aborted_play", "total_home_score", "total_away_score",
+    "temp", "wind", "weather", "game_date",
 ]
 
 
@@ -164,7 +165,8 @@ def prepare_plays(raw: pl.DataFrame) -> pl.DataFrame:
         df.filter("is_timeout").group_by(["game_id", "snap_seq"]).agg(pl.len().alias("n_to"),
                                                                        pl.col("timeout_team").first().alias("to_team"))
     )
-    s = df.filter("is_snap").join(to_after, on=["game_id", "snap_seq"], how="left")
+    # polars joins do not guarantee row order -> re-sort after every join (reproducibility)
+    s = df.filter("is_snap").join(to_after, on=["game_id", "snap_seq"], how="left").sort(["game_id", "play_id"])
     s = s.with_columns(pl.col("n_to").fill_null(0))
     # Timeout rows are sometimes logged after the following snap; a drop in either team's
     # timeouts-remaining between consecutive snaps of the same half is the robust signal.
@@ -245,9 +247,10 @@ def prepare_plays(raw: pl.DataFrame) -> pl.DataFrame:
     s = s.with_columns(qb_id=pl.when(pl.col("passer_player_id").is_not_null()).then(pl.col("passer_player_id"))
                        .when(f("qb_scramble") == 1).then(pl.col("rusher_player_id")).otherwise(None))
     main_qb = (s.filter(pl.col("qb_id").is_not_null() & (f("pass") == 1)).group_by(["game_id", "posteam", "qb_id"])
-               .agg(pl.len().alias("nq")).sort("nq", descending=True).group_by(["game_id", "posteam"])
+               .agg(pl.len().alias("nq")).sort(["nq", "qb_id"], descending=[True, False])
+               .group_by(["game_id", "posteam"], maintain_order=True)
                .agg(pl.col("qb_id").first().alias("game_qb")))
-    s = s.join(main_qb, on=["game_id", "posteam"], how="left").with_columns(
+    s = s.join(main_qb, on=["game_id", "posteam"], how="left").sort(["game_id", "play_id"]).with_columns(
         qb_id=pl.when((f("pass") == 1) & pl.col("qb_id").is_null()).then(pl.col("game_qb")).otherwise(pl.col("qb_id")))
     # did the previous snap (same game, quarter, offense) leave the clock running?
     q, g_, h_ = pl.col("qtr"), pl.col("game_seconds_remaining"), pl.col("half_seconds_remaining")

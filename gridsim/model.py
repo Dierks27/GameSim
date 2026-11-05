@@ -46,6 +46,7 @@ class SimModel:
     meta: dict = field(default_factory=dict)
     default_qb: dict = field(default_factory=dict)
     qb_names: dict = field(default_factory=dict)
+    weather_eff: object = None
 
 
 def kickoff_era_seasons(season: int, cfg: Config, available: list[int]) -> list[int]:
@@ -75,6 +76,32 @@ def _with_weights(df: pl.DataFrame, weights: dict[int, float]) -> pl.DataFrame:
     return df.with_columns(w=w.cast(pl.Float64)).filter(pl.col("w") > 0)
 
 
+def load_regime_changes(cfg: Config) -> list[dict]:
+    """regime_changes.yaml: list of {team, date (YYYY-MM-DD), note}. Coaching / play-caller changes."""
+    import yaml
+    p = cfg.resolve_path(cfg.regime.get("file", "regime_changes.yaml"))
+    if not p.exists():
+        return []
+    with open(p, encoding="utf-8") as fh:
+        data = yaml.safe_load(fh) or []
+    return [d for d in data if d.get("team") and d.get("date")]
+
+
+def apply_regime_changes(df: pl.DataFrame, cfg: Config) -> pl.DataFrame:
+    """Downweight a team's plays from before its latest regime change, for play-call tendencies only."""
+    changes = load_regime_changes(cfg)
+    if not changes or "game_date" not in df.columns:
+        return df
+    w_old = float(cfg.regime.get("pre_change_weight", 0.3))
+    latest: dict[str, str] = {}
+    for c in changes:
+        latest[c["team"].upper()] = max(latest.get(c["team"].upper(), ""), str(c["date"]))
+    expr = pl.col("w")
+    for team, date in latest.items():
+        expr = pl.when((pl.col("posteam") == team) & (pl.col("game_date") < date)).then(pl.col("w") * w_old).otherwise(expr)
+    return df.with_columns(w=expr)
+
+
 def build_presnap(sc_plays: pl.DataFrame, cfg: Config) -> PresnapModel:
     k = float(cfg.sim.get("k_presnap", 400))
     base = sc_plays.filter(pl.col("down").is_not_null() & (pl.col("two_point_attempt").fill_null(0) == 0)
@@ -87,8 +114,8 @@ def build_presnap(sc_plays: pl.DataFrame, cfg: Config) -> PresnapModel:
     ld = float((base["pd"] * base["w"]).sum() / tot)
     off = base.group_by("posteam").agg((pl.col("po") * pl.col("w")).sum().alias("s"), pl.col("w").sum().alias("n"))
     de = base.group_by("defteam").agg((pl.col("pd") * pl.col("w")).sum().alias("s"), pl.col("w").sum().alias("n"))
-    p_off = {r["posteam"]: (r["s"] + k * lo) / (r["n"] + k) for r in off.iter_rows(named=True)}
-    p_def = {r["defteam"]: (r["s"] + k * ld) / (r["n"] + k) for r in de.iter_rows(named=True)}
+    p_off = {r["posteam"]: round((r["s"] + k * lo) / (r["n"] + k), 10) for r in off.iter_rows(named=True)}
+    p_def = {r["defteam"]: round((r["s"] + k * ld) / (r["n"] + k), 10) for r in de.iter_rows(named=True)}
     pre = base.filter(pl.col("presnap"))
     rows_off = [(int(round(r[0])), bool(r[1])) for r in pre.filter(pl.col("po") == 1).select(["yards", "auto_first"]).iter_rows()]
     rows_def = [(int(round(r[0])), bool(r[1])) for r in pre.filter(pl.col("pd") == 1).select(["yards", "auto_first"]).iter_rows()]
@@ -118,6 +145,7 @@ def build_model(cfg: Config, season: int, through_week: int | None = None, plays
     sc = scrimmage_rows(tendency)
     pools = build_outcome_pools(sc, teams, float(cfg.home_field["tilt"]), float(cfg.qb["backup_max_dropbacks"]))
     pc_src = tendency if cfg.data["garbage_time"].get("apply_to_playcall", True) else window
+    pc_src = apply_regime_changes(pc_src, cfg)
     playcall = build_playcall(pc_src, cfg)
     presnap = build_presnap(tendency, cfg)
     clock = build_clock(window, cfg)
@@ -143,10 +171,16 @@ def build_model(cfg: Config, season: int, through_week: int | None = None, plays
             .sort(["season", "week"]).group_by("posteam").agg(pl.col("game_id").last().alias("g")))
     st = (window.filter(pl.col("qb_id").is_not_null() & (pl.col("call") == "pass")).join(last, on="posteam")
           .filter(pl.col("game_id") == pl.col("g")).group_by(["posteam", "qb_id"]).agg(pl.len().alias("n"))
-          .sort("n", descending=True).group_by("posteam").agg(pl.col("qb_id").first()))
+          .sort(["n", "qb_id"], descending=[True, False]).group_by("posteam", maintain_order=True).agg(pl.col("qb_id").first()))
     default_qb = {r["posteam"]: r["qb_id"] for r in st.iter_rows(named=True)}
     names = window.filter(pl.col("passer_player_id").is_not_null()).group_by("passer_player_id").agg(pl.col("passer_player_name").last())
     qb_names = {r["passer_player_id"]: r["passer_player_name"] for r in names.iter_rows(named=True)}
+
+    from .weather import WeatherEffects, fit_effects
+    try:
+        weather_eff = fit_effects(fg_win)
+    except Exception:
+        weather_eff = WeatherEffects()
 
     meta = {
         "season": season, "through_week": through_week, "season_weights": weights,
@@ -158,4 +192,5 @@ def build_model(cfg: Config, season: int, through_week: int | None = None, plays
     m = SimModel(cfg, season, through_week, pools, playcall, kicking, clock, presnap, teams, meta)
     m.default_qb = default_qb
     m.qb_names = qb_names
+    m.weather_eff = weather_eff
     return m

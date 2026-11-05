@@ -48,7 +48,7 @@ QIDX = {1: Q1, 2: Q2, 3: Q3, 4: Q4}
 class GameSim:
     def __init__(self, model: SimModel, home: str, away: str, neutral: bool = False, playoff: bool = False,
                  seed: int = 42, players=None, availability=None, starters: tuple | None = None,
-                 start_state: dict | None = None):
+                 start_state: dict | None = None, weather: dict | None = None, edge: tuple | None = None):
         for t in (home, away):
             if t not in model.teams:
                 raise ValueError(f"unknown team {t!r}; known: {', '.join(model.teams)}")
@@ -64,6 +64,8 @@ class GameSim:
         self.players = players               # optional PlayerModel (phase 4)
         self.avail = availability            # optional Availability: per-game rolls of who plays
         self.start_state = start_state       # optional live state (gridsim.state.parse_state)
+        self.wx = weather or {"fg_wind": 0.0, "fg_const": 0.0, "pass_epa": 0.0}
+        self.edge = tuple(edge) if edge else (0.0, 0.0)   # rest/travel EPA shift per offense (home, away)
         self.k_qb = float(self.cfg.qb["k_qb"])
         self.m_strength = float(self.cfg.sim.get("matchup_strength", 0.0))
         self.k_epa = float(self.cfg.sim.get("k_team_epa", 300))
@@ -325,9 +327,16 @@ class GameSim:
                 self.add_points(team, 2)
         else:
             st[XPA] += 1
-            if self.u() < self.kk.p_xp(self.kickers[team]):
+            if self.u() < self.wx_adjust(self.kk.p_xp(self.kickers[team]), 33):
                 st[XPM] += 1
                 self.add_points(team, 1)
+
+    def wx_adjust(self, p: float, dist: float) -> float:
+        shift = self.wx["fg_wind"] * dist + self.wx["fg_const"]
+        if shift == 0.0:
+            return p
+        p = min(max(p, 1e-6), 1 - 1e-6)
+        return 1.0 / (1.0 + math.exp(-(math.log(p / (1 - p)) + shift)))
 
     def safety(self, conceding: int) -> None:
         scorer = 1 - conceding
@@ -417,7 +426,7 @@ class GameSim:
         st = self.stats[off]
         st[FGA] += 1
         dist = self.yl + 17
-        p = self.kk.p_fg(dist, self.kickers[off])
+        p = self.wx_adjust(self.kk.p_fg(dist, self.kickers[off]), dist)
         self.run_clock(self.pick(self.ck.fg_dur), live=True)
         self.clock_running = False
         if self.u() < p:
@@ -654,7 +663,8 @@ class GameSim:
         lam = self.lam_cache.get(key)
         if lam is not None:
             return lam
-        if self.m_strength <= 0 or not self.pools.ref_sits.get(call):
+        wx_shift = (self.wx["pass_epa"] if call == "pass" else 0.0) + self.edge[off]
+        if (self.m_strength <= 0 and wx_shift == 0.0) or not self.pools.ref_sits.get(call):
             self.lam_cache[key] = 0.0
             return 0.0
         if call == "pass" and qb is not None:
@@ -667,7 +677,7 @@ class GameSim:
         else:
             off_eff = self._shr(("off", self.teams[off], call))
         def_eff = self._shr(("def", self.teams[1 - off], call))
-        target = self.pools.league_epa[call] + self.m_strength * (off_eff + def_eff)
+        target = self.pools.league_epa[call] + self.m_strength * (off_eff + def_eff) + wx_shift
         # measure the untilted mixture over league-mix situations (separate RNG: game stream untouched)
         saved = (self.down, self.togo, self.yl, self.pos, self._buf, self._bi)
         self._buf, self._bi = self.aux_gen.random(1 << 16).tolist(), 0
@@ -693,7 +703,8 @@ class GameSim:
 
     def sample_row(self, call: str, tb: int) -> int:
         off = self.pos
-        lam = self.matchup_lambda(off, call) if self.m_strength > 0 else 0.0
+        lam = (self.matchup_lambda(off, call)
+               if (self.m_strength > 0 or self.wx["pass_epa"] != 0.0 or self.edge[off] != 0.0) else 0.0)
         variant = self.tilt[off]
         if lam == 0.0:
             return self._draw(call, tb, variant)
@@ -923,10 +934,11 @@ class SimResults:
 
 def simulate(model: SimModel, home: str, away: str, n_sims: int, seed: int, neutral: bool = False,
              playoff: bool = False, players=None, availability=None, starters: tuple | None = None,
-             progress=None, start_state: dict | None = None) -> SimResults:
+             progress=None, start_state: dict | None = None, weather: dict | None = None,
+             edge: tuple | None = None) -> SimResults:
     t0 = time.time()
     g = GameSim(model, home, away, neutral=neutral, playoff=playoff, seed=seed, players=players,
-                availability=availability, starters=starters, start_state=start_state)
+                availability=availability, starters=starters, start_state=start_state, weather=weather, edge=edge)
     out = np.zeros((n_sims, 2, NS), dtype=np.float64)
     for i in range(n_sims):
         h, a, _ = g.play_game()

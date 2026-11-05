@@ -112,7 +112,7 @@ def build_kicking(plays: pl.DataFrame, fg_plays: pl.DataFrame, ko_plays: pl.Data
     agg = kick_df.group_by("kicker").agg(((pl.col("y") - pl.col("p")) * pl.col("w")).sum().alias("r"),
                                          (pl.col("p") * (1 - pl.col("p")) * pl.col("w")).sum().alias("info"))
     k_k = float(kcfg["k_kicker"])
-    kicker_offset = {r["kicker"]: r["r"] / (r["info"] + k_k) for r in agg.iter_rows(named=True)}
+    kicker_offset = {r["kicker"]: round(r["r"] / (r["info"] + k_k), 10) for r in agg.iter_rows(named=True)}
 
     non_made = fg.filter(pl.col("field_goal_result") != "made")
     block_share = float((non_made["field_goal_result"] == "blocked").mean() or 0.0) if non_made.height else 0.1
@@ -145,7 +145,7 @@ def build_kicking(plays: pl.DataFrame, fg_plays: pl.DataFrame, ko_plays: pl.Data
     pu = pu.join(bin_mean, on="pb").with_columns(res=pl.col("net") - pl.col("bm"))
     ag = pu.filter(~pl.col("tb")).group_by("posteam").agg((pl.col("res") * pl.col("w")).sum().alias("s"), pl.col("w").sum().alias("n"))
     kp = float(kcfg["k_punter"])
-    punt_team_offset = {r["posteam"]: r["s"] / (r["n"] + kp) for r in ag.iter_rows(named=True)}
+    punt_team_offset = {r["posteam"]: round(r["s"] / (r["n"] + kp), 10) for r in ag.iter_rows(named=True)}
 
     # ---- kickoffs (era-filtered)
     kr = cfg.kickoff_rules
@@ -172,7 +172,7 @@ def build_kicking(plays: pl.DataFrame, fg_plays: pl.DataFrame, ko_plays: pl.Data
     agk = normal.filter(~pl.col("kick_retained")).group_by("defteam").agg(
         ((pl.col("rec_yl") - mean_rec) * pl.col("w")).sum().alias("s"), pl.col("w").sum().alias("n"))
     kk = float(kcfg["k_kickoff_team"])
-    ko_team_offset = {r["defteam"]: r["s"] / (r["n"] + kk) for r in agk.iter_rows(named=True)}
+    ko_team_offset = {r["defteam"]: round(r["s"] / (r["n"] + kk), 10) for r in agk.iter_rows(named=True)}
     # onside outcomes: pool every dynamic-kickoff season (2024+) available; too rare per era
     onside = onside_plays.filter((pl.col("play_type") == "kickoff") & pl.col("rec_yl").is_not_null()
                                  & pl.col("desc").str.contains("(?i)onside").fill_null(False) & (pl.col("season") >= 2024))

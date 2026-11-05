@@ -1,0 +1,7 @@
+# Coaching / play-caller changes. Plays by that team before `date` get regime.pre_change_weight (config.yaml)
+# for play-call tendencies (pass rate, 4th-down aggressiveness). Player/team talent is not affected.
+# Example:
+# - team: MIN
+#   date: 2026-10-20
+#   note: "OC fired; HC takes over play calling"
+[]

@@ -37,6 +37,7 @@ class RunRequest:
     use_availability: bool = True
     use_players: bool = True
     state: str | None = None          # live game state, e.g. "Q3 8:42 MIN 17 GB 13 MIN ball 2nd&6 at GB 34"
+    use_weather: bool = True
     combos: list[str] = field(default_factory=list)
 
     def key(self, cfg_hash: str) -> str:
@@ -166,12 +167,35 @@ def run_game(req: RunRequest, cfg: Config | None = None, progress=None, verbose:
         from .state import parse_state
         start_state = parse_state(req.state, home, away)
         banners.append(f"live state: {req.state} (box-score stats count from this point; scores are final scores)")
+    wx, wx_adj = None, None
+    if req.use_weather and game and bool(cfg.weather.get("enabled", True)):
+        from .weather import adjustments, forecast, from_recorded, is_indoor
+        if is_indoor(game):
+            wx = {"source": "indoor", "roof": game.get("roof")}
+        elif game.get("home_score") is not None:
+            wx = from_recorded(game)
+        else:
+            wx = forecast(game)
+        if wx and wx.get("error"):
+            banners.append(f"weather forecast unavailable ({wx['error']}); no weather adjustment")
+        elif wx and wx.get("source") == "indoor":
+            banners.append(f"weather: indoors ({wx.get('roof') or 'dome/retractable'}), no adjustment")
+        elif wx and wx.get("temp_f") is not None:
+            banners.append(f"weather ({wx['source']}): {wx['temp_f']:.0f}°F, wind {wx['wind_mph']:.0f} mph, "
+                           f"{'precipitation' if wx.get('precip') else 'no precipitation'}")
+        wx_adj = adjustments(model.weather_eff, wx, float(cfg.weather.get("strength", 1.0))) if wx else None
+    from .travel import edge as travel_edge
+    te = travel_edge(game, cfg)
+    if te["detail"]:
+        banners.append(f"rest/travel: {', '.join(te['detail'])} -> home edge {te['home_pts']:+.2f} pts")
     res = simulate(model, home, away, n, seed, neutral=neutral, playoff=req.playoff, players=players,
-                   availability=avail, progress=progress, start_state=start_state)
+                   availability=avail, progress=progress, start_state=start_state, weather=wx_adj, edge=te["epa"])
     extra = {"banners": banners, "game": {k: game.get(k) for k in ("game_id", "gameday", "gametime", "week", "roof",
                                                                   "stadium", "location")} if game else None}
     if market:
         extra["market"] = market
+    if wx:
+        extra["weather"] = {**wx, "adjustment": wx_adj}
     if avail_info:
         extra["availability"] = avail_info
     if req.props and players is not None:
@@ -204,3 +228,45 @@ def cover_from_hist(hist: dict, line: float, kind: str) -> dict:
     from .report import moe
     p = hit / n if n else 0.0
     return {"line": line, "hit": p, "push": push / n if n else 0.0, "miss": 1 - p - (push / n if n else 0.0), "moe": moe(p, n)}
+
+
+def player_impact(req: RunRequest, player: str, cfg: Config | None = None, qb: str | None = None, progress=None) -> dict:
+    """Same game, same seed, with vs without `player` (or with a different starting QB): deltas in win %,
+    margin, total and teammates' usage."""
+    import copy
+    cfg = cfg or load_config()
+    base = run_game(req, cfg, progress=progress, use_cache=False)
+    alt_req = copy.deepcopy(req)
+    if qb:
+        alt_req.ins = list(req.ins) + [qb]
+        alt_req.outs = list(req.outs) + [player]
+    else:
+        alt_req.outs = list(req.outs) + [player]
+    alt = run_game(alt_req, cfg, use_cache=False)
+
+    def usage(s):
+        out = {}
+        for team, plist in (s.get("players") or {}).items():
+            for p in plist:
+                st = p["stats"]
+                out[(team, p["name"])] = {"targets": st["targets"]["mean"], "carries": st["rush_att"]["mean"],
+                                          "rec_yds": st["rec_yds"]["mean"], "rush_yds": st["rush_yds"]["mean"],
+                                          "pass_yds": st["pass_yds"]["mean"]}
+        return out
+    ub, ua = usage(base), usage(alt)
+    shifts = []
+    for k in sorted(set(ub) | set(ua)):
+        b, a = ub.get(k, {}), ua.get(k, {})
+        d = {m: a.get(m, 0.0) - b.get(m, 0.0) for m in ("targets", "carries", "rec_yds", "rush_yds", "pass_yds")}
+        if any(abs(v) >= 0.3 for v in d.values()):
+            shifts.append({"team": k[0], "player": k[1], **{f"d_{m}": v for m, v in d.items()}})
+    shifts.sort(key=lambda r: -(abs(r["d_targets"]) + abs(r["d_carries"])))
+    w = lambda s: s["win"]["home"]["p"]  # noqa: E731
+    return {
+        "player": player, "qb_swap": qb, "home": base["matchup"]["home"], "away": base["matchup"]["away"],
+        "with": {"home_win": w(base), "margin": base["scores"]["margin"]["mean"], "total": base["scores"]["total"]["mean"]},
+        "without": {"home_win": w(alt), "margin": alt["scores"]["margin"]["mean"], "total": alt["scores"]["total"]["mean"]},
+        "delta": {"home_win": w(alt) - w(base), "margin": alt["scores"]["margin"]["mean"] - base["scores"]["margin"]["mean"],
+                  "total": alt["scores"]["total"]["mean"] - base["scores"]["total"]["mean"]},
+        "usage_shifts": shifts[:15], "n_sims": base["n_sims"],
+    }

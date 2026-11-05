@@ -166,8 +166,14 @@ def sim_week(job: dict) -> list[dict]:
         if h not in model.teams or a not in model.teams:
             continue
         starters = (gm.get("home_qb"), gm.get("away_qb"))
+        wx_adj = None
+        if bool(cfg.weather.get("enabled", True)):
+            from .weather import adjustments, from_recorded
+            wx_adj = adjustments(model.weather_eff, from_recorded(gm), float(cfg.weather.get("strength", 1.0)))
+        from .travel import edge as travel_edge
         r = simulate(model, h, a, job["sims"], game_seed(job["seed"], gm["game_id"]),
-                     neutral=gm.get("location") == "Neutral", playoff=gm.get("game_type") != "REG", starters=starters)
+                     neutral=gm.get("location") == "Neutral", playoff=gm.get("game_type") != "REG", starters=starters,
+                     weather=wx_adj, edge=travel_edge(gm, cfg)["epa"])
         hp, ap = r.col("pts", 0), r.col("pts", 1)
         mar, tot = hp - ap, hp + ap
         y_m, y_t = gm["home_score"] - gm["away_score"], gm["home_score"] + gm["away_score"]

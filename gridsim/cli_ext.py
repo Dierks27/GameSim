@@ -106,7 +106,37 @@ def cmd_weekly(args) -> int:
     return 0
 
 
+def cmd_impact(args) -> int:
+    from .api import RunRequest, player_impact
+    from .config import load_config
+    cfg = load_config(args.config)
+    req = RunRequest(home=args.home, away=args.away, season=args.season, sims=args.sims, seed=args.seed, market_lines=True)
+    r = player_impact(req, args.player, cfg, qb=args.qb)
+    H = r["home"]
+    what = f"{args.player} OUT" + (f", {args.qb} starts" if args.qb else "")
+    print(f"=== {r['away']} @ {H}: impact of {what} ({r['n_sims']} sims each, same seed) ===")
+    for k, lab in (("home_win", f"{H} win %"), ("margin", f"{H} margin"), ("total", "total")):
+        a, b, d = r["with"][k], r["without"][k], r["delta"][k]
+        f = (lambda x: f"{100 * x:.1f}%") if k == "home_win" else (lambda x: f"{x:+.2f}" if k == "margin" else f"{x:.2f}")
+        print(f"  {lab:<14} with {f(a):>8}   without {f(b):>8}   change {100 * d if k == 'home_win' else d:+.2f}{' pts' if k == 'home_win' else ''}")
+    print("  usage shifts (per game):")
+    for s in r["usage_shifts"]:
+        print(f"    {s['team']} {s['player']:<22} targets {s['d_targets']:+.2f}  carries {s['d_carries']:+.2f}  "
+              f"rec yds {s['d_rec_yds']:+.1f}  rush yds {s['d_rush_yds']:+.1f}  pass yds {s['d_pass_yds']:+.1f}")
+    return 0
+
+
 def register(sub) -> None:
+    im = sub.add_parser("impact", help="what-if: game with vs without a player (or a QB swap)")
+    im.add_argument("--home", required=True)
+    im.add_argument("--away", required=True)
+    im.add_argument("--player", required=True, help='player ruled out, e.g. "J.Jefferson" (TEAM:Name if ambiguous)')
+    im.add_argument("--qb", default=None, help="starting QB to use instead (QB swap)")
+    im.add_argument("--season", type=int, default=None)
+    im.add_argument("--sims", type=int, default=2000)
+    im.add_argument("--seed", type=int, default=42)
+    im.set_defaults(func=cmd_impact)
+
     b = sub.add_parser("backtest", help="walk-forward backtest (no lookahead)")
     b.add_argument("--season", type=int, required=True)
     b.add_argument("--weeks", default="3-18")

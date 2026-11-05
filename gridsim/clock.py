@@ -102,8 +102,10 @@ def build_clock(plays: pl.DataFrame, cfg) -> ClockModel:
         dur[kind] = v
         dur_mean[kind] = float(np.mean(v))
 
-    mean_map = pl.DataFrame({"kind": list(dur_mean.keys()), "dm": list(dur_mean.values())}).with_columns(pl.col("kind").cast(pl.Int8))
-    run = sc.join(mean_map, on="kind", how="left").with_columns(ro=(pl.col("elapsed") - pl.col("dm")).clip(0, 45))
+    # map (not join): joins do not preserve row order, and these lists are sampled by index
+    run = sc.with_columns(dm=pl.col("kind").cast(pl.Int64).replace_strict({int(k): float(v) for k, v in dur_mean.items()},
+                                                                          default=6.0, return_dtype=pl.Float64))
+    run = run.with_columns(ro=(pl.col("elapsed") - pl.col("dm")).clip(0, 45))
     clean = (~pl.col("turnover") & ~pl.col("td_off") & ~pl.col("td_def") & (pl.col("safety").fill_null(0) == 0)
              & (pl.col("n_to") == 0) & (pl.col("posteam") == pl.col("n_posteam"))
              & pl.col("n_play_type").is_in(["pass", "run", "punt", "field_goal", "qb_kneel", "qb_spike", "no_play"]))
@@ -127,5 +129,5 @@ def build_clock(plays: pl.DataFrame, cfg) -> ClockModel:
     neutral = running.filter((pl.col("tempo") == T_NORMAL) & (pl.col("score_differential").abs() <= 7))
     mean_l = float((neutral["ro"] * neutral["w"]).sum() / neutral["w"].sum()) if neutral.height else 31.0
     tp = neutral.group_by("posteam").agg((pl.col("ro") * pl.col("w")).sum().alias("s"), pl.col("w").sum().alias("n"))
-    team_pace = {r["posteam"]: ((r["s"] + k_pace * mean_l) / (r["n"] + k_pace)) / mean_l for r in tp.iter_rows(named=True)}
+    team_pace = {r["posteam"]: round(((r["s"] + k_pace * mean_l) / (r["n"] + k_pace)) / mean_l, 10) for r in tp.iter_rows(named=True)}
     return ClockModel(dur, dur_mean, runoff, oob_runoff, pen_runoff, presnap_elapsed, punt_dur, fg_dur, team_pace)

@@ -94,6 +94,24 @@ home_field:
   # away offense weights *= exp(-tilt*epa). Calibrated in the backtest (see DECISIONS.md).
   tilt: 0.006
 
+regime:
+  file: regime_changes.yaml    # list of {team: MIN, date: 2026-10-20, note: "new OC calls plays"}
+  pre_change_weight: 0.3       # multiplier on that team's pre-change plays for play-call tendencies only
+
+rest_travel:
+  # Small game-level edges in points of margin, converted to EPA/play shifts (half to each side).
+  strength: 1.0                # tunable scale; 0 disables
+  bye_pts: 0.6                 # coming off a bye (rest >= 13 days)
+  short_week_pts: -0.6         # rest <= 5 days (Thursday after Sunday)
+  rest_diff_pts_per_day: 0.0   # extra edge per day of rest advantage (capped at 3 days)
+  tz_pts_per_hour: -0.25       # per time zone travelled by the visitor (east-west), up to 3
+  international_pts: 0.0       # both teams travel; usually 0
+  plays_per_team: 62
+
+weather:
+  enabled: true
+  strength: 1.0                # scales the fitted (ridge-shrunk) wind/cold/precip effects; tunable
+
 overtime:
   regular_season_minutes: 10
   playoff_minutes: 15
@@ -128,3 +146,5 @@ tune:
     playcall.k_team_4th: {low: 10, high: 400, log: true}
     clock.runoff_scale: {low: 0.97, high: 1.09}
     playcall.pass_logit_shift: {low: -0.2, high: 0.1}
+    weather.strength: {low: 0.0, high: 1.5}
+    rest_travel.strength: {low: 0.0, high: 2.0}

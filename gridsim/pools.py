@@ -46,10 +46,9 @@ class OutcomePools:
     ref_sits: dict = field(default_factory=dict)
 
     def sample(self, seg: Segment, u: float, tilt: int) -> int:
-        cum = self.cum[tilt]
+        cum = self.cum[tilt]        # cumulative weights restart at 0 in every segment
         lo = seg.start
-        base = cum[lo - 1] if lo > 0 else 0.0
-        target = base + u * (cum[seg.end - 1] - base)
+        target = u * cum[seg.end - 1]
         j = bisect_right(cum, target, lo, seg.end)
         if j >= seg.end:
             j = seg.end - 1
@@ -150,8 +149,10 @@ def build_outcome_pools(df: pl.DataFrame, teams: list[str], hfa_tilt: float, bac
     def add_groups(prefix: tuple, sub: pl.DataFrame, cols: tuple):
         nonlocal pos
         if cols:
+            # sorted keys: segment layout must not depend on polars' (thread-dependent) group order
             grouped = sub.group_by(list(cols), maintain_order=False).agg(pl.col("rid"))
-            items = [(tuple(r[c] for c in cols), r["rid"]) for r in grouped.iter_rows(named=True)]
+            items = sorted(((tuple(r[c] for c in cols), r["rid"]) for r in grouped.iter_rows(named=True)),
+                           key=lambda kv: kv[0])
         else:
             items = [((), sub["rid"].to_list())]
         for key_vals, rids in items:
@@ -179,11 +180,11 @@ def build_outcome_pools(df: pl.DataFrame, teams: list[str], hfa_tilt: float, bac
         ["rid", "qb_id", "down", "dist_b", "zone_b", "time_b", "downgrp2", "downgrp3", "distgrp3", "rz", "w"])
     qb_n = drop.group_by("qb_id").agg(pl.col("w").sum().alias("n"))
     qb_tot = {r["qb_id"]: r["n"] for r in qb_n.iter_rows(named=True)}
-    for qb, sub_q in drop.group_by("qb_id"):
-        qb = qb[0] if isinstance(qb, tuple) else qb
+    for qb in sorted(qb_tot):
+        sub_q = drop.filter(pl.col("qb_id") == qb)
         for li, cols in enumerate(B.TEAM_LEVELS):
             add_groups(("Q", qb, li), sub_q, cols)
-    low = [q for q, n_ in qb_tot.items() if n_ < backup_max]
+    low = sorted(q for q, n_ in qb_tot.items() if n_ < backup_max)
     sub_b = drop.filter(pl.col("qb_id").is_in(low))
     if sub_b.height:
         for li, cols in enumerate(B.TEAM_LEVELS):
@@ -191,12 +192,19 @@ def build_outcome_pools(df: pl.DataFrame, teams: list[str], hfa_tilt: float, bac
 
     idx = np.concatenate(idx_parts) if idx_parts else np.zeros(0, dtype=np.int64)
     cum: dict[int, list[float]] = {}
+    starts = np.zeros(len(idx), dtype=bool)
+    for seg in segs.values():
+        if seg.end > seg.start:
+            starts[seg.start] = True
+    seg_id = np.cumsum(starts) - 1
     for variant, wv in wt.items():
         vals = wv[idx]
-        c = np.empty_like(vals)
-        # cumulative sums restart at each segment start; store as global running sum (monotone) instead
         c = np.cumsum(vals)
-        cum[variant] = c.tolist()
+        # restart at every segment: subtract the running total at each segment's start
+        first = np.where(starts)[0]
+        offsets = np.concatenate([[0.0], c[first[1:] - 1]]) if len(first) else np.zeros(0)
+        c = c - offsets[seg_id]
+        cum[variant] = np.round(c, 9).tolist()
 
     # Kaplan-Meier survival of gains per call, for the TD-censoring extension
     # Estimated per field zone: the tail beyond the goal line is shorter near the goal line

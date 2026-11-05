@@ -54,7 +54,7 @@ def smoothed_table(df: pl.DataFrame, target: str, levels: list[tuple], m: float)
     time via `lookup` using the coarser levels stored under keys prefixed with the level idx.
     """
     tot_w = df["w"].sum()
-    p_global = float((df[target] * df["w"]).sum() / tot_w) if tot_w > 0 else 0.5
+    p_global = round(float((df[target] * df["w"]).sum() / tot_w), 10) if tot_w > 0 else 0.5
     table: dict[tuple, float] = {("G",): p_global}
     for li in range(len(levels) - 1, -1, -1):
         cols = levels[li]
@@ -67,7 +67,7 @@ def smoothed_table(df: pl.DataFrame, target: str, levels: list[tuple], m: float)
             else:
                 pk = tuple(int(r[c]) for c in parent_cols)
                 parent = table.get((li + 1,) + pk, p_global)
-            table[(li,) + key] = (r["s"] + m * parent) / (r["n"] + m)
+            table[(li,) + key] = round((r["s"] + m * parent) / (r["n"] + m), 10)
     return table
 
 
@@ -139,7 +139,7 @@ def _team_offsets(df: pl.DataFrame, target: str, expected: str, k: float) -> dic
         if n <= 0:
             continue
         off = _logit(r["obs"] / n) - _logit(r["exp"] / n)
-        out[r["posteam"]] = n / (n + k) * off
+        out[r["posteam"]] = round(n / (n + k) * off, 10)
     return out
 
 
@@ -189,6 +189,6 @@ def build_playcall(plays: pl.DataFrame, cfg) -> PlayCallModel:
         lo, hi = max(0, y - 1), min(100, y + 1)
         s, n = sum(s_arr[lo:hi + 1]), sum(n_arr[lo:hi + 1])
         prior = 1.0 if y <= 30 else (0.0 if y >= 45 else 1.0 - (y - 30) / 15)
-        fg_by_yl[y] = (s + 2 * prior) / (n + 2)
+        fg_by_yl[y] = round((s + 2 * prior) / (n + 2), 10)
     return PlayCallModel(pass_table, team_pass, go_table, team_go, fg_by_yl, {},
                          float(cfg.playcall.get("pass_logit_shift", 0.0)))
