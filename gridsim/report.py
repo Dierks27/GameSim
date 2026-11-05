@@ -173,6 +173,8 @@ def console(summary: dict) -> str:
         fmt = lambda d: f"{d['p10']:.0f} / {d['p50']:.0f} / {d['p90']:.0f}"  # noqa: E731
         L.append(f"  {k:<32}{fmt(hd):>20}{fmt(ad):>20}")
     L.append("\nMost common final scores: " + ", ".join(f"{H} {t['home']}-{t['away']} {100 * t['p']:.1f}%" for t in s["top_scores"]))
+    if s.get("availability"):
+        L.append(availability_console(s["availability"], s["meta"].get("qb_starts", {})))
     if s.get("players"):
         L.append(players_console(s["players"]))
     if s.get("props"):
@@ -183,6 +185,30 @@ def console(summary: dict) -> str:
     L.append(f"\nData: seasons {m.get('window_seasons')} weights {m.get('season_weights')} through week "
              f"{m.get('through_week') or m.get('last_week_in_data')} | seed {m.get('seed')} | runtime {m.get('runtime_seconds')}s "
              f"| config {m.get('config_hash')}")
+    return "\n".join(L)
+
+
+def availability_console(av: dict, qb_starts: dict) -> str:
+    L = [f"\nAvailability (week {av.get('week')}):"]
+    for team, d in av["teams"].items():
+        qs = qb_starts.get(team) or {}
+        qtxt = ", ".join(f"{k} {100 * v:.0f}%" for k, v in qs.items()) or ", ".join(f"{q['name']} {100 * q['p_start']:.0f}%" for q in d["qb"][:2])
+        L.append(f"  {team} QB starts: {qtxt}")
+        lst = [f"{p['name']} ({p['pos']}) {'OUT' if p['p_play'] == 0 else f'{100 * p['p_play']:.0f}% play'}"
+               for p in d["listed"] if p["pos"] in ("QB", "RB", "WR", "TE", "K") and p["p_play"] < 1]
+        if lst:
+            L.append("    " + "; ".join(lst[:12]))
+    fr = av.get("freshness", {})
+    if fr:
+        def _f(v):
+            bits = [f"downloaded {v.get('downloaded') or '?'}"]
+            if v.get("nflverse_updated"):
+                bits.append(f"nflverse {v['nflverse_updated']}")
+            for k in ("latest_week_in_data", "latest_snapshot"):
+                if v.get(k) is not None:
+                    bits.append(f"{k.replace('_', ' ')} {v[k]}")
+            return ", ".join(bits)
+        L.append("  data: " + " | ".join(f"{k}: {_f(v)}" for k, v in fr.items()))
     return "\n".join(L)
 
 

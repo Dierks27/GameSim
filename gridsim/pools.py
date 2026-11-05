@@ -40,6 +40,7 @@ class OutcomePools:
     teams: list[str]
     n_rows: int = 0
     memo: dict = field(default_factory=dict)
+    qb_dropbacks: dict = field(default_factory=dict)
 
     def sample(self, seg: Segment, u: float, tilt: int) -> int:
         cum = self.cum[tilt]
@@ -98,7 +99,10 @@ def _km_survival(gain: np.ndarray, censored: np.ndarray, w: np.ndarray) -> list[
     return S
 
 
-def build_outcome_pools(df: pl.DataFrame, teams: list[str], hfa_tilt: float) -> OutcomePools:
+BACKUP_QB = "__BACKUP_QB__"
+
+
+def build_outcome_pools(df: pl.DataFrame, teams: list[str], hfa_tilt: float, backup_max: float = 150.0) -> OutcomePools:
     """df: scrimmage_rows output with a 'w' (season weight) column."""
     df = df.with_row_index("rid")
     n = df.height
@@ -167,6 +171,21 @@ def build_outcome_pools(df: pl.DataFrame, teams: list[str], hfa_tilt: float) -> 
                 for li, cols in enumerate(B.TEAM_LEVELS):
                     add_groups(("T", call, side, team, li), sub_t, cols)
 
+    # QB pools (offense dropbacks by passer) + a league pool of low-sample / backup QBs
+    drop = df.filter((pl.col("call") == "pass") & pl.col("qb_id").is_not_null()).select(
+        ["rid", "qb_id", "down", "dist_b", "zone_b", "time_b", "downgrp2", "downgrp3", "distgrp3", "rz", "w"])
+    qb_n = drop.group_by("qb_id").agg(pl.col("w").sum().alias("n"))
+    qb_tot = {r["qb_id"]: r["n"] for r in qb_n.iter_rows(named=True)}
+    for qb, sub_q in drop.group_by("qb_id"):
+        qb = qb[0] if isinstance(qb, tuple) else qb
+        for li, cols in enumerate(B.TEAM_LEVELS):
+            add_groups(("Q", qb, li), sub_q, cols)
+    low = [q for q, n_ in qb_tot.items() if n_ < backup_max]
+    sub_b = drop.filter(pl.col("qb_id").is_in(low))
+    if sub_b.height:
+        for li, cols in enumerate(B.TEAM_LEVELS):
+            add_groups(("Q", BACKUP_QB, li), sub_b, cols)
+
     idx = np.concatenate(idx_parts) if idx_parts else np.zeros(0, dtype=np.int64)
     cum: dict[int, list[float]] = {}
     for variant, wv in wt.items():
@@ -188,7 +207,9 @@ def build_outcome_pools(df: pl.DataFrame, teams: list[str], hfa_tilt: float) -> 
             m = m0 & (zone == z)
             km[(call, z)] = _km_survival(yards[m], td_off[m], w[m]) if m.sum() >= 200 else km[call]
 
-    return OutcomePools(rows=rows, idx=idx.tolist(), cum=cum, segs=segs, km=km, teams=teams, n_rows=n)
+    out = OutcomePools(rows=rows, idx=idx.tolist(), cum=cum, segs=segs, km=km, teams=teams, n_rows=n)
+    out.qb_dropbacks = qb_tot
+    return out
 
 
 def resolve(pools: OutcomePools, call: str, side: str, team: str, down: int, togo_b: int, zone: int, tb: int,
@@ -224,6 +245,29 @@ def resolve(pools: OutcomePools, call: str, side: str, team: str, down: int, tog
                 lseg = seg
                 break
     out = (tseg, tw, lseg)
+    pools.memo[key] = out
+    return out
+
+
+def resolve_qb(pools: OutcomePools, qb: str, down: int, togo_b: int, zone: int, min_n: float, k_qb: float):
+    """(qb_segment | None, qb_weight, backup_segment | None) for the starting QB's own dropbacks."""
+    key = ("QB", qb, down, togo_b, zone)
+    hit = pools.memo.get(key)
+    if hit is not None:
+        return hit
+    sv = {"downgrp2": 1 if down >= 3 else 0, "downgrp3": 3 if down >= 3 else down,
+          "distgrp3": 2 if togo_b >= 2 else togo_b, "rz": 1 if zone >= 3 else 0}
+
+    def pick(name):
+        for li, cols in enumerate(B.TEAM_LEVELS):
+            seg = pools.segs.get(("Q", name, li) + tuple(sv[c] for c in cols))
+            if seg is not None and (seg.n >= min_n or li == len(B.TEAM_LEVELS) - 1):
+                return seg
+        return None
+
+    qseg = pick(qb) if qb else None
+    qw = qseg.n / (qseg.n + k_qb) if qseg is not None else 0.0
+    out = (qseg, qw, pick(BACKUP_QB))
     pools.memo[key] = out
     return out
 

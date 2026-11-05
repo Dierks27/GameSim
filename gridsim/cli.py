@@ -55,21 +55,29 @@ def cmd_run(args) -> int:
 
     model = build_model(cfg, season, args.through_week, verbose=True)
     players = None
+    avail = None
     avail_info = None
-    if not args.no_players or args.out or args.inn or args.prop:
+    if not args.no_availability:
+        from .availability import NameMatchError, build_availability
         try:
-            from .availability import build_availability
+            avail = build_availability(cfg, season, home, away, model, week=(game or {}).get("week") or args.week,
+                                       outs=args.out, ins=args.inn, overrides_path=args.overrides,
+                                       game_date=(game or {}).get("gameday"), verbose=True)
+        except NameMatchError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        avail_info = avail.describe()
+        banners += avail.banners
+    if not args.no_players:
+        try:
             from .players import build_player_model
-            avail = build_availability(cfg, season, home, away, model, week=(game or {}).get("week"),
-                                       outs=args.out, ins=args.inn, overrides_path=args.overrides, verbose=True)
-            avail_info = avail.describe()
-            banners += avail.banners
             players = build_player_model(cfg, model, season, args.through_week, home, away, avail)
         except ImportError:
             players = None
     n = args.sims or int(cfg.sim["n_sims"])
     seed = args.seed if args.seed is not None else int(cfg.sim["seed"])
-    res = simulate(model, home, away, n, seed, neutral=neutral, playoff=args.playoff, players=players)
+    res = simulate(model, home, away, n, seed, neutral=neutral, playoff=args.playoff, players=players,
+                   availability=avail)
     extra = {"banners": banners}
     if market:
         extra["market"] = market
@@ -144,6 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--overrides", default=None, help="overrides.yaml path (default overrides/<season>_wk<week>.yaml)")
     r.add_argument("--prop", action="append", default=[], help='"Player Name:rec_yds:64.5" (repeatable)')
     r.add_argument("--no-players", action="store_true", help="skip player attribution (faster)")
+    r.add_argument("--no-availability", action="store_true", help="ignore rosters/injuries (use last game's QBs)")
     r.set_defaults(func=cmd_run)
 
     rf = sub.add_parser("refresh-data", help="re-download nflverse data into the local cache")

@@ -67,6 +67,22 @@ clock:
   k_pace: 150                  # shrinkage (running-clock snaps) of team neutral-pace factors
   runoff_scale: 1.03           # global multiplier on between-snap runoff (calibrated, see DECISIONS.md)
 
+qb:
+  # Team-specific dropback samples come from the starting QB's own dropbacks (any team, in the window) with
+  # weight n/(n + k_qb); the rest from a league pool of low-sample/backup QBs.
+  k_qb: 100
+  backup_max_dropbacks: 150    # weighted dropbacks; QBs below this form the backup pool
+
+availability:
+  questionable_play_prob: 0.75
+  doubtful_out: true
+  doubtful_play_prob: 0.10      # used only when doubtful_out is false
+  no_report_dnp_play_prob: 0.5  # no game status yet, last practice DNP
+  no_report_limited_play_prob: 0.95
+  practice_dnp_factor: 0.67     # Questionable + last practice DNP -> 0.75 * 0.67
+  practice_full_factor: 1.15    # Questionable + full practice (capped at 0.95)
+  stale_injury_hours: 24
+
 home_field:
   # Exponential tilt of scrimmage outcome sampling by EPA: home offense weights *= exp(+tilt*epa),
   # away offense weights *= exp(-tilt*epa). Calibrated in the backtest (see DECISIONS.md).

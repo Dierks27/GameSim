@@ -25,7 +25,7 @@ from . import buckets as B
 from .clock import T_HURRY, T_MILK, T_NORMAL, in_stop_window, tempo_of
 from .model import SimModel
 from .overtime import OTState
-from .pools import K_COMP, K_INC, K_PEN, K_RUN, K_SACK, K_SCR, km_extend, resolve
+from .pools import K_COMP, K_INC, K_PEN, K_RUN, K_SACK, K_SCR, km_extend, resolve, resolve_qb
 
 # ---- team stat indices ------------------------------------------------------------------
 STATS = [
@@ -47,7 +47,7 @@ QIDX = {1: Q1, 2: Q2, 3: Q3, 4: Q4}
 
 class GameSim:
     def __init__(self, model: SimModel, home: str, away: str, neutral: bool = False, playoff: bool = False,
-                 seed: int = 42, players=None):
+                 seed: int = 42, players=None, availability=None, starters: tuple | None = None):
         for t in (home, away):
             if t not in model.teams:
                 raise ValueError(f"unknown team {t!r}; known: {', '.join(model.teams)}")
@@ -61,6 +61,14 @@ class GameSim:
         self._buf: list[float] = []
         self._bi = 0
         self.players = players               # optional PlayerModel (phase 4)
+        self.avail = availability            # optional Availability: per-game rolls of who plays
+        self.k_qb = float(self.cfg.qb["k_qb"])
+        if starters is None:
+            starters = tuple(model.default_qb.get(t) for t in (home, away))
+        self.starters = tuple(starters)
+        self.qb = list(self.starters)
+        self.active = None
+        self.qb_starts = [{}, {}]
 
         sim = self.cfg.sim
         self.w_off = float(sim["w_off"])
@@ -149,8 +157,13 @@ class GameSim:
         self.drive_rz = False
         self.drive_counted = True
         self.stats = [[0.0] * NS, [0.0] * NS]
+        if self.avail is not None:
+            qbs, self.active = self.avail.roll(self.u)
+            self.qb = [qbs[0] or self.starters[0], qbs[1] or self.starters[1]]
+        for t in (0, 1):
+            self.qb_starts[t][self.qb[t]] = self.qb_starts[t].get(self.qb[t], 0) + 1
         if self.players is not None:
-            self.players.new_game()
+            self.players.new_game(self)
 
     def set_poss(self, team: int, yl: float) -> None:
         self.pos = team
@@ -593,9 +606,21 @@ class GameSim:
         team_side = self.teams[off] if self.u() < self.w_off else self.teams[1 - off]
         side = "off" if team_side == self.teams[off] else "def"
         down = min(self.down, 4)
-        tseg, tw, lseg = resolve(self.pools, call, side, team_side, down, B.dist_b(self.togo), B.zone_b(self.yl), tb,
+        db, zb = B.dist_b(self.togo), B.zone_b(self.yl)
+        tseg, tw, lseg = resolve(self.pools, call, side, team_side, down, db, zb, tb,
                                  self.min_n, self.k_out, self.league_min_n)
-        seg = tseg if (tseg is not None and self.u() < tw) else lseg
+        if tseg is not None and self.u() < tw:
+            seg = tseg
+            qb = self.qb[off]
+            if call == "pass" and side == "off" and qb is not None:
+                # team-specific dropbacks come from the starting QB (or the backup-QB pool)
+                qseg, qw, bseg = resolve_qb(self.pools, qb, down, db, zb, self.min_n, self.k_qb)
+                if qseg is not None and self.u() < qw:
+                    seg = qseg
+                elif bseg is not None:
+                    seg = bseg
+        else:
+            seg = lseg
         if seg is None:
             seg = tseg
         return self.pools.sample(seg, self.u(), self.tilt[off])
@@ -790,9 +815,11 @@ class SimResults:
 
 
 def simulate(model: SimModel, home: str, away: str, n_sims: int, seed: int, neutral: bool = False,
-             playoff: bool = False, players=None) -> SimResults:
+             playoff: bool = False, players=None, availability=None, starters: tuple | None = None,
+             progress=None) -> SimResults:
     t0 = time.time()
-    g = GameSim(model, home, away, neutral=neutral, playoff=playoff, seed=seed, players=players)
+    g = GameSim(model, home, away, neutral=neutral, playoff=playoff, seed=seed, players=players,
+                availability=availability, starters=starters)
     out = np.zeros((n_sims, 2, NS), dtype=np.float64)
     for i in range(n_sims):
         h, a, _ = g.play_game()
@@ -800,6 +827,10 @@ def simulate(model: SimModel, home: str, away: str, n_sims: int, seed: int, neut
         out[i, 1] = a
         if players is not None:
             players.end_game(i)
+        if progress is not None and (i + 1) % 100 == 0:
+            progress((i + 1) / n_sims)
+    names = model.qb_names
+    qb_used = [{names.get(q, q): c / n_sims for q, c in sorted(g.qb_starts[t].items(), key=lambda x: -x[1])} for t in (0, 1)]
     meta = {"runtime_seconds": round(time.time() - t0, 2), "seed": seed, "n_sims": n_sims,
-            "neutral": neutral, "playoff": playoff}
+            "neutral": neutral, "playoff": playoff, "qb_starts": {home: qb_used[0], away: qb_used[1]}}
     return SimResults(home, away, out, meta, players.results() if players is not None else None)

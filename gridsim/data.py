@@ -241,6 +241,14 @@ def prepare_plays(raw: pl.DataFrame) -> pl.DataFrame:
         .when(pl.col("play_type") == "punt").then(pl.col("same_next"))
         .otherwise(False),
     )
+    # QB attribution for dropbacks: passer, else scrambler, else the game's main passer for that team
+    s = s.with_columns(qb_id=pl.when(pl.col("passer_player_id").is_not_null()).then(pl.col("passer_player_id"))
+                       .when(f("qb_scramble") == 1).then(pl.col("rusher_player_id")).otherwise(None))
+    main_qb = (s.filter(pl.col("qb_id").is_not_null() & (f("pass") == 1)).group_by(["game_id", "posteam", "qb_id"])
+               .agg(pl.len().alias("nq")).sort("nq", descending=True).group_by(["game_id", "posteam"])
+               .agg(pl.col("qb_id").first().alias("game_qb")))
+    s = s.join(main_qb, on=["game_id", "posteam"], how="left").with_columns(
+        qb_id=pl.when((f("pass") == 1) & pl.col("qb_id").is_null()).then(pl.col("game_qb")).otherwise(pl.col("qb_id")))
     # did the previous snap (same game, quarter, offense) leave the clock running?
     q, g_, h_ = pl.col("qtr"), pl.col("game_seconds_remaining"), pl.col("half_seconds_remaining")
     window = ((q == 2) & (h_ <= 120)) | ((q >= 4) & (g_ <= 300))

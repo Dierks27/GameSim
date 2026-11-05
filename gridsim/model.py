@@ -44,6 +44,8 @@ class SimModel:
     presnap: PresnapModel
     teams: list[str]
     meta: dict = field(default_factory=dict)
+    default_qb: dict = field(default_factory=dict)
+    qb_names: dict = field(default_factory=dict)
 
 
 def kickoff_era_seasons(season: int, cfg: Config, available: list[int]) -> list[int]:
@@ -108,7 +110,7 @@ def build_model(cfg: Config, season: int, through_week: int | None = None, plays
 
     teams = sorted(set(window["posteam"].drop_nulls().unique().to_list()))
     sc = scrimmage_rows(tendency)
-    pools = build_outcome_pools(sc, teams, float(cfg.home_field["tilt"]))
+    pools = build_outcome_pools(sc, teams, float(cfg.home_field["tilt"]), float(cfg.qb["backup_max_dropbacks"]))
     pc_src = tendency if cfg.data["garbage_time"].get("apply_to_playcall", True) else window
     playcall = build_playcall(pc_src, cfg)
     presnap = build_presnap(tendency, cfg)
@@ -129,6 +131,16 @@ def build_model(cfg: Config, season: int, through_week: int | None = None, plays
             ko_win = D.window_filter(plays, season, through_week, era).with_columns(w=pl.lit(1.0))
     kicking = build_kicking(window, fg_win, ko_win, cfg, window, fg_win)
 
+    # default starter per team: QB with the most dropbacks in the team's latest game in the window
+    last = (window.filter(pl.col("qb_id").is_not_null() & (pl.col("call") == "pass"))
+            .sort(["season", "week"]).group_by("posteam").agg(pl.col("game_id").last().alias("g")))
+    st = (window.filter(pl.col("qb_id").is_not_null() & (pl.col("call") == "pass")).join(last, on="posteam")
+          .filter(pl.col("game_id") == pl.col("g")).group_by(["posteam", "qb_id"]).agg(pl.len().alias("n"))
+          .sort("n", descending=True).group_by("posteam").agg(pl.col("qb_id").first()))
+    default_qb = {r["posteam"]: r["qb_id"] for r in st.iter_rows(named=True)}
+    names = window.filter(pl.col("passer_player_id").is_not_null()).group_by("passer_player_id").agg(pl.col("passer_player_name").last())
+    qb_names = {r["passer_player_id"]: r["passer_player_name"] for r in names.iter_rows(named=True)}
+
     meta = {
         "season": season, "through_week": through_week, "season_weights": weights,
         "window_seasons": win_seasons, "kickoff_seasons": sorted(era), "fg_seasons": sorted(fg_weights),
@@ -136,4 +148,7 @@ def build_model(cfg: Config, season: int, through_week: int | None = None, plays
         "last_week_in_data": int(window.filter(pl.col("season") == season)["week"].max() or 0)
         if window.filter(pl.col("season") == season).height else None,
     }
-    return SimModel(cfg, season, through_week, pools, playcall, kicking, clock, presnap, teams, meta)
+    m = SimModel(cfg, season, through_week, pools, playcall, kicking, clock, presnap, teams, meta)
+    m.default_qb = default_qb
+    m.qb_names = qb_names
+    return m
