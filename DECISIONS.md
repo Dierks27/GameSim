@@ -245,7 +245,17 @@ validation got *worse* — flagged "likely overfit", config.yaml unchanged. With
 noise between configs is comparable to the gains, so short tuning runs mostly chase noise; run the full
 `--trials 150` with more train seasons overnight, or `--sampling-only` for a faster, lower-dimensional search.
 
-**Held-out result for the current config (2025 weeks 3–18, 240 games, no lookahead): the sim beats the closing
-market on win probability (Brier 0.2107 vs 0.2151, log loss 0.614 vs 0.618) and margin (MAE 10.03 vs 10.08), and
-trails it on totals (MAE 10.54 vs 10.13).** Totals are the main known weakness, together with the margin *shape*
+**Held-out results for the current config (weeks 3–18, 240 games per season, no lookahead):**
+
+| season | sim Brier | market Brier | sim log loss | market log loss | sim MAE margin | market | sim MAE total | market | sd pred margin (mkt) |
+|---|---|---|---|---|---|---|---|---|---|
+| 2025 | 0.2107 | 0.2151 | 0.614 | 0.618 | 10.03 | 10.08 | 10.54 | 10.13 | 6.05 (6.41) |
+| 2024 | 0.2215 | 0.1933 | 0.634 | 0.572 | 10.51 | 9.55 | 9.87 | 9.79 | 4.65 (5.73) |
+| both | 0.2161 | 0.2042 | 0.624 | 0.595 | 10.27 | 9.82 | 10.21 | 9.96 | |
+
+**Honest read: the closing market is better on average.** 2025 looks slightly better than the market, 2024 clearly
+worse (the market was unusually sharp in 2024, and the sim's margins were compressed: sd 4.65 vs 5.73). The likely
+cause is information the model cannot see — offseason roster/QB changes (a QB new to a team with little recent
+sample is shrunk toward backup level, e.g. 2024 MIN) and early-season reliance on last year's team. Treat sim-vs-market
+gaps as hypotheses to grade live (`grade`, `scorecard`, signal CLV), not as edges. Totals are the main known weakness, together with the margin *shape*
 (one-score games 45% sim vs 50% actual; margin exactly 3: 10.8% vs 14.2%), which diagnose now reports as "key numbers".

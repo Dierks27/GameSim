@@ -1,0 +1,341 @@
+{
+  "label": "2024_w3-18",
+  "config_hash": "a9e0d47f2c",
+  "config": {
+    "data": {
+      "cache_dir": "data/cache",
+      "refresh_hours": 12,
+      "seasons_back": 1,
+      "season_weights": [
+        1.0,
+        0.35
+      ],
+      "week_decay": 1.0,
+      "include_postseason": true,
+      "garbage_time": {
+        "quarters": [
+          4
+        ],
+        "wp_low": 0.05,
+        "wp_high": 0.95,
+        "apply_to_playcall": true
+      }
+    },
+    "kickoff_rules": {
+      "eras": {
+        "2023": "legacy",
+        "2024": "dk2024",
+        "2025": "dk2025",
+        "2026": "dk2026"
+      },
+      "default_era": "dk2026",
+      "min_era_kickoffs": 400,
+      "touchback_yardline": {
+        "legacy": 25,
+        "dk2024": 30,
+        "dk2025": 35,
+        "dk2026": 35
+      },
+      "landing_zone_touchback_yardline": 20,
+      "safety_kick_shift": 10
+    },
+    "sim": {
+      "n_sims": 2000,
+      "seed": 42,
+      "w_off": 0.5,
+      "min_bucket_n": 40,
+      "k_outcome": 60,
+      "k_presnap": 400,
+      "league_min_n": 40,
+      "td_censoring_fix": true,
+      "matchup_strength": 1.0,
+      "k_team_epa": 300,
+      "score_effect_strength": 0.0,
+      "k_score_effect": 2000
+    },
+    "playcall": {
+      "smoothing_m": 25,
+      "k_team_pass": 300,
+      "k_team_4th": 60,
+      "fg_min_make_prob": 0.3,
+      "pass_logit_shift": 0.0
+    },
+    "kicking": {
+      "k_kicker": 15,
+      "fg_seasons_back": 3,
+      "k_punter": 60,
+      "k_kickoff_team": 150,
+      "block_return_td_rate": 0.08
+    },
+    "two_point": {
+      "late_quarter": 4,
+      "chart": [
+        -2,
+        -5,
+        -10,
+        -13,
+        1,
+        5,
+        12
+      ],
+      "base_rate": 0.04
+    },
+    "clock": {
+      "hurry_q4_seconds": 300,
+      "hurry_q4_two_score_seconds": 600,
+      "hurry_q2_seconds": 120,
+      "milk_q4_seconds": 300,
+      "milk_q4_two_score_seconds": 600,
+      "def_timeout_seconds": 165,
+      "def_timeout_max_deficit": 16,
+      "off_timeout_seconds": 75,
+      "spike_seconds": 40,
+      "q2_kneel_seconds": 35,
+      "k_pace": 150,
+      "runoff_scale": 1.03
+    },
+    "qb": {
+      "k_qb": 100,
+      "backup_max_dropbacks": 150
+    },
+    "availability": {
+      "questionable_play_prob": 0.75,
+      "doubtful_out": true,
+      "doubtful_play_prob": 0.1,
+      "no_report_dnp_play_prob": 0.5,
+      "no_report_limited_play_prob": 0.95,
+      "practice_dnp_factor": 0.67,
+      "practice_full_factor": 1.15,
+      "stale_injury_hours": 24
+    },
+    "home_field": {
+      "tilt": 0.006
+    },
+    "regime": {
+      "file": "regime_changes.yaml",
+      "pre_change_weight": 0.3
+    },
+    "rest_travel": {
+      "strength": 1.0,
+      "bye_pts": 0.6,
+      "short_week_pts": -0.6,
+      "rest_diff_pts_per_day": 0.0,
+      "tz_pts_per_hour": -0.25,
+      "international_pts": 0.0,
+      "plays_per_team": 62
+    },
+    "weather": {
+      "enabled": true,
+      "strength": 1.0
+    },
+    "overtime": {
+      "regular_season_minutes": 10,
+      "playoff_minutes": 15,
+      "coin_toss_winner_receives": 0.97
+    },
+    "players": {
+      "usage_games": 6,
+      "k_player_eff": 80,
+      "min_share": 0.01,
+      "onoff_strength": 0.5,
+      "k_onoff": 1500
+    },
+    "backtest": {
+      "out_dir": "backtests",
+      "worker_model_cache": 10
+    },
+    "tune": {
+      "sims_per_game": 300,
+      "seed": 2024,
+      "weeks": [
+        3,
+        18
+      ],
+      "validate_weeks": [
+        3,
+        18
+      ],
+      "train_every_kth_game": 2,
+      "trials": 150,
+      "objective_weights": {
+        "log_loss": 1.0,
+        "crps_margin": 1.0,
+        "crps_total": 1.0
+      },
+      "space": {
+        "sim.k_outcome": {
+          "low": 15,
+          "high": 400,
+          "log": true
+        },
+        "sim.w_off": {
+          "low": 0.3,
+          "high": 0.7
+        },
+        "sim.matchup_strength": {
+          "low": 0.4,
+          "high": 1.4
+        },
+        "sim.k_team_epa": {
+          "low": 60,
+          "high": 1500,
+          "log": true
+        },
+        "data.season_weights.1": {
+          "low": 0.1,
+          "high": 0.8
+        },
+        "data.week_decay": {
+          "low": 0.85,
+          "high": 1.0
+        },
+        "home_field.tilt": {
+          "low": 0.0,
+          "high": 0.03
+        },
+        "kicking.k_kicker": {
+          "low": 3,
+          "high": 80,
+          "log": true
+        },
+        "playcall.k_team_4th": {
+          "low": 10,
+          "high": 400,
+          "log": true
+        },
+        "clock.runoff_scale": {
+          "low": 0.97,
+          "high": 1.09
+        },
+        "playcall.pass_logit_shift": {
+          "low": -0.2,
+          "high": 0.1
+        },
+        "weather.strength": {
+          "low": 0.0,
+          "high": 1.5
+        },
+        "rest_travel.strength": {
+          "low": 0.0,
+          "high": 2.0
+        },
+        "sim.score_effect_strength": {
+          "low": 0.0,
+          "high": 2.0
+        }
+      }
+    },
+    "markets": {
+      "kalshi": {
+        "enabled": true,
+        "base_url": "https://api.elections.kalshi.com/trade-api/v2",
+        "timeout": 15,
+        "taker_fee_rate": 0.07,
+        "maker_fee_rate": 0.0175,
+        "fee_multiplier": 1.0,
+        "series_title_patterns": {
+          "moneyline": "Pro Football Game",
+          "spread": "Pro Football Spread",
+          "total": "Pro Football Total Points|Total Points"
+        },
+        "series_fallback": {
+          "moneyline": "KXNFLGAME",
+          "spread": "KXNFLSPREAD",
+          "total": "KXNFLTOTAL"
+        }
+      }
+    },
+    "scanner": {
+      "min_edge": 0.04,
+      "moe_multiple": 2.0,
+      "max_resim_sims": 20000,
+      "min_depth_dollars": 250,
+      "max_spread": 0.04,
+      "min_volume": 1000,
+      "max_sim_age_hours": 6,
+      "trust_min_graded": 50,
+      "realert_edge_growth": 0.03,
+      "strong_edge": 0.08,
+      "key_questionable_positions": [
+        "QB"
+      ],
+      "schedule_note": "game weeks: every 30 min Thu-Sun, every 10 min in the last 3 h before kickoff"
+    },
+    "notify": {
+      "ntfy_topic_env": "NTFY_TOPIC",
+      "discord_webhook_env": "DISCORD_WEBHOOK_URL",
+      "windows_toast": true
+    }
+  },
+  "games": 240,
+  "brier": 0.22148025416666664,
+  "log_loss": 0.633463907047661,
+  "mae_margin": 10.507591666666666,
+  "mae_total": 9.874408333333333,
+  "crps_margin": 7.542996450000004,
+  "crps_total": 7.230706650000002,
+  "crps_points": 5.302731791666666,
+  "bias_margin": -0.671875,
+  "bias_total": 0.3291916666666667,
+  "corr_margin_vs_spread": 0.7947155226377556,
+  "corr_total_vs_line": 0.7222709788054272,
+  "coverage_80_margin": 0.7958333333333333,
+  "coverage_80_total": 0.8125,
+  "coverage_80_points": 0.8041666666666667,
+  "sd_pred_margin": 4.647219234055458,
+  "sd_mkt_margin": 5.731155336671268,
+  "calibration": [
+    {
+      "bin": "0.2-0.3",
+      "n": 11,
+      "pred": 0.26890909090909093,
+      "actual": 0.2727272727272727
+    },
+    {
+      "bin": "0.3-0.4",
+      "n": 29,
+      "pred": 0.3542758620689655,
+      "actual": 0.2413793103448276
+    },
+    {
+      "bin": "0.4-0.5",
+      "n": 47,
+      "pred": 0.448404255319149,
+      "actual": 0.425531914893617
+    },
+    {
+      "bin": "0.5-0.6",
+      "n": 75,
+      "pred": 0.5497466666666668,
+      "actual": 0.56
+    },
+    {
+      "bin": "0.6-0.7",
+      "n": 50,
+      "pred": 0.65054,
+      "actual": 0.68
+    },
+    {
+      "bin": "0.7-0.8",
+      "n": 25,
+      "pred": 0.7412000000000001,
+      "actual": 0.76
+    },
+    {
+      "bin": "0.8-0.9",
+      "n": 3,
+      "pred": 0.8573333333333334,
+      "actual": 1.0
+    }
+  ],
+  "market": {
+    "games": 240,
+    "brier": 0.19326457606192335,
+    "log_loss": 0.5719378067723804,
+    "mae_margin": 9.552083333333334,
+    "mae_total": 9.791666666666666
+  },
+  "ats_pick_rate": 0.4978902953586498,
+  "runtime_seconds": 107.4,
+  "sims_per_game": 500
+}
