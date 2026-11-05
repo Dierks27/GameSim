@@ -19,7 +19,7 @@ import numpy as np
 import polars as pl
 
 from . import data as D
-from .config import Config, load_config
+from .config import Config
 from .engine import S
 from .metrics import crps_samples, ml_to_prob, summarize_games
 

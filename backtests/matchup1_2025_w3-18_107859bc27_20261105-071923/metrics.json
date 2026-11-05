@@ -1,0 +1,196 @@
+{
+  "label": "matchup1_2025_w3-18",
+  "config_hash": "107859bc27",
+  "config": {
+    "data": {
+      "cache_dir": "data/cache",
+      "refresh_hours": 12,
+      "seasons_back": 1,
+      "season_weights": [
+        1.0,
+        0.35
+      ],
+      "include_postseason": true,
+      "garbage_time": {
+        "quarters": [
+          4
+        ],
+        "wp_low": 0.05,
+        "wp_high": 0.95,
+        "apply_to_playcall": true
+      }
+    },
+    "kickoff_rules": {
+      "eras": {
+        "2023": "legacy",
+        "2024": "dk2024",
+        "2025": "dk2025",
+        "2026": "dk2026"
+      },
+      "default_era": "dk2026",
+      "min_era_kickoffs": 400,
+      "touchback_yardline": 35,
+      "landing_zone_touchback_yardline": 20,
+      "safety_kick_shift": 10
+    },
+    "sim": {
+      "n_sims": 2000,
+      "seed": 42,
+      "w_off": 0.5,
+      "min_bucket_n": 40,
+      "k_outcome": 60,
+      "k_presnap": 400,
+      "league_min_n": 40,
+      "td_censoring_fix": true,
+      "matchup_strength": 1.0,
+      "k_team_epa": 300
+    },
+    "playcall": {
+      "smoothing_m": 25,
+      "k_team_pass": 300,
+      "k_team_4th": 60,
+      "fg_min_make_prob": 0.3
+    },
+    "kicking": {
+      "k_kicker": 15,
+      "fg_seasons_back": 3,
+      "k_punter": 60,
+      "k_kickoff_team": 150,
+      "block_return_td_rate": 0.08
+    },
+    "two_point": {
+      "late_quarter": 4,
+      "chart": [
+        -2,
+        -5,
+        -10,
+        -13,
+        1,
+        5,
+        12
+      ],
+      "base_rate": 0.04
+    },
+    "clock": {
+      "hurry_q4_seconds": 300,
+      "hurry_q4_two_score_seconds": 600,
+      "hurry_q2_seconds": 120,
+      "milk_q4_seconds": 300,
+      "milk_q4_two_score_seconds": 600,
+      "def_timeout_seconds": 165,
+      "def_timeout_max_deficit": 16,
+      "off_timeout_seconds": 75,
+      "spike_seconds": 40,
+      "q2_kneel_seconds": 35,
+      "k_pace": 150,
+      "runoff_scale": 1.03
+    },
+    "qb": {
+      "k_qb": 100,
+      "backup_max_dropbacks": 150
+    },
+    "availability": {
+      "questionable_play_prob": 0.75,
+      "doubtful_out": true,
+      "doubtful_play_prob": 0.1,
+      "no_report_dnp_play_prob": 0.5,
+      "no_report_limited_play_prob": 0.95,
+      "practice_dnp_factor": 0.67,
+      "practice_full_factor": 1.15,
+      "stale_injury_hours": 24
+    },
+    "home_field": {
+      "tilt": 0.006
+    },
+    "overtime": {
+      "regular_season_minutes": 10,
+      "playoff_minutes": 15,
+      "coin_toss_winner_receives": 0.97
+    },
+    "players": {
+      "usage_games": 6,
+      "k_player_eff": 80,
+      "min_share": 0.01
+    },
+    "backtest": {
+      "out_dir": "backtests"
+    }
+  },
+  "games": 240,
+  "brier": 0.2130683333333333,
+  "log_loss": 0.6185071421803259,
+  "mae_margin": 10.172444444444443,
+  "mae_total": 10.59436111111111,
+  "crps_margin": 7.295838796296296,
+  "crps_total": 7.583434074074073,
+  "crps_points": 5.304024027777777,
+  "bias_margin": -1.216861111111111,
+  "bias_total": -1.0391666666666666,
+  "corr_margin_vs_spread": 0.8718655103277055,
+  "corr_total_vs_line": 0.6972417222546308,
+  "coverage_80_margin": 0.8458333333333333,
+  "coverage_80_total": 0.7958333333333333,
+  "coverage_80_points": 0.7916666666666666,
+  "sd_pred_margin": 6.256936436731834,
+  "sd_mkt_margin": 6.410399739984152,
+  "calibration": [
+    {
+      "bin": "0.1-0.2",
+      "n": 6,
+      "pred": 0.15888888888888889,
+      "actual": 0.0
+    },
+    {
+      "bin": "0.2-0.3",
+      "n": 17,
+      "pred": 0.25411764705882356,
+      "actual": 0.4411764705882353
+    },
+    {
+      "bin": "0.3-0.4",
+      "n": 44,
+      "pred": 0.358560606060606,
+      "actual": 0.3409090909090909
+    },
+    {
+      "bin": "0.4-0.5",
+      "n": 37,
+      "pred": 0.443063063063063,
+      "actual": 0.43243243243243246
+    },
+    {
+      "bin": "0.5-0.6",
+      "n": 56,
+      "pred": 0.5476190476190477,
+      "actual": 0.5178571428571429
+    },
+    {
+      "bin": "0.6-0.7",
+      "n": 41,
+      "pred": 0.6562195121951219,
+      "actual": 0.7317073170731707
+    },
+    {
+      "bin": "0.7-0.8",
+      "n": 26,
+      "pred": 0.7608974358974359,
+      "actual": 0.8846153846153846
+    },
+    {
+      "bin": "0.8-0.9",
+      "n": 13,
+      "pred": 0.8326923076923076,
+      "actual": 0.7692307692307693
+    }
+  ],
+  "market": {
+    "games": 240,
+    "brier": 0.21510852030550726,
+    "log_loss": 0.6177250863614488,
+    "mae_margin": 10.077083333333333,
+    "mae_total": 10.133333333333333
+  },
+  "ats_pick_rate": 0.5146443514644351,
+  "runtime_seconds": 69.9,
+  "sims_per_game": 300
+}

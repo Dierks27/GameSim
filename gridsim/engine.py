@@ -22,7 +22,7 @@ import time
 import numpy as np
 
 from . import buckets as B
-from .clock import T_HURRY, T_MILK, T_NORMAL, in_stop_window, tempo_of
+from .clock import T_HURRY, T_NORMAL, in_stop_window, tempo_of
 from .model import SimModel
 from .overtime import OTState
 from .pools import K_COMP, K_INC, K_PEN, K_RUN, K_SACK, K_SCR, km_extend, resolve, resolve_qb

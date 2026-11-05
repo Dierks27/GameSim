@@ -84,8 +84,34 @@ def week_slate(cfg: Config, season: int | None = None, week: int | None = None) 
     return season, week, list(g.iter_rows(named=True))
 
 
+def cache_path(req: RunRequest, cfg: Config) -> Path:
+    """Disk cache location for a request. The key includes the config hash and the contents of the week's
+    overrides file, so editing overrides (or the config) never returns a stale result."""
+    from .availability import default_overrides_path
+    from .data import current_season
+    season = req.season or current_season()
+    week = req.week
+    if week is None:
+        g = schedule_game(cfg, season, req.home.upper(), req.away.upper())
+        week = (g or {}).get("week")
+    ovp = Path(req.overrides_path) if req.overrides_path else default_overrides_path(cfg, season, week)
+    digest = hashlib.sha1(ovp.read_bytes()).hexdigest()[:8] if ovp.exists() else "none"
+    return cfg.resolve_path("out/cache") / f"{req.key(cfg.hash + digest)}.json"
+
+
+def cached_summary(req: RunRequest, cfg: Config) -> dict | None:
+    p = cache_path(req, cfg)
+    if p.exists():
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+    return None
+
+
 def run_game(req: RunRequest, cfg: Config | None = None, progress=None, verbose: bool = False,
-             use_cache: bool = True) -> dict:
+             use_cache: bool = True, refresh: bool = False) -> dict:
+    """use_cache: read and write the disk cache. refresh: skip reading it but still write the new result."""
     """Simulate one matchup and return the summary dict (see report.summarize)."""
     from .availability import build_availability
     from .data import current_season
@@ -96,9 +122,9 @@ def run_game(req: RunRequest, cfg: Config | None = None, progress=None, verbose:
     t0 = time.time()
     season = req.season or current_season()
     home, away = req.home.upper(), req.away.upper()
-    cache_path = cfg.resolve_path("out/cache") / f"{req.key(cfg.hash)}.json"
-    if use_cache and cache_path.exists() and not req.outs and not req.ins and req.season is not None:
-        return json.loads(cache_path.read_text())
+    cpath = cache_path(req, cfg)
+    if use_cache and not refresh and cpath.exists() and not req.outs and not req.ins and req.season is not None:
+        return json.loads(cpath.read_text())
 
     game = schedule_game(cfg, season, home, away, req.week)
     neutral = req.neutral or bool(game and game.get("location") == "Neutral")
@@ -146,11 +172,11 @@ def run_game(req: RunRequest, cfg: Config | None = None, progress=None, verbose:
     summ = summarize(res, spread, total, model.meta, cfg.hash, extra)
     summ["meta"]["total_seconds"] = round(time.time() - t0, 2)
     summ["request"] = {**req.__dict__, "season": season}
-    if use_cache:
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
+    if use_cache or refresh:
+        cpath.parent.mkdir(parents=True, exist_ok=True)
         from .report import to_json
-        to_json(summ, cache_path)
-        summ = json.loads(cache_path.read_text())
+        to_json(summ, cpath)
+        summ = json.loads(cpath.read_text())
     return summ
 
 

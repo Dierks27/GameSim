@@ -3,10 +3,8 @@ from __future__ import annotations
 
 import argparse
 import sys
-import time
 from pathlib import Path
 
-import polars as pl
 
 
 def _season_default() -> int:

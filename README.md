@@ -57,3 +57,35 @@ pytest -s                # everything, including the full-season sanity table (~
 
 See `DECISIONS.md` for the back-off chain, shrinkage, clock model, kickoff era rules and calibration notes,
 and `SCHEMA_NOTES.md` for the nflverse columns used.
+
+## GUI
+
+A browser GUI (Streamlit) sits on the same service layer as the CLI (`gridsim/api.py`), so the same matchup,
+sims and seed give identical numbers in the GUI and in `gridsim run`.
+
+* **Install**: the install steps above already include Streamlit and Plotly (`pip install -e ".[dev]"`).
+* **Start**: double-click **`Start GridSim.bat`** in the repo folder. It activates `.venv` if present, starts the
+  GUI on port 8501 and opens your browser at http://localhost:8501. Close the console window to stop it.
+  (Manual equivalent: `python -m streamlit run app\streamlit_app.py`.)
+* **Desktop shortcut**: right-click `Start GridSim.bat` → *Show more options* → *Send to* → *Desktop (create
+  shortcut)*. Optionally rename it and pick an icon under *Properties* → *Change Icon*.
+* **Phone / tablet**: on the same home network, open `http://<PC-LAN-IP>:8501` (find the IP with `ipconfig`,
+  "IPv4 Address", e.g. `http://192.168.1.23:8501`). The first start shows a **Windows Defender Firewall** prompt for
+  Python: allow it on **Private networks** (not Public), otherwise other devices cannot connect. There is no login,
+  so only do this on a network you trust.
+
+Pages:
+
+* **This Week**: the week's slate as cards: kickoff, market spread / total (home perspective) and, once simulated
+  at the sidebar's sims/seed, sim win % ± margin of error, fair spread and total, and the sim-vs-market gap.
+  "Sim this game" per card or "Sim all" (cached results are reused); sort by kickoff or biggest spread gap.
+* **Game**: one matchup in depth: win %, fair lines, market comparison, margin/total histograms, a cover
+  calculator for any spread or total you type (computed from the stored sims, no re-sim), alt lines, quarters,
+  team stat ranges, top scores, availability. The **Lineup** tab lets you rule players OUT, force them IN or pick the
+  starting QB; "Re-sim with these changes" writes them to the week's `overrides\<season>_wk<week>.yaml` (the same
+  file the CLI reads) and re-simulates. The Details tab shows the equivalent CLI command and downloads the HTML
+  report / JSON.
+
+The sidebar (season, week, sims per game, seed, player projections) applies to every page. Results are cached in
+`out\cache`; use "Re-simulate (ignore cache)" on the Game page after refreshing data or editing an overrides file
+by hand.

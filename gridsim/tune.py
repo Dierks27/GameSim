@@ -16,7 +16,7 @@ from pathlib import Path
 
 import yaml
 
-from .backtest import run_backtest, save_backtest
+from .backtest import run_backtest
 from .config import Config, load_config
 
 

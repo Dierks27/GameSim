@@ -1,0 +1,25 @@
+# gridsim GUI settings (read by `streamlit run` from the repo root, which Start GridSim.bat cd's into).
+
+[theme]
+base = "dark"
+primaryColor = "#3987e5"
+backgroundColor = "#0d0d0d"
+secondaryBackgroundColor = "#1a1a19"
+textColor = "#f0efec"
+font = "sans serif"
+
+[server]
+# 0.0.0.0 = reachable from other devices on the home network (phone: http://<PC-LAN-IP>:8501)
+address = "0.0.0.0"
+port = 8501
+headless = false        # open a browser tab on start
+runOnSave = false
+fileWatcherType = "none"
+
+[browser]
+serverAddress = "localhost"   # the tab opened on this PC uses localhost
+gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"
+showErrorDetails = true
