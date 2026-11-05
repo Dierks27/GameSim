@@ -62,7 +62,9 @@ _APP_CSS = """
 .gs .kv > div { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; min-width: 0; }
 .gs .kv .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
 .gs .kv .v { font-size: 21px; font-weight: 600; margin-top: 2px; overflow-wrap: anywhere; }
+.gs .kv .v small { font-size: 14px; color: var(--ink2); font-weight: 400; }
 .gs .kv .n { color: var(--ink2); font-size: 12.5px; margin-top: 2px; }
+.gs.lastleft td:last-child, .gs.lastleft th:last-child, .gs .lastleft td:last-child, .gs .lastleft th:last-child { text-align: left; white-space: normal; min-width: 220px; }
 .gs .readonly { display: inline-block; border: 1px solid var(--warn); color: var(--warn); border-radius: 999px;
   padding: 1px 10px; font-size: 12px; font-weight: 600; letter-spacing: .03em; vertical-align: middle; margin-left: 6px; }
 """
@@ -381,26 +383,66 @@ def capture_output(placeholder, keep_lines: int = 6):
     return contextlib.redirect_stdout(_Tee(placeholder, keep_lines))
 
 
+def _nice_width(span: float, target_bins: int = 45) -> int:
+    raw = span / target_bins
+    for w in (1, 2, 5, 10, 20, 25, 50, 100):
+        if raw <= w:
+            return w
+    return 100
+
+
 def stat_figure(hist: dict, line: float | None, xlabel: str, height: int = 300):
-    """Per-sim distribution of one player stat (values/counts), split over / under / push at `line`."""
+    """Per-sim distribution of one player stat (values/counts), split over / under / push at `line`.
+    Wide stats (yards) are drawn in bins anchored at the line so no bar straddles it; the over / under
+    numbers on the page are always counted from the raw per-sim values."""
+    import math
     import plotly.graph_objects as go
     C = hr.C
-    n = sum(hist["counts"]) or 1
+    vals, cnts = hist["values"], hist["counts"]
+    n = sum(cnts) or 1
+    vmin, vmax = (min(vals), max(vals)) if vals else (0, 0)
+    w = _nice_width(vmax - vmin)
     fig = go.Figure()
-    hover = f"{xlabel} %{{x}}<br>%{{y:.1f}}% of sims (%{{customdata}})<extra></extra>"
-    groups = {"u": ([], [], []), "o": ([], [], []), "p": ([], [], [])}
-    for v, c in zip(hist["values"], hist["counts"]):
-        key = "p" if line is not None and v == line else ("o" if line is not None and v > line else "u")
+    groups = {"u": {}, "o": {}, "p": {}}
+    for v, c in zip(vals, cnts):
+        if line is None:
+            key, x, lab = "u", v, f"{v}"
+            if w > 1:
+                b = math.floor(v / w)
+                x, lab = (b + 0.5) * w, f"{b * w}–{b * w + w - 1}"
+        elif v == line:
+            key, x, lab = "p", v, f"{v:g}"
+        elif w == 1:
+            key, x, lab = ("o" if v > line else "u"), v, f"{v}"
+        else:
+            k = math.ceil(abs(v - line) / w) - 1
+            key = "o" if v > line else "u"
+            x = line + (k + 0.5) * w if key == "o" else line - (k + 0.5) * w
+            if key == "o":      # (line + k*w, line + (k+1)*w]
+                lo, hi = math.floor(line + k * w) + 1, math.floor(line + (k + 1) * w)
+            else:               # [line - (k+1)*w, line - k*w)
+                lo, hi = math.ceil(line - (k + 1) * w), math.ceil(line - k * w) - 1
+            lo, hi = max(lo, vmin), min(hi, vmax)
+            lab = f"{lo}–{hi}" if hi > lo else f"{lo}"
+        d = groups[key].setdefault(x, [0, lab])
+        d[0] += c
+    hover = f"{xlabel} %{{customdata[0]}}<br>%{{y:.1f}}% of sims (%{{customdata[1]}})<extra></extra>"
+
+    def add(key, name, color):
         g = groups[key]
-        g[0].append(v); g[1].append(100 * c / n); g[2].append(c)  # noqa: E702
+        xs = sorted(g)
+        hr._bars(fig, xs, [100 * g[x][0] / n for x in xs], [[g[x][1], g[x][0]] for x in xs], name, color, hover)
     if line is None:
-        hr._bars(fig, *groups["u"], xlabel, C["home"], hover)
+        add("u", xlabel, C["home"])
         fig.update_layout(showlegend=False)
     else:
-        hr._bars(fig, *groups["u"], f"Under {line:g}", C["under"], hover)
-        hr._bars(fig, *groups["o"], f"Over {line:g}", C["over"], hover)
-        hr._bars(fig, *groups["p"], "Push", C["neutral"], hover)
-    hr._layout(fig, xlabel, height)
+        add("u", f"Under {line:g}", C["under"])
+        add("o", f"Over {line:g}", C["over"])
+        add("p", "Push", C["neutral"])
+    hr._layout(fig, xlabel + (f" (bins of {w})" if w > 1 else ""), height)
+    if w > 1:
+        fig.update_traces(width=w * 0.86)
+        fig.update_layout(bargap=0.05)
     if line is not None:
         hr._line_marker(fig, float(line), f"{line:g}")
     return fig
@@ -458,7 +500,8 @@ def tvalue_figure(components: list[dict], height: int | None = None):
         hovertemplate="%{y}<br>%{x:+.1f} SE<br>sim %{customdata[0]:.3g} vs actual %{customdata[1]:.3g}"
                       " (%{customdata[2]:+.1f}%)<extra></extra>"))
     hr._layout(fig, "Bias in standard errors (sim − actual)", height or max(260, 22 * len(comp) + 80))
-    fig.update_yaxes(title=None, ticksuffix="", autorange="reversed", tickfont=dict(color=C["ink2"]))
+    fig.update_yaxes(title=None, ticksuffix="", autorange="reversed", tickfont=dict(color=C["ink2"]), automargin=True,
+                     showgrid=False)
     fig.update_xaxes(showgrid=True, zeroline=True, zerolinecolor=C["axis"])
     for x in (-2, 2):
         fig.add_vline(x=x, line=dict(color=C["muted"], width=1, dash="dot"))
@@ -479,6 +522,17 @@ def kv_html(items: list[tuple]) -> str:
         cells.append(f'<div><div class="k">{hr.esc(k)}</div><div class="v">{v}</div>'
                      + (f'<div class="n">{n}</div>' if n else "") + "</div>")
     return f'<div class="gs"><div class="kv">{"".join(cells)}</div></div>'
+
+
+def pm_value(p: float, m: float) -> str:
+    """Tile value '48.7% ± 5.7' (the ± part small)."""
+    return f"{100 * p:.1f}%<small> ± {100 * m:.1f}</small>"
+
+
+def close_note(p: float, m: float, extra: str = "") -> str:
+    """Tile note: the too-close flag when p is within its MOE of 50%, then `extra`."""
+    flag = f'<span class="close">{hr.CLOSE_TEXT}</span>' if abs(p - 0.5) <= m else ""
+    return " · ".join(x for x in (flag, extra) if x)
 
 
 def pm_span(p: float, m: float) -> str:

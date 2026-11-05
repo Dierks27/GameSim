@@ -32,10 +32,12 @@ if go:
     with st.status("Scanning Kalshi markets …", expanded=True) as status:
         st.write("Pricing every upcoming game of the week against its sim (re-simulating games whose sim is "
                  f"older than {cfg.scanner['max_sim_age_hours']} h).")
+        bar = st.progress(0.0, text="starting …")
         log = st.empty()
         try:
             with common.capture_output(log, keep_lines=8):
-                sigs = scanner.scan(cfg, s["season"], s["week"], notify_on=False, sims=s["sims"], verbose=True)
+                sigs = scanner.scan(cfg, s["season"], s["week"], notify_on=False, sims=s["sims"], verbose=True,
+                                    progress=lambda f, t: bar.progress(min(max(f, 0.0), 1.0), text=t))
             ss["signals_scan"] = {"ts": dt.datetime.now().strftime("%Y-%m-%d %H:%M"), "signals": sigs}
             strong = sum(x["confidence"] == "strong" for x in sigs)
             mod = sum(x["confidence"] == "moderate" for x in sigs)

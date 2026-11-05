@@ -124,7 +124,8 @@ n = summ["n_sims"]
 j = res["joint"]
 lift = res.get("correlation_lift")
 st.html(common.kv_html([
-    ("Joint (from sims)", common.pm_span(j["p"], j["moe"]), f"{round(j['p'] * n):,} of {n:,} sims hit every leg"),
+    ("Joint (from sims)", common.pm_value(j["p"], j["moe"]),
+     common.close_note(j["p"], j["moe"], f"{round(j['p'] * n):,} of {n:,} sims hit every leg")),
     ("Naive product", hr.esc(hr.pct(res["naive"])), "legs treated as independent"),
     ("Correlation lift", f"×{lift:.2f}" if lift else "–",
      ("legs help each other" if lift and lift > 1.02 else "legs work against each other" if lift and lift < 0.98

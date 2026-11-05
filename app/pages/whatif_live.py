@@ -96,10 +96,10 @@ with tab_w:
                        f"carries up to ± {mo:.1f} pts of simulation error.")
             shifts = r.get("usage_shifts") or []
             if shifts:
-                rows = [[hr.esc(x["team"]), hr.esc(x["player"]), f"{x['d_targets']:+.2f}", f"{x['d_carries']:+.2f}",
+                rows = [[f"{hr.esc(x['player'])} <span class='muted'>{hr.esc(x['team'])}</span>", f"{x['d_targets']:+.2f}", f"{x['d_carries']:+.2f}",
                          f"{x['d_rec_yds']:+.1f}", f"{x['d_rush_yds']:+.1f}", f"{x['d_pass_yds']:+.1f}"] for x in shifts]
                 st.html('<div class="gs card"><h2>Usage shifts (per game, without − with)</h2>'
-                        + hr.table_html(["Team", "Player", "Targets", "Carries", "Rec yds", "Rush yds", "Pass yds"], rows)
+                        + hr.table_html(["Player", "Targets", "Carries", "Rec yds", "Rush yds", "Pass yds"], rows)
                         + "</div>")
             else:
                 st.caption("No teammate's usage moved by 0.3 or more (or player projections were off).")
@@ -127,11 +127,12 @@ with tab_l:
     poss = H if sit.startswith("home") else A
     down, dist, side, yard = 1, 10, None, 25
     if not kick:
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c2b, c3, c4 = st.columns([3, 3, 2, 3, 3], vertical_alignment="bottom")
         down = c1.selectbox("Down", [1, 2, 3, 4], format_func=lambda d: {1: "1st", 2: "2nd", 3: "3rd", 4: "4th"}[d],
                             key=common.keep("lv_down", 1))
-        goal = c2.toggle("& goal", key=common.keep("lv_goal", False))
-        dist = "goal" if goal else c2.number_input("Distance", 1, 99, step=1, key=common.keep("lv_dist", 10))
+        goal = c2b.toggle("& goal", key=common.keep("lv_goal", False))
+        dist_in = c2.number_input("Distance", 1, 99, step=1, key=common.keep("lv_dist", 10), disabled=goal)
+        dist = "goal" if goal else dist_in
         side_lbl = {"home": f"{H} side", "away": f"{A} side", "mid": "Midfield (50)"}
         sd = c3.selectbox("Ball on", list(side_lbl), format_func=side_lbl.get, key=common.keep("lv_side", "home"))
         if sd == "mid":

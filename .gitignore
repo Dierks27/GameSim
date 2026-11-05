@@ -10,3 +10,4 @@ dist/
 .env
 *.bak
 signals/alert_state.json
+signals/

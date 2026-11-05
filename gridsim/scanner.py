@@ -105,7 +105,7 @@ def evaluate(cfg: Config, summ: dict, rows: list[dict], trust: dict, sim_age_h: 
 
 
 def scan(cfg: Config, season: int | None = None, week: int | None = None, notify_on: bool = False,
-         sims: int | None = None, verbose: bool = True) -> list[dict]:
+         sims: int | None = None, verbose: bool = True, progress=None) -> list[dict]:
     from .live import kickoff_utc
     season, week, games = week_slate(cfg, season, week)
     k = Kalshi(cfg)
@@ -114,7 +114,9 @@ def scan(cfg: Config, season: int | None = None, week: int | None = None, notify
     state = json.loads(state_p.read_text()) if state_p.exists() else {}
     now = dt.datetime.now(dt.timezone.utc)
     all_sigs = []
-    for g in games:
+    for gi, g in enumerate(games):
+        if progress:
+            progress(gi / max(len(games), 1), f"{g['away_team']} @ {g['home_team']}")
         if g.get("home_score") is not None:
             continue
         ko = kickoff_utc(g)
@@ -190,6 +192,8 @@ def scan(cfg: Config, season: int | None = None, week: int | None = None, notify
         alerts.append({"gone": k_})
         state.pop(k_)
     state_p.write_text(json.dumps(state, indent=1))
+    if progress:
+        progress(1.0, "done")
     if notify_on and alerts:
         from .notify import send
         for a in alerts:

@@ -266,16 +266,27 @@ def _split_comment(rest: str) -> tuple[int, int, str]:
     A comment starts at '#' that is outside quotes and at the start or preceded by whitespace (YAML rule)."""
     quote = None
     cpos = None
-    for i, ch in enumerate(rest):
-        if quote:
-            if ch == quote:
+    i = 0
+    while i < len(rest):
+        ch = rest[i]
+        if quote == '"':
+            if ch == "\\":
+                i += 2                                   # escaped char inside a double-quoted scalar
+                continue
+            if ch == '"':
                 quote = None
-            continue
-        if ch in "\"'" and (i == 0 or rest[:i].strip() == ""):
+        elif quote == "'":
+            if ch == "'":
+                if rest[i + 1:i + 2] == "'":             # '' is an escaped quote inside a single-quoted scalar
+                    i += 2
+                    continue
+                quote = None
+        elif ch in "\"'" and rest[:i].strip() == "":
             quote = ch
         elif ch == "#" and (i == 0 or rest[i - 1] in " \t"):
             cpos = i
             break
+        i += 1
     val_part = rest if cpos is None else rest[:cpos]
     lead = len(val_part) - len(val_part.lstrip())
     vs, ve = lead, len(val_part.rstrip())
@@ -439,7 +450,16 @@ def rewrite_config(text: str, changes: dict[tuple, object]) -> str:
         _set_path(before, tuple(path), int(new) if entries[tuple(path)]["kind"] == "int" else new)
     if before != after:
         raise ValueError("rewrite check failed: the edited file does not parse to the expected values")
+    new_entries = {e["path"]: e for e in parse_config(out)}
+    for path in changes:                                # same comment, value text alone round-trips
+        a, b = entries[tuple(path)], new_entries.get(tuple(path))
+        if b is None or b["comment"] != a["comment"] or b["value"] != _get_after(after, path):
+            raise ValueError(f"rewrite check failed on {'.'.join(path)}")
     return out
+
+
+def _get_after(d, path):
+    return get_path(d, tuple(path))
 
 
 def save_config(path: Path, changes: dict[tuple, object], backup_suffix: str = ".bak") -> Path:

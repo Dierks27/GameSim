@@ -79,7 +79,7 @@ with tabs[0]:
         rows = [[hr.esc(c["component"]), f"{c['sim']:.3g}", f"{c['actual']:.3g}", f"{c['bias']:+.3g}",
                  f"{100 * c.get('rel_bias', 0):+.1f}%", f"{c['t']:+.1f}", f'<span class="ink2">{hr.esc(c.get("points_to", ""))}</span>']
                 for c in comp]
-        st.html('<div class="gs card"><h2>Component scorecard</h2>'
+        st.html('<div class="gs card lastleft"><h2>Component scorecard</h2>'
                 + hr.table_html(["Component", "Sim", "Actual", "Bias", "Rel.", "t (SE)", "Points to"], rows,
                                 hl={i for i, c in enumerate(comp) if helpers.is_flag(c.get("flag"))}, wrap=True) + "</div>")
 with tabs[1]:

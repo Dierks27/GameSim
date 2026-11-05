@@ -89,7 +89,7 @@ label = PROP_STATS[stat]
 if stat == "anytime_td":
     pt = float(p.get("anytime_td") or 0.0)
     m = moe(pt, n)
-    st.html(common.kv_html([("Anytime TD", common.pm_span(pt, m), f"fair {american(pt)}"),
+    st.html(common.kv_html([("Anytime TD", common.pm_value(pt, m), common.close_note(pt, m, f"fair {american(pt)}")),
                             ("No TD", hr.esc(hr.pct(1 - pt)), f"fair {american(1 - pt)}")]))
     st.caption("Share of sims in which the player scored a rushing or receiving touchdown.")
 else:
@@ -119,7 +119,7 @@ else:
         ss[canon] = float(ss[src])
 
     c1, c2 = st.columns([4, 1], vertical_alignment="bottom")
-    c1.slider(f"Line — {name} {label}", 0.0, hi, step=0.5, key="props_sl", on_change=_from, args=("props_sl",))
+    c1.slider(f"Line — {name} {label}", 0.0, hi, step=0.5, format="%.1f", key="props_sl", on_change=_from, args=("props_sl",))
     c2.number_input("Line", 0.0, hi, step=0.5, format="%.1f", key="props_ni", on_change=_from, args=("props_ni",))
     line = float(ss[canon])
 
@@ -127,8 +127,9 @@ else:
         r = cover_from_hist(hist, line, "total")       # value > line = over, == line = push
         over, under, push = r["hit"], r["miss"], r["push"]
         m_over, m_under = r["moe"], moe(under, n)
-        tiles = [(f"Over {line:g}", common.pm_span(over, m_over), f"fair {american(over)}"),
-                 (f"Under {line:g}", common.pm_span(under, m_under), f"fair {american(under)}")]
+        tiles = [(f"Over {line:g}", common.pm_value(over, m_over), common.close_note(over, m_over, f"fair {american(over)}")),
+                 (f"Under {line:g}", common.pm_value(under, m_under),
+                  common.close_note(under, m_under, f"fair {american(under)}"))]
         if push > 0:
             tiles.append(("Push", hr.esc(hr.pct(push)), ""))
         if pct_stats:
