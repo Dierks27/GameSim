@@ -48,7 +48,8 @@ QIDX = {1: Q1, 2: Q2, 3: Q3, 4: Q4}
 class GameSim:
     def __init__(self, model: SimModel, home: str, away: str, neutral: bool = False, playoff: bool = False,
                  seed: int = 42, players=None, availability=None, starters: tuple | None = None,
-                 start_state: dict | None = None, weather: dict | None = None, edge: tuple | None = None):
+                 start_state: dict | None = None, weather: dict | None = None, edge: tuple | None = None,
+                 onoff: dict | None = None):
         for t in (home, away):
             if t not in model.teams:
                 raise ValueError(f"unknown team {t!r}; known: {', '.join(model.teams)}")
@@ -66,6 +67,8 @@ class GameSim:
         self.start_state = start_state       # optional live state (gridsim.state.parse_state)
         self.wx = weather or {"fg_wind": 0.0, "fg_const": 0.0, "pass_epa": 0.0}
         self.edge = tuple(edge) if edge else (0.0, 0.0)   # rest/travel EPA shift per offense (home, away)
+        self.onoff = onoff or {}                           # pid -> (team idx, EPA shift when he is out)
+        self.avail_shift = [0.0, 0.0]
         self.k_qb = float(self.cfg.qb["k_qb"])
         self.m_strength = float(self.cfg.sim.get("matchup_strength", 0.0))
         self.k_epa = float(self.cfg.sim.get("k_team_epa", 300))
@@ -176,6 +179,11 @@ class GameSim:
         if self.avail is not None:
             qbs, self.active = self.avail.roll(self.u)
             self.qb = [qbs[0] or self.starters[0], qbs[1] or self.starters[1]]
+        self.avail_shift = [0.0, 0.0]
+        if self.onoff and self.active:
+            for pid, (ti, eff) in self.onoff.items():
+                if pid in self.active.get(self.teams[ti], ()):
+                    self.avail_shift[ti] += eff
         for t in (0, 1):
             self.qb_starts[t][self.qb[t]] = self.qb_starts[t].get(self.qb[t], 0) + 1
         if self.players is not None:
@@ -714,6 +722,11 @@ class GameSim:
         off = self.pos
         lam = (self.matchup_lambda(off, call)
                if (self.m_strength > 0 or self.wx["pass_epa"] != 0.0 or self.edge[off] != 0.0 or self.score_fx) else 0.0)
+        if self.avail_shift[off]:
+            qb = self.qb[off] if call == "pass" else None
+            if (off, call, qb) not in self.lam_slope:
+                lam = self.matchup_lambda(off, call)
+            lam += self.avail_shift[off] * self.lam_slope.get((off, call, qb), 0.0)
         if self.score_fx:
             phase = 0 if self.qtr <= 2 else (1 if self.qtr == 3 else 2)
             d = self.score[off] - self.score[1 - off]
@@ -960,10 +973,11 @@ class SimResults:
 def simulate(model: SimModel, home: str, away: str, n_sims: int, seed: int, neutral: bool = False,
              playoff: bool = False, players=None, availability=None, starters: tuple | None = None,
              progress=None, start_state: dict | None = None, weather: dict | None = None,
-             edge: tuple | None = None) -> SimResults:
+             edge: tuple | None = None, onoff: dict | None = None) -> SimResults:
     t0 = time.time()
     g = GameSim(model, home, away, neutral=neutral, playoff=playoff, seed=seed, players=players,
-                availability=availability, starters=starters, start_state=start_state, weather=weather, edge=edge)
+                availability=availability, starters=starters, start_state=start_state, weather=weather, edge=edge,
+                onoff=onoff)
     out = np.zeros((n_sims, 2, NS), dtype=np.float64)
     for i in range(n_sims):
         h, a, _ = g.play_game()

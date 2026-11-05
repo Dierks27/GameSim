@@ -123,6 +123,8 @@ players:
   usage_games: 6               # recent games used for usage shares
   k_player_eff: 80             # shrinkage of per-player yards-per-touch efficiency (touches)
   min_share: 0.01
+  onoff_strength: 0.5          # team-efficiency effect of a missing RB/WR/TE (with/without split); 0 disables
+  k_onoff: 1500                # shrinkage (plays without the player) of the on/off EPA split
 
 backtest:
   out_dir: backtests

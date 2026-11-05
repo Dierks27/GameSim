@@ -415,3 +415,36 @@ def _depth_ranks(cfg, season: int, team: str) -> dict:
             if gid and gid not in out:
                 out[gid] = (pos, i)
     return out
+
+
+def onoff_effects(win: pl.DataFrame, team: str, player_ids: list[str], k: float, min_share: float = 0.08) -> dict:
+    """Team offensive EPA/play with vs without each player (games after his first appearance for the team),
+    shrunk: effect = n_without/(n_without + k) * (epa_without - epa_with). Negative = the offense is worse
+    without him. Only players with a meaningful role (>= min_share of opportunities when active) qualify."""
+    t = win.filter((pl.col("posteam") == team) & pl.col("call").is_not_null() & pl.col("epa").is_not_null()
+                   & pl.col("down").is_not_null())
+    if t.height == 0:
+        return {}
+    t = t.with_columns(e=pl.col("epa").clip(-4, 4))
+    games = t.select(["game_id", "season", "week"]).unique().sort(["season", "week"])
+    order = {g: i for i, g in enumerate(games["game_id"].to_list())}
+    out = {}
+    for pid in player_ids:
+        inv = t.filter((pl.col("receiver_player_id") == pid) | (pl.col("rusher_player_id") == pid))
+        if inv.height == 0:
+            continue
+        with_g = set(inv["game_id"].unique().to_list())
+        first = min(order[g] for g in with_g)
+        share = inv.height / max(t.filter(pl.col("game_id").is_in(list(with_g))).height, 1)
+        if share < min_share:
+            continue
+        after = t.filter(pl.col("game_id").replace_strict(order, return_dtype=pl.Int64) >= first)
+        w = after.filter(pl.col("game_id").is_in(list(with_g)))
+        wo = after.filter(~pl.col("game_id").is_in(list(with_g)))
+        if wo.height == 0:
+            continue
+        ew = float((w["e"] * w["w"]).sum() / w["w"].sum())
+        eo = float((wo["e"] * wo["w"]).sum() / wo["w"].sum())
+        n = float(wo["w"].sum())
+        out[pid] = round(n / (n + k) * (eo - ew), 6)
+    return out

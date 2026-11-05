@@ -153,6 +153,20 @@ def run_game(req: RunRequest, cfg: Config | None = None, progress=None, verbose:
                                    game_date=(game or {}).get("gameday"), verbose=verbose)
         avail_info = avail.describe()
         banners += avail.banners
+    onoff = None
+    if avail is not None and float(cfg.players.get("onoff_strength", 0.0)) > 0:
+        from . import data as D
+        from .model import _with_weights
+        from .players import onoff_effects
+        plays = _MODEL_CACHE.get(("plays", season))
+        if plays is not None:
+            wts = D.season_weights(season, cfg)
+            win = _with_weights(D.window_filter(plays, season, req.through_week, list(wts)), wts)
+            onoff = {}
+            for ti, ta in enumerate(avail.teams):
+                cands = [pid for pid, ps in ta.players.items() if ps.p_play < 1 and ps.pos in ("RB", "WR", "TE")]
+                for pid, eff in onoff_effects(win, ta.team, cands, float(cfg.players.get("k_onoff", 1500))).items():
+                    onoff[pid] = (ti, eff * float(cfg.players["onoff_strength"]))
     players = None
     if req.use_players:
         try:
@@ -189,7 +203,8 @@ def run_game(req: RunRequest, cfg: Config | None = None, progress=None, verbose:
     if te["detail"]:
         banners.append(f"rest/travel: {', '.join(te['detail'])} -> home edge {te['home_pts']:+.2f} pts")
     res = simulate(model, home, away, n, seed, neutral=neutral, playoff=req.playoff, players=players,
-                   availability=avail, progress=progress, start_state=start_state, weather=wx_adj, edge=te["epa"])
+                   availability=avail, progress=progress, start_state=start_state, weather=wx_adj, edge=te["epa"],
+                   onoff=onoff)
     extra = {"banners": banners, "game": {k: game.get(k) for k in ("game_id", "gameday", "gametime", "week", "roof",
                                                                   "stadium", "location")} if game else None}
     if market:
