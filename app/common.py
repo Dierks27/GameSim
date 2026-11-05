@@ -23,6 +23,14 @@ from gridsim.report import moe  # noqa: E402
 SKILL_POS = ("QB", "RB", "FB", "WR", "TE", "K")
 GAME_PAGE = "pages/game.py"
 WEEK_PAGE = "pages/this_week.py"
+PROPS_PAGE = "pages/props.py"
+PARLAY_PAGE = "pages/parlay.py"
+WHATIF_PAGE = "pages/whatif_live.py"
+SIGNALS_PAGE = "pages/signals.py"
+SCORECARD_PAGE = "pages/scorecard.py"
+DIAGNOSE_PAGE = "pages/diagnose.py"
+SETTINGS_PAGE = "pages/settings.py"
+KEEP = "p_"   # widget keys starting with this survive page switches (re-asserted in streamlit_app.py)
 
 
 def cfg():
@@ -44,6 +52,19 @@ _APP_CSS = """
 .gs .gc-gap { color: var(--ink); font-weight: 600; }
 .gs .gc-none { color: var(--muted); font-size: 13px; font-style: italic; }
 .gs .final { color: var(--ink2); font-size: 13px; }
+.gs .callout { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--warn);
+  border-radius: 0 12px 12px 0; padding: 12px 16px; margin: 4px 0 12px; }
+.gs .callout h2 { margin: 0 0 6px; }
+.gs .callout ol, .gs .callout ul { margin: 0; padding-left: 20px; }
+.gs .callout li { margin: 4px 0; }
+.gs .big { font-size: 26px; font-weight: 650; line-height: 1.2; }
+.gs .kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 8px 0 4px; }
+.gs .kv > div { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+.gs .kv .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.gs .kv .v { font-size: 21px; font-weight: 600; margin-top: 2px; overflow-wrap: anywhere; }
+.gs .kv .n { color: var(--ink2); font-size: 12.5px; margin-top: 2px; }
+.gs .readonly { display: inline-block; border: 1px solid var(--warn); color: var(--warn); border-radius: 999px;
+  padding: 1px 10px; font-size: 12px; font-weight: 600; letter-spacing: .03em; vertical-align: middle; margin-left: 6px; }
 """
 
 
@@ -132,6 +153,11 @@ def run(req: api.RunRequest, force: bool = False, bar=None, label: str | None = 
         if own_bar:
             bar.empty()
         st.error(str(e))
+        return None
+    except Exception as e:  # never crash the page on a data / network problem
+        if own_bar:
+            bar.empty()
+        st.error(f"{label}: simulation failed — {type(e).__name__}: {e}")
         return None
     _results()[req_key(req)] = summ
     if own_bar:
@@ -242,3 +268,219 @@ def open_game(home: str, away: str, season: int, week: int | None) -> None:
     st.session_state["game_pick"] = {"home": home, "away": away, "season": season, "week": week}
     st.session_state["game_pick_new"] = True
     st.switch_page(GAME_PAGE)
+
+
+# ---- shared building blocks for the analysis pages ------------------------------------------------------
+
+CUSTOM = "__custom__"
+
+
+def keep(name: str, default) -> str:
+    """Session-state key for a widget whose value should survive page switches (see streamlit_app.py).
+    Create the widget WITHOUT value=/index= and pass key=keep(...)."""
+    k = KEEP + name
+    if k not in st.session_state:
+        st.session_state[k] = default
+    return k
+
+
+def pick_game(prefix: str, label: str | None = None) -> dict:
+    """The Game page's matchup picker (slate games + "Any matchup …"), shared selection via
+    session_state["game_pick"] so every page opens on the last game looked at."""
+    s = settings()
+    ss = st.session_state
+    try:
+        season, week, games = slate(s["season"], s["week"])
+    except Exception:
+        season, week, games = s["season"], s["week"], []
+    by_id = {g["game_id"]: g for g in games}
+    pick = ss.get("game_pick")
+    default_id = None
+    if pick:
+        default_id = next((g["game_id"] for g in games if g["home_team"] == pick["home"] and g["away_team"] == pick["away"]
+                           and pick.get("season") == season), CUSTOM)
+    options = list(by_id) + [CUSTOM]
+
+    def _label(gid):
+        if gid == CUSTOM:
+            return "Any matchup …"
+        g = by_id[gid]
+        return f"{g['away_team']} @ {g['home_team']} · {hr.kickoff_text(g.get('gameday'), g.get('gametime'))}"
+
+    key = f"{prefix}_choice"
+    if ss.get(key) not in options:
+        ss[key] = default_id if default_id in options else options[0]
+    choice = st.selectbox(label or f"Game ({season} week {week})", options, format_func=_label, key=key)
+    neutral = playoff = False
+    game = None
+    if choice == CUSTOM:
+        teams = schedule_index().get(season, {}).get("teams") or sorted({g["home_team"] for g in games})
+        c1, c2, c3, c4 = st.columns([2, 2, 1, 1], vertical_alignment="bottom")
+        ph = pick.get("home") if pick and default_id == CUSTOM else None
+        pa = pick.get("away") if pick and default_id == CUSTOM else None
+        if ss.get(f"{prefix}_away") not in teams:
+            ss[f"{prefix}_away"] = pa if pa in teams else teams[0]
+        if ss.get(f"{prefix}_home") not in teams:
+            ss[f"{prefix}_home"] = ph if ph in teams else teams[1]
+        away = c1.selectbox("Away", teams, key=f"{prefix}_away")
+        home = c2.selectbox("Home", teams, key=f"{prefix}_home")
+        neutral = c3.toggle("Neutral", key=f"{prefix}_neutral")
+        playoff = c4.toggle("Playoff", key=f"{prefix}_playoff")
+        gweek = None
+        if home == away:
+            st.warning("Pick two different teams.")
+            st.stop()
+    else:
+        game = by_id[choice]
+        home, away, gweek = game["home_team"], game["away_team"], week
+    ss["game_pick"] = {"home": home, "away": away, "season": season, "week": gweek}
+    return {"home": home, "away": away, "season": season, "week": gweek, "slate_week": week, "neutral": neutral,
+            "playoff": playoff, "game": game}
+
+
+def page_header(title: str, sub: str = "") -> None:
+    st.html(f'<div class="gs"><h1>{hr.esc(title)}</h1>' + (f'<p class="sub">{sub}</p>' if sub else "") + "</div>")
+
+
+def callout(html_body: str, tone: str = "warn") -> None:
+    """Highlighted card (left accent bar). tone: warn | home | good."""
+    color = {"warn": hr.C["warn"], "home": hr.C["home"], "good": hr.C["good"], "away": hr.C["away"]}.get(tone, tone)
+    st.html(f'<div class="gs"><div class="callout" style="border-left-color:{color}">{html_body}</div></div>')
+
+
+class _Tee:
+    """stdout tee that mirrors the library's progress prints into a Streamlit placeholder."""
+
+    def __init__(self, placeholder, keep_lines: int = 6):
+        self.ph, self.keep_lines, self.buf, self.lines = placeholder, keep_lines, "", []
+
+    def write(self, s):
+        try:
+            sys.__stdout__.write(s)
+        except Exception:
+            pass
+        self.buf += s
+        while "\n" in self.buf:
+            line, self.buf = self.buf.split("\n", 1)
+            if line.strip():
+                self.lines.append(line.rstrip())
+        try:
+            if self.lines:
+                self.ph.code("\n".join(self.lines[-self.keep_lines:]), language=None)
+        except Exception:      # printed from a thread without a Streamlit context
+            pass
+        return len(s)
+
+    def flush(self):
+        pass
+
+
+def capture_output(placeholder, keep_lines: int = 6):
+    """with capture_output(st.empty()): long_library_call()  -> shows the last printed lines live."""
+    import contextlib
+    return contextlib.redirect_stdout(_Tee(placeholder, keep_lines))
+
+
+def stat_figure(hist: dict, line: float | None, xlabel: str, height: int = 300):
+    """Per-sim distribution of one player stat (values/counts), split over / under / push at `line`."""
+    import plotly.graph_objects as go
+    C = hr.C
+    n = sum(hist["counts"]) or 1
+    fig = go.Figure()
+    hover = f"{xlabel} %{{x}}<br>%{{y:.1f}}% of sims (%{{customdata}})<extra></extra>"
+    groups = {"u": ([], [], []), "o": ([], [], []), "p": ([], [], [])}
+    for v, c in zip(hist["values"], hist["counts"]):
+        key = "p" if line is not None and v == line else ("o" if line is not None and v > line else "u")
+        g = groups[key]
+        g[0].append(v); g[1].append(100 * c / n); g[2].append(c)  # noqa: E702
+    if line is None:
+        hr._bars(fig, *groups["u"], xlabel, C["home"], hover)
+        fig.update_layout(showlegend=False)
+    else:
+        hr._bars(fig, *groups["u"], f"Under {line:g}", C["under"], hover)
+        hr._bars(fig, *groups["o"], f"Over {line:g}", C["over"], hover)
+        hr._bars(fig, *groups["p"], "Push", C["neutral"], hover)
+    hr._layout(fig, xlabel, height)
+    if line is not None:
+        hr._line_marker(fig, float(line), f"{line:g}")
+    return fig
+
+
+def percentile_figure(stats: dict, line: float | None, xlabel: str, height: int = 170):
+    """Fallback when no per-sim histogram is stored: the five stored percentiles as a range strip."""
+    import plotly.graph_objects as go
+    C = hr.C
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=[stats["p10"], stats["p90"]], y=[0, 0], mode="lines", line=dict(color=C["axis"], width=10),
+                             hoverinfo="skip", showlegend=False))
+    fig.add_trace(go.Scatter(x=[stats["p25"], stats["p75"]], y=[0, 0], mode="lines", line=dict(color=C["home"], width=18),
+                             hoverinfo="skip", showlegend=False))
+    xs = [stats[k] for k in ("p10", "p25", "p50", "p75", "p90")]
+    fig.add_trace(go.Scatter(x=xs, y=[0] * 5, mode="markers+text", text=["p10", "p25", "p50", "p75", "p90"],
+                             textposition="top center", marker=dict(color=C["ink"], size=9), showlegend=False,
+                             textfont=dict(color=C["muted"], size=11), hovertemplate="%{text}: %{x:.1f}<extra></extra>"))
+    hr._layout(fig, xlabel, height)
+    fig.update_yaxes(visible=False, range=[-1, 1.4])
+    if line is not None:
+        hr._line_marker(fig, float(line), f"{line:g}")
+    return fig
+
+
+def calibration_figure(cal: list[dict], title_x: str = "Predicted home win %", height: int = 320):
+    """Calibration bins [{pred, actual, n}] vs the diagonal (palette of the report charts)."""
+    import plotly.graph_objects as go
+    C = hr.C
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=[0, 100], y=[0, 100], mode="lines", line=dict(dash="dot", color=C["muted"], width=1),
+                             name="perfect", hoverinfo="skip"))
+    fig.add_trace(go.Scatter(x=[100 * c["pred"] for c in cal], y=[100 * c["actual"] for c in cal], mode="markers+lines",
+                             marker=dict(size=[max(7, min(22, 4 + c["n"] ** 0.5 * 1.6)) for c in cal], color=C["home"]),
+                             line=dict(color=C["home"], width=2), name="sim",
+                             customdata=[[c.get("bin", ""), c["n"]] for c in cal],
+                             hovertemplate="bin %{customdata[0]}<br>predicted %{x:.1f}%<br>actual %{y:.1f}%"
+                                           "<br>n=%{customdata[1]}<extra></extra>"))
+    hr._layout(fig, title_x, height)
+    fig.update_yaxes(title=dict(text="Actual home win %"), range=[0, 100])
+    fig.update_xaxes(range=[0, 100], showgrid=True, ticksuffix="%")
+    return fig
+
+
+def tvalue_figure(components: list[dict], height: int | None = None):
+    """Component bias in standard errors (sim − actual); flagged components (|bias| > 2 SE) in the warm color."""
+    import plotly.graph_objects as go
+    from helpers import is_flag
+    C = hr.C
+    comp = list(components)
+    fig = go.Figure(go.Bar(
+        x=[c["t"] for c in comp], y=[c["component"] for c in comp], orientation="h",
+        marker=dict(color=[C["away"] if is_flag(c.get("flag")) else C["home"] for c in comp], line=dict(width=0)),
+        customdata=[[c["sim"], c["actual"], c.get("rel_bias", 0) * 100] for c in comp],
+        hovertemplate="%{y}<br>%{x:+.1f} SE<br>sim %{customdata[0]:.3g} vs actual %{customdata[1]:.3g}"
+                      " (%{customdata[2]:+.1f}%)<extra></extra>"))
+    hr._layout(fig, "Bias in standard errors (sim − actual)", height or max(260, 22 * len(comp) + 80))
+    fig.update_yaxes(title=None, ticksuffix="", autorange="reversed", tickfont=dict(color=C["ink2"]))
+    fig.update_xaxes(showgrid=True, zeroline=True, zerolinecolor=C["axis"])
+    for x in (-2, 2):
+        fig.add_vline(x=x, line=dict(color=C["muted"], width=1, dash="dot"))
+    fig.update_layout(margin=dict(l=8, r=16, t=24, b=44), showlegend=False)
+    return fig
+
+
+def mtime_text(p: Path) -> str:
+    return dt.datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M") if p.exists() else "—"
+
+
+def kv_html(items: list[tuple]) -> str:
+    """Tile row: [(label, value_html, note_html?), ...] (values are already-escaped HTML)."""
+    cells = []
+    for it in items:
+        k, v = it[0], it[1]
+        n = it[2] if len(it) > 2 and it[2] else ""
+        cells.append(f'<div><div class="k">{hr.esc(k)}</div><div class="v">{v}</div>'
+                     + (f'<div class="n">{n}</div>' if n else "") + "</div>")
+    return f'<div class="gs"><div class="kv">{"".join(cells)}</div></div>'
+
+
+def pm_span(p: float, m: float) -> str:
+    """'54.2% ± 2.1' plus the too-close flag when within the MOE of 50%."""
+    return hr.pm_html({"p": p, "moe": m, "close": abs(p - 0.5) <= m})

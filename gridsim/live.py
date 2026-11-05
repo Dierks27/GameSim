@@ -157,13 +157,13 @@ def scorecard(cfg: Config, season: int | None = None) -> dict:
         y = x["home_win"].to_numpy().astype(float)
         p = (x["p_home"] + 0.5 * x["p_tie"]).to_numpy()
         out = {"games": x.height, "brier": brier(p, y), "log_loss": log_loss(p, y),
-               "mae_margin": float(np.mean(np.abs(x["pred_margin"] - (x["home_score"] - x["away_score"])))),
-               "mae_total": float(np.mean(np.abs(x["pred_total"] - (x["home_score"] + x["away_score"])))),
+               "mae_margin": float(np.mean(np.abs((x["pred_margin"] - (x["home_score"] - x["away_score"])).to_numpy()))),
+               "mae_total": float(np.mean(np.abs((x["pred_total"] - (x["home_score"] + x["away_score"])).to_numpy()))),
                "crps_margin": float(x["crps_margin"].mean()), "crps_total": float(x["crps_total"].mean())}
         mk = x.filter(pl.col("mkt_p_home").is_not_null())
         if mk.height:
             out["market_brier"] = brier(mk["mkt_p_home"].to_numpy(), mk["home_win"].to_numpy().astype(float))
-            out["market_mae_margin"] = float(np.mean(np.abs(mk["mkt_margin"] - (mk["home_score"] - mk["away_score"]))))
+            out["market_mae_margin"] = float(np.mean(np.abs((mk["mkt_margin"] - (mk["home_score"] - mk["away_score"])).to_numpy())))
         return out
     return {"overall": block(df), "by_config": {h: block(df.filter(pl.col("config_hash") == h))
                                                  for h in df["config_hash"].unique().to_list()},
