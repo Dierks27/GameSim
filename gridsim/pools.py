@@ -264,7 +264,7 @@ def build_outcome_pools(df: pl.DataFrame, teams: list[str], hfa_tilt: float, bac
 def resolve(pools: OutcomePools, call: str, side: str, team: str, down: int, togo_b: int, zone: int, tb: int,
             min_n: float, k: float, league_min_n: float):
     """Return (team_segment | None, team_weight, league_segment) for a situation; memoized."""
-    key = (call, side, team, down, togo_b, zone, tb)
+    key = (call, side, team, down, togo_b, zone, tb, min_n, k, league_min_n)
     hit = pools.memo.get(key)
     if hit is not None:
         return hit
@@ -300,7 +300,7 @@ def resolve(pools: OutcomePools, call: str, side: str, team: str, down: int, tog
 
 def resolve_qb(pools: OutcomePools, qb: str, down: int, togo_b: int, zone: int, min_n: float, k_qb: float):
     """(qb_segment | None, qb_weight, backup_segment | None) for the starting QB's own dropbacks."""
-    key = ("QB", qb, down, togo_b, zone)
+    key = ("QB", qb, down, togo_b, zone, min_n, k_qb)
     hit = pools.memo.get(key)
     if hit is not None:
         return hit

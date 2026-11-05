@@ -104,13 +104,14 @@ class PlayCallModel:
     memo: dict
     pass_shift: float = 0.0        # global logit calibration of P(pass) (config playcall.pass_logit_shift)
 
-    def p_pass(self, team: str, down: int, togo: int, yl: int, diff: int, tb: int) -> float:
-        key = (team, down, B.dist_b(togo), B.zone_b(yl), B.score_b(diff), tb)
+    def p_pass(self, team: str, down: int, togo: int, yl: int, diff: int, tb: int, shift: float | None = None) -> float:
+        shift = self.pass_shift if shift is None else shift
+        key = (team, down, B.dist_b(togo), B.zone_b(yl), B.score_b(diff), tb, shift)
         v = self.memo.get(key)
         if v is None:
             vals = {"down": key[1], "dist_b": key[2], "zone_b": key[3], "score_b": key[4], "time_b": tb}
             base = lookup(self.pass_table, PASS_LEVELS, vals)
-            v = _sigmoid(_logit(base) + self.team_pass_offset.get(team, 0.0) + self.pass_shift)
+            v = _sigmoid(_logit(base) + self.team_pass_offset.get(team, 0.0) + shift)
             self.memo[key] = v
         return v
 

@@ -484,3 +484,38 @@ def kv_html(items: list[tuple]) -> str:
 def pm_span(p: float, m: float) -> str:
     """'54.2% ± 2.1' plus the too-close flag when within the MOE of 50%."""
     return hr.pm_html({"p": p, "moe": m, "close": abs(p - 0.5) <= m})
+
+
+MARKET_COLORS = {"moneyline": hr.C["home"], "spread": hr.C["away"], "total": hr.C["over"]}
+
+
+def signal_history_figures(rows: list[dict], height: int = 300):
+    """From graded signals (signals/graded.csv rows: ts_utc, market, pnl, clv): cumulative flat-unit P&L and the
+    running average closing-line value, one line per market type. Pure presentation of the ledger."""
+    import plotly.graph_objects as go
+    rows = sorted((r for r in rows if r.get("ts_utc")), key=lambda r: str(r["ts_utc"]))
+    pnl_fig, clv_fig = go.Figure(), go.Figure()
+    for mt in sorted({r["market"] for r in rows}):
+        xs, cum, run_clv = [], [], []
+        tot, csum, cn = 0.0, 0.0, 0
+        for r in rows:
+            if r["market"] != mt:
+                continue
+            tot += float(r.get("pnl") or 0.0)
+            if r.get("clv") not in (None, ""):
+                csum += float(r["clv"])
+                cn += 1
+            xs.append(str(r["ts_utc"])[:16].replace("T", " "))
+            cum.append(tot)
+            run_clv.append(100 * csum / cn if cn else None)
+        color = MARKET_COLORS.get(mt, hr.C["under"])
+        pnl_fig.add_trace(go.Scatter(x=xs, y=cum, mode="lines+markers", name=mt, line=dict(color=color, width=2),
+                                     marker=dict(size=5), hovertemplate=f"{mt}<br>%{{x}}<br>%{{y:+.2f}} units<extra></extra>"))
+        clv_fig.add_trace(go.Scatter(x=xs, y=run_clv, mode="lines+markers", name=mt, line=dict(color=color, width=2),
+                                     marker=dict(size=5), connectgaps=True,
+                                     hovertemplate=f"{mt}<br>%{{x}}<br>avg CLV %{{y:+.2f}}¢<extra></extra>"))
+    for fig, yt in ((pnl_fig, "Cumulative P&L (units)"), (clv_fig, "Average CLV (¢ per contract)")):
+        hr._layout(fig, "Signal time (UTC)", height)
+        fig.update_yaxes(title=dict(text=yt), ticksuffix="", rangemode="normal", zeroline=True, zerolinecolor=hr.C["axis"])
+        fig.update_layout(hovermode="x unified")
+    return pnl_fig, clv_fig

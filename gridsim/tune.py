@@ -58,7 +58,7 @@ def objective_value(m: dict, w: dict) -> float:
 
 
 def score_config(cfg: Config, seasons: list[int], weeks: list[int], sims: int, seed: int, every: int,
-                 workers: int | None, verbose: bool = False) -> tuple[dict, list]:
+                 workers: int | None, verbose: bool = False, pool=None) -> tuple[dict, list]:
     """Pooled backtest metrics over several seasons (every k-th game kept, deterministic)."""
     import polars as pl
 
@@ -66,7 +66,8 @@ def score_config(cfg: Config, seasons: list[int], weeks: list[int], sims: int, s
     frames, comps = [], []
     for s in seasons:
         keep = (lambda g: (hash_game(g["game_id"]) % every) == 0) if every > 1 else None
-        g, ex = run_backtest(cfg, s, weeks, sims=sims, seed=seed, workers=workers, games_filter=keep, verbose=verbose)
+        g, ex = run_backtest(cfg, s, weeks, sims=sims, seed=seed, workers=workers, games_filter=keep, verbose=verbose,
+                             pool=pool)
         frames.append(g)
         comps.append(ex["components"])
     gall = pl.concat(frames, how="diagonal_relaxed")
@@ -89,8 +90,19 @@ def suggest(trial, space: dict) -> dict:
     return out
 
 
+def is_sampling_key(key: str) -> bool:
+    from .config import SAMPLING_KEYS, SIM_BUILD_KEYS
+    sec, _, rest = key.partition(".")
+    keys = SAMPLING_KEYS.get(sec, "missing")
+    if keys == "missing":
+        return False
+    if keys is None:
+        return not (sec == "sim" and rest.split(".")[0] in SIM_BUILD_KEYS)
+    return rest.split(".")[0] in keys
+
+
 def run_tune(cfg: Config, train: list[int], validate: int, trials: int, sims: int | None = None,
-             workers: int | None = None, verbose: bool = True) -> Path:
+             workers: int | None = None, verbose: bool = True, sampling_only: bool = False) -> Path:
     import optuna
 
     tc = cfg.tune
@@ -100,6 +112,8 @@ def run_tune(cfg: Config, train: list[int], validate: int, trials: int, sims: in
     every = int(tc.get("train_every_kth_game", 1))
     weights = tc["objective_weights"]
     space = tc["space"]
+    if sampling_only:   # only sampling-time knobs: every trial reuses the cached built models (much faster)
+        space = {k: v for k, v in space.items() if is_sampling_key(k)}
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     out = cfg.resolve_path("tuning") / stamp
     out.mkdir(parents=True, exist_ok=True)
@@ -108,7 +122,11 @@ def run_tune(cfg: Config, train: list[int], validate: int, trials: int, sims: in
             raise ValueError("do not tune on seasons before 2021 (17-game schedule); got %d" % s)
 
     t0 = time.time()
-    base_train, _ = score_config(cfg, train, weeks, sims, seed, every, workers)
+    import os
+
+    from .backtest import PinnedPool
+    pool = PinnedPool(workers or (os.cpu_count() or 2))
+    base_train, _ = score_config(cfg, train, weeks, sims, seed, every, workers, pool=pool)
     base_obj = objective_value(base_train, weights)
     if verbose:
         print(f"baseline train objective {base_obj:.5f} ({time.time() - t0:.0f}s)", flush=True)
@@ -118,7 +136,7 @@ def run_tune(cfg: Config, train: list[int], validate: int, trials: int, sims: in
     def objective(trial):
         params = suggest(trial, space)
         c = apply_params(cfg, params)
-        m, _ = score_config(c, train, weeks, sims, seed, every, workers)
+        m, _ = score_config(c, train, weeks, sims, seed, every, workers, pool=pool)
         val = objective_value(m, weights)
         rec = {"trial": trial.number, "objective": val, **params,
                **{k: m[k] for k in ("log_loss", "brier", "crps_margin", "crps_total", "mae_margin", "mae_total")}}
@@ -142,8 +160,9 @@ def run_tune(cfg: Config, train: list[int], validate: int, trials: int, sims: in
 
     # held-out validation: same games and seeds for current vs tuned
     vweeks = list(range(int(tc["validate_weeks"][0]), int(tc["validate_weeks"][1]) + 1))
-    cur_val, cur_frames = score_config(cfg, [validate], vweeks, sims, seed, 1, workers)
-    new_val, new_frames = score_config(tuned, [validate], vweeks, sims, seed, 1, workers)
+    cur_val, cur_frames = score_config(cfg, [validate], vweeks, sims, seed, 1, workers, pool=pool)
+    new_val, new_frames = score_config(tuned, [validate], vweeks, sims, seed, 1, workers, pool=pool)
+    pool.close()
     best_train = min(h["objective"] for h in history)
     cur_v, new_v = objective_value(cur_val, weights), objective_value(new_val, weights)
     train_gain = base_obj - best_train

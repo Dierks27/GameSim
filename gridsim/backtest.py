@@ -134,7 +134,7 @@ _W: dict = {}
 
 
 def _plays_for(season: int, cfg: Config) -> pl.DataFrame:
-    key = ("plays", season, cfg.hash)
+    key = ("plays", season)
     if key not in _W:
         from .model import load_prepared
         _W[key] = load_prepared(season, cfg)
@@ -150,16 +150,20 @@ def sim_week(job: dict) -> list[dict]:
     from .engine import simulate
     from .model import build_model
 
+    from .config import build_hash
     cfg = Config(job["cfg_raw"])
     season, week = job["season"], job["week"]
     plays = _plays_for(season, cfg)
-    mkey = ("model", season, week, cfg.hash)
+    # models are cached by the BUILD-relevant config only: trials that change sampling-time knobs reuse them
+    mkey = ("model", season, week, build_hash(cfg.raw))
     model = _W.get(mkey)
     if model is None:
         model = build_model(cfg, season, week - 1, plays)
-        _W.clear() if len(_W) > 6 else None
-        _W[("plays", season, cfg.hash)] = plays
+        models = [k for k in _W if k[0] == "model"]
+        while len(models) >= int(cfg.backtest.get("worker_model_cache", 6)):
+            _W.pop(models.pop(0))
         _W[mkey] = model
+    model.cfg = cfg
     out = []
     for gm in job["games"]:
         h, a = gm["home_team"], gm["away_team"]
@@ -244,9 +248,27 @@ def parse_weeks(s: str) -> list[int]:
     return out
 
 
+class PinnedPool:
+    """N single-process executors; a (season, week) job always goes to the same worker, so each worker's
+    model cache (keyed by build-relevant config) is hit again by later tuning trials."""
+
+    def __init__(self, n: int):
+        import multiprocessing as mp
+        ctx = mp.get_context("spawn")
+        self.ex = [ProcessPoolExecutor(max_workers=1, mp_context=ctx) for _ in range(max(1, n))]
+
+    def map(self, fn, jobs):
+        futs = [self.ex[(j["season"] * 100 + j["week"]) % len(self.ex)].submit(fn, j) for j in jobs]
+        return [f.result() for f in futs]
+
+    def close(self):
+        for e in self.ex:
+            e.shutdown(wait=True)
+
+
 def run_backtest(cfg: Config, season: int, weeks: list[int], sims: int = 1000, seed: int = 2024,
                  workers: int | None = None, games_filter=None, verbose: bool = True,
-                 include_post: bool = False) -> tuple[pl.DataFrame, dict]:
+                 include_post: bool = False, pool: "PinnedPool | None" = None) -> tuple[pl.DataFrame, dict]:
     from .model import load_prepared
     t0 = time.time()
     plays = load_prepared(season, cfg, verbose=verbose)
@@ -260,8 +282,11 @@ def run_backtest(cfg: Config, season: int, weeks: list[int], sims: int = 1000, s
             for w, gs in sorted(by_week.items())]
     workers = workers or max(1, min(len(jobs), (os.cpu_count() or 2)))
     rows: list[dict] = []
-    if workers <= 1 or len(jobs) <= 1:
-        _W[("plays", season, cfg.hash)] = plays
+    if pool is not None:
+        for j, res in zip(jobs, pool.map(sim_week, jobs)):
+            rows += res
+    elif workers <= 1 or len(jobs) <= 1:
+        _W[("plays", season)] = plays
         for j in jobs:
             rows += sim_week(j)
             if verbose:

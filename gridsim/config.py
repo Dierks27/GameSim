@@ -51,6 +51,36 @@ class Config:
         return p if p.is_absolute() else REPO_ROOT / p
 
 
+# Config keys read only at simulation time (not when building pools/tables). Models can be reused across configs
+# that differ only in these, e.g. tuning trials that change sampling-time knobs.
+SAMPLING_KEYS = {
+    "sim": None,                     # whole section except the keys below
+    "clock": ["runoff_scale"],
+    "playcall": ["pass_logit_shift", "fg_min_make_prob"],
+    "qb": ["k_qb"],
+    "weather": None, "rest_travel": None, "two_point": None, "overtime": None, "availability": None,
+    "players": None, "markets": None, "scanner": None, "notify": None, "tune": None, "backtest": None,
+}
+SIM_BUILD_KEYS = {"k_presnap"}       # sim.* keys that ARE used at build time
+
+
+def build_hash(raw: dict[str, Any]) -> str:
+    """Hash of the build-relevant part of a config (see SAMPLING_KEYS)."""
+    r = copy.deepcopy(raw)
+    for sec, keys in SAMPLING_KEYS.items():
+        if sec not in r:
+            continue
+        if keys is None:
+            if sec == "sim":
+                r[sec] = {k: v for k, v in r[sec].items() if k in SIM_BUILD_KEYS}
+            else:
+                r.pop(sec)
+        else:
+            for k in keys:
+                r[sec].pop(k, None)
+    return config_hash(r)
+
+
 def config_hash(raw: dict[str, Any]) -> str:
     blob = json.dumps(raw, sort_keys=True, default=str).encode()
     return hashlib.sha1(blob).hexdigest()[:10]

@@ -124,6 +124,7 @@ players:
 
 backtest:
   out_dir: backtests
+  worker_model_cache: 10       # built models kept per worker process (keyed by build-relevant config)
 
 tune:
   sims_per_game: 300

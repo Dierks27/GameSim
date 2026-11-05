@@ -62,7 +62,8 @@ def cmd_tune(args) -> int:
         b = apply_tuned(cfg)
         print(f"config.tuned.yaml promoted to config.yaml (backup: {b}); logged in tuning/history.csv")
         return 0
-    out = run_tune(cfg, _seasons(args.train), int(args.validate), args.trials, sims=args.sims, workers=args.workers)
+    out = run_tune(cfg, _seasons(args.train), int(args.validate), args.trials, sims=args.sims, workers=args.workers,
+                   sampling_only=args.sampling_only)
     print(f"tuning output: {out}")
     if args.apply:
         summ = json.loads((out / "summary.json").read_text())
@@ -246,6 +247,8 @@ def register(sub) -> None:
     t.add_argument("--sims", type=int, default=None)
     t.add_argument("--workers", type=int, default=None)
     t.add_argument("--apply", action="store_true", help="promote config.tuned.yaml (alone: promote the last run)")
+    t.add_argument("--sampling-only", action="store_true",
+                   help="tune only sampling-time knobs (reuses built models across trials; ~2x faster)")
     t.set_defaults(func=cmd_tune)
 
     p = sub.add_parser("predict-week", help="frozen pre-kickoff predictions for every game of a week")

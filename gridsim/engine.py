@@ -95,6 +95,7 @@ class GameSim:
         self.kickers = tuple(self.kk.team_kicker.get(t) for t in self.teams)
         self.ot_minutes = float(self.cfg.overtime["playoff_minutes" if playoff else "regular_season_minutes"])
         self.fg_min = float(self.cfg.playcall["fg_min_make_prob"])
+        self.pass_shift = float(self.cfg.playcall.get("pass_logit_shift", 0.0))
         # range shift relative to the average current kicker: the league FG-vs-punt table was learned from
         # decisions made by (mostly) these kickers, so only the deviation from that average should move it
         cur = [self.kk.kicker_range_shift(k) for k in self.kk.team_kicker.values()]
@@ -618,7 +619,7 @@ class GameSim:
                 self.last_presnap_restart = True
             return
 
-        p_pass = self.pc.p_pass(self.teams[off], min(self.down, 4), self.togo, self.yl, diff, tb)
+        p_pass = self.pc.p_pass(self.teams[off], min(self.down, 4), self.togo, self.yl, diff, tb, self.pass_shift)
         call = "pass" if self.u() < p_pass else "run"
         self.run_play(call, diff, gsec, hsec, tb)
 
