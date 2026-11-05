@@ -22,15 +22,33 @@ def landing() -> None:
         st.markdown(f"**{season} week {week}** — {len(games)} games on the slate.")
     except Exception as e:  # schedule not downloaded yet
         st.warning(f"Schedule unavailable ({e}). Run `gridsim refresh-data` once.")
-    c1, c2 = st.columns(2)
-    with c1, st.container(border=True):
-        st.markdown("#### This Week")
-        st.caption("The slate as cards with market lines, sim win % and the sim-vs-market gap. Sim one game or all.")
-        st.page_link(common.WEEK_PAGE, label="Open This Week", icon=":material/calendar_month:")
-    with c2, st.container(border=True):
-        st.markdown("#### Game")
-        st.caption("One matchup in depth: charts, any-line cover calculator, alt lines, team stats, lineup editor.")
-        st.page_link(common.GAME_PAGE, label="Open Game", icon=":material/sports_football:")
+    cards = [
+        (common.WEEK_PAGE, "This Week", ":material/calendar_month:",
+         "The slate as cards with market lines, sim win % and the sim-vs-market gap. Sim one game or all."),
+        (common.GAME_PAGE, "Game", ":material/sports_football:",
+         "One matchup in depth: charts, any-line cover calculator, alt lines, team stats, lineup editor."),
+        (common.PROPS_PAGE, "Player props", ":material/person:",
+         "Any player stat's distribution with a movable line — over / under counted from the sims."),
+        (common.PARLAY_PAGE, "Parlay builder", ":material/join_inner:",
+         "Same-game parlays priced from the sims: joint % vs naive product, correlation lift, fair odds."),
+        (common.WHATIF_PAGE, "What-if & Live", ":material/swap_horiz:",
+         "With vs without a player (or a QB swap), and sims that start from a live game situation."),
+        (common.SIGNALS_PAGE, "Signals", ":material/radar:",
+         "Kalshi scanner (read-only): current edges, watchlist and the graded signal record."),
+        (common.SCORECARD_PAGE, "Scorecard", ":material/scoreboard:",
+         "The live record of frozen predictions, calibration, backtests and tuning history."),
+        (common.DIAGNOSE_PAGE, "Diagnose", ":material/troubleshoot:",
+         "Where the sim is wrong: top-3 summary, component bias, residual groups, worst misses."),
+        (common.SETTINGS_PAGE, "Settings", ":material/settings:",
+         "Edit config.yaml (comments kept), refresh data, test notifications, schedule status."),
+    ]
+    for i in range(0, len(cards), 3):
+        cols = st.columns(3)
+        for col, (page, title, icon, blurb) in zip(cols, cards[i:i + 3]):
+            with col, st.container(border=True):
+                st.markdown(f"#### {title}")
+                st.caption(blurb)
+                st.page_link(page, label=f"Open {title}", icon=icon)
     done = st.session_state.get("results", {})
     if done:
         st.markdown("##### Simulated this session")
@@ -83,11 +101,26 @@ def sidebar() -> None:
     st.sidebar.caption(f"config {c.hash}")
 
 
-pages = [
-    st.Page(landing, title="Home", icon=":material/home:", default=True),
-    st.Page(common.WEEK_PAGE, title="This Week", icon=":material/calendar_month:"),
-    st.Page(common.GAME_PAGE, title="Game", icon=":material/sports_football:"),
-]
+pages = {
+    "": [st.Page(landing, title="Home", icon=":material/home:", default=True)],
+    "Games": [
+        st.Page(common.WEEK_PAGE, title="This Week", icon=":material/calendar_month:"),
+        st.Page(common.GAME_PAGE, title="Game", icon=":material/sports_football:"),
+        st.Page(common.PROPS_PAGE, title="Player props", icon=":material/person:"),
+        st.Page(common.PARLAY_PAGE, title="Parlay builder", icon=":material/join_inner:"),
+        st.Page(common.WHATIF_PAGE, title="What-if & Live", icon=":material/swap_horiz:"),
+    ],
+    "Markets & grading": [
+        st.Page(common.SIGNALS_PAGE, title="Signals", icon=":material/radar:"),
+        st.Page(common.SCORECARD_PAGE, title="Scorecard", icon=":material/scoreboard:"),
+        st.Page(common.DIAGNOSE_PAGE, title="Diagnose", icon=":material/troubleshoot:"),
+    ],
+    "Setup": [st.Page(common.SETTINGS_PAGE, title="Settings", icon=":material/settings:")],
+}
 nav = st.navigation(pages)
+# Widget values under common.KEEP keys survive page switches: re-assigning them as plain session state stops
+# Streamlit from discarding them when their widget is not on the current page.
+for _k in [k for k in st.session_state.keys() if isinstance(k, str) and k.startswith(common.KEEP)]:
+    st.session_state[_k] = st.session_state[_k]
 sidebar()
 nav.run()

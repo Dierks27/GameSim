@@ -203,3 +203,59 @@ def edges(rows: list[dict], cfg) -> list[dict]:
                 best = cand
         out.append({**r, **(best or {"side": None, "edge": None})})
     return out
+
+
+# --------------------------------------------------------------------------------------
+# Optional sportsbooks via The Odds API (free tier; key ODDS_API_KEY in .env, never committed). Read-only.
+# --------------------------------------------------------------------------------------
+ODDS_NAMES = {
+    "Arizona Cardinals": "ARI", "Atlanta Falcons": "ATL", "Baltimore Ravens": "BAL", "Buffalo Bills": "BUF",
+    "Carolina Panthers": "CAR", "Chicago Bears": "CHI", "Cincinnati Bengals": "CIN", "Cleveland Browns": "CLE",
+    "Dallas Cowboys": "DAL", "Denver Broncos": "DEN", "Detroit Lions": "DET", "Green Bay Packers": "GB",
+    "Houston Texans": "HOU", "Indianapolis Colts": "IND", "Jacksonville Jaguars": "JAX", "Kansas City Chiefs": "KC",
+    "Las Vegas Raiders": "LV", "Los Angeles Chargers": "LAC", "Los Angeles Rams": "LA", "Miami Dolphins": "MIA",
+    "Minnesota Vikings": "MIN", "New England Patriots": "NE", "New Orleans Saints": "NO", "New York Giants": "NYG",
+    "New York Jets": "NYJ", "Philadelphia Eagles": "PHI", "Pittsburgh Steelers": "PIT", "San Francisco 49ers": "SF",
+    "Seattle Seahawks": "SEA", "Tampa Bay Buccaneers": "TB", "Tennessee Titans": "TEN", "Washington Commanders": "WAS",
+}
+
+
+def devig_two_way(p_a: float, p_b: float) -> tuple[float, float]:
+    """Proportional de-vig of two implied probabilities."""
+    s = p_a + p_b
+    return (p_a / s, p_b / s) if s > 0 else (0.5, 0.5)
+
+
+def american_to_prob(odds: float) -> float:
+    return 100.0 / (odds + 100.0) if odds > 0 else -odds / (-odds + 100.0)
+
+
+def sportsbook_odds(cfg, game: dict) -> dict | None:
+    """Consensus (median across books) de-vigged moneyline + spread/total lines for one game, or None."""
+    from .notify import load_env
+    key = load_env().get("ODDS_API_KEY")
+    if not key:
+        return None
+    url = ("https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds?regions=us&markets=h2h,spreads,totals"
+           f"&oddsFormat=american&apiKey={urllib.parse.quote(key)}")
+    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "gridsim (read-only)"}), timeout=15) as r:
+        data = json.loads(r.read())
+    import statistics as stats
+    for ev in data:
+        h, a = ODDS_NAMES.get(ev.get("home_team")), ODDS_NAMES.get(ev.get("away_team"))
+        if (h, a) != (game["home_team"], game["away_team"]):
+            continue
+        ph, spreads, totals = [], [], []
+        for bk in ev.get("bookmakers", []):
+            for mk in bk.get("markets", []):
+                oc = {o["name"]: o for o in mk.get("outcomes", [])}
+                if mk["key"] == "h2h" and ev["home_team"] in oc and ev["away_team"] in oc:
+                    ph.append(devig_two_way(american_to_prob(oc[ev["home_team"]]["price"]),
+                                            american_to_prob(oc[ev["away_team"]]["price"]))[0])
+                elif mk["key"] == "spreads" and ev["home_team"] in oc:
+                    spreads.append(float(oc[ev["home_team"]]["point"]))
+                elif mk["key"] == "totals" and "Over" in oc:
+                    totals.append(float(oc["Over"]["point"]))
+        return {"books": len(ev.get("bookmakers", [])), "home_win_fair": stats.median(ph) if ph else None,
+                "spread_home": stats.median(spreads) if spreads else None, "total": stats.median(totals) if totals else None}
+    return None

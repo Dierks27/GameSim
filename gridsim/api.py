@@ -210,6 +210,13 @@ def run_game(req: RunRequest, cfg: Config | None = None, progress=None, verbose:
             extra["_kalshi_raw"] = mk
         except Exception as e:
             banners.append(f"Kalshi prices unavailable ({str(e)[:80]})")
+        try:
+            from .markets import sportsbook_odds
+            books = sportsbook_odds(cfg, game)
+            if books:
+                extra["sportsbooks"] = books
+        except Exception as e:
+            banners.append(f"sportsbook odds unavailable ({str(e)[:80]})")
     summ = summarize(res, spread, total, model.meta, cfg.hash, extra)
     if summ.get("_kalshi_raw") is not None:
         from .markets import edges, sim_probs

@@ -122,7 +122,7 @@ def load_schedules(cfg: Config, force: bool = False, verbose: bool = False) -> p
 
 def refresh_all(cfg: Config, seasons: list[int] | None = None) -> None:
     cur = current_season()
-    seasons = seasons or list(range(cur - 3, cur + 1))
+    seasons = seasons or list(range(max(2019, cur - 7), cur + 1))   # 2019+: tuning on 2022 needs 3 prior seasons
     load_schedules(cfg, force=True, verbose=True)
     for s in seasons:
         path = _cache_dir(cfg) / f"pbp_{s}.parquet"

@@ -72,3 +72,11 @@ def test_scanner_rules_watchlist_until_trusted(cfg):
     assert ev(cfg, {}, [row], trusted, 1.0, None)[0]["confidence"] == "strong"
     thin = {**row, "volume": 10}
     assert ev(cfg, {}, [thin], trusted, 1.0, None)[0]["confidence"] == "watchlist"
+
+
+def test_devig():
+    from gridsim.markets import american_to_prob, devig_two_way
+    a, b = devig_two_way(american_to_prob(-110), american_to_prob(-110))
+    assert abs(a - 0.5) < 1e-12 and abs(b - 0.5) < 1e-12
+    h, _ = devig_two_way(american_to_prob(-200), american_to_prob(170))
+    assert 0.63 < h < 0.65

@@ -2,6 +2,7 @@
 refresh with per-source freshness, notification test, and the recommended Windows schedule."""
 from __future__ import annotations
 
+import math
 import os
 import sys
 from pathlib import Path
@@ -65,8 +66,8 @@ with tab_cfg:
                             new_vals[e["path"]] = st.number_input(name, value=int(e["value"]), step=1, key=wkey)
                         elif e["kind"] == "float":
                             v = float(e["value"])
-                            step = 10 ** (len(repr(v).split(".")[1]) * -1) if "." in repr(v) and "e" not in repr(v) else 0.01
-                            new_vals[e["path"]] = st.number_input(name, value=v, step=max(step, 1e-6), format="%g", key=wkey)
+                            step = 10.0 ** (math.floor(math.log10(abs(v))) - 1) if v else 0.01
+                            new_vals[e["path"]] = st.number_input(name, value=v, step=step, format="%g", key=wkey)
                         elif e["kind"] == "str":
                             new_vals[e["path"]] = st.text_input(name, value=str(e["value"]), key=wkey)
                         else:
@@ -76,9 +77,8 @@ with tab_cfg:
                         st.caption(desc or "—")
         saved = st.form_submit_button("Save changes", type="primary", icon=":material/save:")
     if saved:
-        changes = {p: v for p, v in new_vals.items()
-                   if v != next(e["value"] for e in entries if e["path"] == p)
-                   or type(v) is not type(next(e["value"] for e in entries if e["path"] == p)) and not isinstance(v, (int, float))}
+        orig = {e["path"]: e["value"] for e in entries}
+        changes = {p: v for p, v in new_vals.items() if v != orig[p]}
         if not changes:
             st.info("Nothing changed.")
         else:
@@ -102,6 +102,12 @@ with tab_cfg:
 # ======================================================================================================
 with tab_data:
     season = s["season"]
+
+    @st.cache_data(ttl=900, show_spinner="Checking nflverse release times …")
+    def _fresh(season_: int) -> dict:
+        from gridsim.availability import source_freshness
+        return source_freshness(common.cfg(), season_)
+
     c1, c2 = st.columns([2, 3], vertical_alignment="center")
     go = c1.button("Refresh data now", type="primary", width="stretch", icon=":material/refresh:")
     c2.caption(f"Downloads the {season} play-by-play and schedules (nflverse), then rosters, depth charts and injury "
@@ -115,18 +121,12 @@ with tab_data:
                 with common.capture_output(log, keep_lines=8):
                     refresh_all(cfg, [season])
                     refresh_availability(cfg, season)
-                for f in (common.slate, common.schedule_index, common.team_roster, _fresh if "_fresh" in globals() else None):
-                    if f is not None:
-                        f.clear()
+                for f in (common.slate, common.schedule_index, common.team_roster, _fresh):
+                    f.clear()
                 status.update(label="Data refreshed", state="complete", expanded=False)
             except Exception as e:
                 status.update(label="Refresh failed", state="error")
                 st.error(f"{type(e).__name__}: {e}")
-
-    @st.cache_data(ttl=900, show_spinner="Checking nflverse release times …")
-    def _fresh(season_: int) -> dict:
-        from gridsim.availability import source_freshness
-        return source_freshness(common.cfg(), season_)
 
     st.markdown("##### Sources")
     try:
