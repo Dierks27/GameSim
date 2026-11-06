@@ -23,6 +23,8 @@ def landing() -> None:
     except Exception as e:  # schedule not downloaded yet
         st.warning(f"Schedule unavailable ({e}). Run `gridsim refresh-data` once.")
     cards = [
+        (common.WEEKLY_PAGE, "Weekly routine", ":material/checklist:",
+         "Your weekly to-do list as buttons: refresh data, lock in predictions, grade last week, check-up."),
         (common.WEEK_PAGE, "This Week", ":material/calendar_month:",
          "The slate as cards with market lines, sim win % and the sim-vs-market gap. Sim one game or all."),
         (common.GAME_PAGE, "Game", ":material/sports_football:",
@@ -115,7 +117,8 @@ pages = {
         st.Page(common.SCORECARD_PAGE, title="Scorecard", icon=":material/scoreboard:"),
         st.Page(common.DIAGNOSE_PAGE, title="Diagnose", icon=":material/troubleshoot:"),
     ],
-    "Setup": [st.Page(common.SETTINGS_PAGE, title="Settings", icon=":material/settings:")],
+    "Setup": [st.Page(common.WEEKLY_PAGE, title="Weekly routine", icon=":material/checklist:"),
+              st.Page(common.SETTINGS_PAGE, title="Settings", icon=":material/settings:")],
 }
 nav = st.navigation(pages)
 # Widget values under common.KEEP keys survive page switches: re-assigning them as plain session state stops

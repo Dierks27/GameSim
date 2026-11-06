@@ -30,6 +30,7 @@ SIGNALS_PAGE = "pages/signals.py"
 SCORECARD_PAGE = "pages/scorecard.py"
 DIAGNOSE_PAGE = "pages/diagnose.py"
 SETTINGS_PAGE = "pages/settings.py"
+WEEKLY_PAGE = "pages/weekly.py"
 KEEP = "p_"   # widget keys starting with this survive page switches (re-asserted in streamlit_app.py)
 
 
