@@ -64,7 +64,9 @@ always safe.
 3. Your web browser opens GridSim at <http://localhost:8501> after a few seconds. (If it doesn't, open your browser
    and type that address.)
 4. The first time, Windows may ask whether to allow Python through the **firewall**: tick **Private networks**
-   and click **Allow**. That's only needed for your phone; GridSim works on the PC either way.
+   and click **Allow**. That's only needed for your phone; GridSim works on the PC either way. (Windows 11 often sets a
+   new home network to *Public*, and then the phone still can't connect — see *Phone can't connect* in the
+   troubleshooting table.)
 
 **Everyday basics**
 - **Stopping GridSim:** close the black window. Closing the browser tab alone does not stop it — and double-clicking
@@ -175,7 +177,8 @@ folder. Run **Schedule GridSim** again and press **R** to remove the schedule.
 
 1. Start GridSim on the PC (step 4) and leave it running.
 2. In the black GridSim window, look for the line **Network URL: http://192.168.x.x:8501**.
-3. On your phone (same Wi-Fi), open the browser and type exactly that address.
+3. On your phone (same Wi-Fi), open the browser and type exactly that address. (If it doesn't load, see *Phone can't
+   connect* in the troubleshooting table below.)
 
 There is no password, so only do this on your own home Wi-Fi. If the phone can't connect, see the troubleshooting
 table below.
@@ -214,7 +217,7 @@ all kept.
 | Black window says *"Port 8501 is not available"* | GridSim is already open (or still starting) in another black window. Close this one, wait a few seconds, then use the open browser tab or <http://localhost:8501>. |
 | Browser didn't open | Open it yourself and go to <http://localhost:8501>. |
 | A page says the schedule / data is missing | Weekly routine → box 1 → **Refresh data** (or run Setup again). |
-| Phone can't connect | 1) Windows *Settings → Network & internet → Wi-Fi →* your network → set *Network profile type* to **Private** (Windows often sets new Wi-Fi to Public, which blocks the phone). 2) Start menu → type **Allow an app through Windows Firewall** → *Change settings* → tick **Private** on every **Python** row → OK. 3) Phone on the same Wi-Fi, GridSim's black window still open. |
+| Phone can't connect | 1) Windows *Settings → Network & internet → Wi-Fi* (or *Ethernet* if the PC is plugged in by cable) *→* your network → set *Network profile type* to **Private** (Windows often sets new networks to Public, which blocks the phone). 2) Start menu → type **Allow an app through Windows Firewall** → *Change settings* → tick **Private** on every **Python** row → OK. 3) Phone on the same Wi-Fi, GridSim's black window still open. |
 | The scheduled jobs don't seem to run | Open `logs\scheduled.log` in the GridSim folder (Notepad) to see what happened; run **Schedule GridSim** again and press **A**. |
 | Anything else | Close the black window and start GridSim again. If an error stays, take a screenshot of the black window. |
 

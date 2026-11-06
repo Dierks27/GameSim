@@ -17,3 +17,7 @@ predictions/
 config.local.yaml
 config.local.yaml.bak
 config.tuned.yaml
+# Your own run outputs (the developer's example runs already in the repo stay; new ones are not tracked)
+backtests/
+diagnose/
+tuning/
