@@ -1,1 +1,2 @@
-*.bat text eol=crlf
+# Windows batch files are stored with CRLF as-is (cmd.exe misreads labels in LF-only files)
+*.bat -text
