@@ -40,8 +40,8 @@ except Exception as e:
 st.markdown("#### Live record")
 ov = sc.get("overall") or {}
 if not ov.get("games"):
-    st.info("No graded live predictions yet. Each week: `gridsim predict-week` before kickoff, then `gridsim grade` "
-            "once the games are final (or `gridsim weekly`, which does both).")
+    st.info("No graded predictions yet. On the **Weekly routine** page press **Lock in predictions** before kickoff, "
+            "then **Grade** after the games (Tuesday).")
 else:
     def _cmp(k, mk, fmt):
         v, m = ov.get(k), ov.get(mk)
@@ -101,7 +101,7 @@ if bt_rows:
     st.caption("Walk-forward backtests (no lookahead). Compare their Brier / MAE with the live record above: a live "
                "record much worse than the backtest points to leakage or stale inputs.")
 else:
-    st.caption("No saved backtests (`gridsim backtest --season 2025 --weeks 3-18`).")
+    st.caption("No saved backtests yet (the Weekly routine check-up and tuning create them).")
 
 # ---- tuning --------------------------------------------------------------------------------------------
 st.markdown("#### Tuning")
@@ -130,4 +130,4 @@ if runs:
                  column_config={"train gain": st.column_config.NumberColumn(format="%+.5f"),
                                 "validation gain": st.column_config.NumberColumn(format="%+.5f")})
 if not hist.exists() and not runs:
-    st.caption("No tuning runs yet (`gridsim tune --train 2022-2024 --validate 2025`).")
+    st.caption("No tuning runs yet (Weekly routine → step 5).")

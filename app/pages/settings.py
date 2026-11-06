@@ -25,27 +25,38 @@ tab_cfg, tab_data, tab_note, tab_sched = st.tabs(["Config", "Data", "Notificatio
 
 # ======================================================================================================
 with tab_cfg:
+    from gridsim.config import LOCAL_CONFIG_PATH, load_local, save_local
     try:
         text = CFG_PATH.read_text(encoding="utf-8")
         entries = helpers.parse_config(text)
-        cur = load_config(CFG_PATH)
+        cur = load_config()                      # shipped config.yaml + your config.local.yaml
+        local = load_local()
     except Exception as e:
-        st.error(f"Could not read {CFG_PATH}: {type(e).__name__}: {e}")
+        st.error(f"Could not read the settings: {type(e).__name__}: {e}")
         st.stop()
-    st.caption(f"`{CFG_PATH}` · config hash **{cur.hash}**. Every value with its comment from the file. Saving "
-               "replaces only the edited values on their own lines (comments and layout are kept) after copying the "
-               f"file to `{CFG_PATH.name}.bak`. A new hash means cached sims are recomputed on the next run.")
+
+    def _get(d, path):
+        for k in path:
+            if not isinstance(d, dict) or k not in d:
+                return None, False
+            d = d[k]
+        return d, True
+
+    st.caption(f"Config hash **{cur.hash}**. Your changes are saved to `{LOCAL_CONFIG_PATH.name}` (only the values "
+               "you changed), so updating GridSim never wipes them; `config.yaml` keeps the shipped defaults and the "
+               "descriptions. Values marked **(yours)** differ from the default. A new hash means cached sims are "
+               "recomputed on the next run.")
     if ss.get("cfg_saved"):
-        msg = ss.pop("cfg_saved")
-        st.success(msg)
+        st.success(ss.pop("cfg_saved"))
     sections = list(dict.fromkeys(e["section"] for e in entries))
     with st.form("cfg_form", border=False):
-        new_vals = {}
+        new_vals, shown = {}, {}
         for sec in sections:
             sec_entries = [e for e in entries if e["section"] == sec]
             head = sec_entries[0] if sec_entries and sec_entries[0]["path"] == (sec,) else None
             n_edit = sum(e["editable"] for e in sec_entries)
-            with st.expander(f"**{sec}** · {n_edit} editable", expanded=False):
+            n_mine = sum(1 for e in sec_entries if e["editable"] and _get(local, e["path"])[1])
+            with st.expander(f"**{sec}** · {n_edit} editable" + (f" · {n_mine} yours" if n_mine else ""), expanded=False):
                 if head and (head["doc"] or head["comment"]):
                     st.caption(" ".join(x for x in (head["doc"], head["comment"]) if x))
                 for e in sec_entries:
@@ -57,47 +68,62 @@ with tab_cfg:
                         st.markdown(f"**{name}**" + (f" — <span style='color:var(--muted, #898781)'>{hr.esc(desc)}</span>"
                                                      if desc else ""), unsafe_allow_html=True)
                         continue
+                    val, has = _get(cur.raw, e["path"])
+                    val = val if has else e["value"]
+                    mine = _get(local, e["path"])[1]
+                    label = name + ("  (yours)" if mine else "")
+                    shown[e["path"]] = val
                     c1, c2 = st.columns([2, 3], vertical_alignment="center")
                     wkey = "cfg__" + "__".join(e["path"])
                     with c1:
                         if e["kind"] == "bool":
-                            new_vals[e["path"]] = st.toggle(name, value=bool(e["value"]), key=wkey)
+                            new_vals[e["path"]] = st.toggle(label, value=bool(val), key=wkey)
                         elif e["kind"] == "int":
-                            new_vals[e["path"]] = st.number_input(name, value=int(e["value"]), step=1, key=wkey)
+                            new_vals[e["path"]] = st.number_input(label, value=int(val), step=1, key=wkey)
                         elif e["kind"] == "float":
-                            v = float(e["value"])
+                            v = float(val)
                             step = 10.0 ** (math.floor(math.log10(abs(v))) - 1) if v else 0.01
-                            new_vals[e["path"]] = st.number_input(name, value=v, step=step, format="%g", key=wkey)
+                            new_vals[e["path"]] = st.number_input(label, value=v, step=step, format="%g", key=wkey)
                         elif e["kind"] == "str":
-                            new_vals[e["path"]] = st.text_input(name, value=str(e["value"]), key=wkey)
+                            new_vals[e["path"]] = st.text_input(label, value=str(val), key=wkey)
                         else:
-                            st.text_input(name, value=e["raw"], disabled=True, key=wkey,
-                                          help="Lists / mappings are edited in config.yaml directly.")
+                            st.text_input(label, value=e["raw"], disabled=True, key=wkey,
+                                          help="Lists / mappings can't be edited here.")
                     with c2:
-                        st.caption(desc or "—")
+                        st.caption((desc or "—") + (f" · default: {e['value']!r}" if mine else ""))
         saved = st.form_submit_button("Save changes", type="primary", icon=":material/save:")
     if saved:
-        orig = {e["path"]: e["value"] for e in entries}
-        changes = {p: v for p, v in new_vals.items() if v != orig[p]}
+        changes = {p: v for p, v in new_vals.items() if v != shown[p]}
         if not changes:
             st.info("Nothing changed.")
         else:
             before = cur.hash
+            defaults = {e["path"]: e["value"] for e in entries}
+            for path, v in changes.items():
+                node = local
+                for k in path[:-1]:
+                    node = node.setdefault(k, {})
+                if v == defaults.get(path):
+                    node.pop(path[-1], None)            # back to the default: drop it from your settings
+                else:
+                    node[path[-1]] = v
             try:
-                bak = helpers.save_config(CFG_PATH, changes)
+                save_local(local)
+                new = load_config()
             except Exception as e:
                 st.error(f"Not saved — {type(e).__name__}: {e}")
             else:
-                try:
-                    new = load_config(CFG_PATH)
-                except Exception as e:                          # should not happen (rewrite_config verifies), but be safe
-                    CFG_PATH.write_bytes(bak.read_bytes())
-                    st.error(f"The saved file did not load ({e}); restored the backup.")
-                else:
-                    lst = ", ".join(f"{'.'.join(p)} = {v!r}" for p, v in changes.items())
-                    ss["cfg_saved"] = (f"Saved {len(changes)} change(s): {lst}. Config hash {before} → **{new.hash}**. "
-                                       f"Backup: `{bak.name}`.")
-                    st.rerun()
+                lst = ", ".join(f"{'.'.join(p)} = {v!r}" for p, v in changes.items())
+                ss["cfg_saved"] = f"Saved {len(changes)} change(s): {lst}. Config hash {before} → **{new.hash}**."
+                st.rerun()
+    if LOCAL_CONFIG_PATH.exists():
+        with st.popover("Reset to defaults", icon=":material/restart_alt:"):
+            st.markdown("Removes all your changes (a backup is kept as `config.local.yaml.bak`).")
+            if st.button("Yes, reset all settings", type="primary"):
+                LOCAL_CONFIG_PATH.with_name(LOCAL_CONFIG_PATH.name + ".bak").write_bytes(LOCAL_CONFIG_PATH.read_bytes())
+                LOCAL_CONFIG_PATH.unlink()
+                ss["cfg_saved"] = "All settings are back to the defaults."
+                st.rerun()
 
 # ======================================================================================================
 with tab_data:
@@ -179,8 +205,13 @@ with tab_sched:
         sec = helpers.readme_section((REPO_ROOT / "README.md").read_text(encoding="utf-8"), "## Scheduling")
     except OSError:
         sec = None
-    st.markdown("##### Recommended Windows Task Scheduler tasks")
-    st.markdown(sec or helpers.DEFAULT_SCHEDULE)
+    common.callout("<b>Easiest:</b> double-click <b>Schedule GridSim</b> in the GridSim folder and press <b>A</b>. "
+                   "It creates three background tasks (Tuesday 9:00 weekly routine, Friday 19:00 lock-in, Kalshi "
+                   "price check every 30 minutes on game days). Run it again and press <b>R</b> to remove them. "
+                   f"What they did is written to <code>{hr.esc(str(REPO_ROOT / 'logs' / 'scheduled.log'))}</code>.",
+                   tone="good")
+    with st.expander("Details for console users (README)"):
+        st.markdown(sec or helpers.DEFAULT_SCHEDULE)
     if cfg.scanner.get("schedule_note"):
         st.caption(f"config scanner.schedule_note: {cfg.scanner['schedule_note']}")
     st.markdown("##### Last activity")

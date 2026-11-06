@@ -259,3 +259,15 @@ cause is information the model cannot see — offseason roster/QB changes (a QB 
 sample is shrunk toward backup level, e.g. 2024 MIN) and early-season reliance on last year's team. Treat sim-vs-market
 gaps as hypotheses to grade live (`grade`, `scorecard`, signal CLV), not as edges. Totals are the main known weakness, together with the margin *shape*
 (one-score games 45% sim vs 50% actual; margin exactly 3: 10.8% vs 14.2%), which diagnose now reports as "key numbers".
+
+## Local settings and the no-console setup
+
+- Changes made on the Settings page, and tuned settings you choose to use, are written to `config.local.yaml` (only the
+  values that differ from `config.yaml`), merged over `config.yaml` at load time. It is git-ignored and not in the
+  download, so updating GridSim never wipes it. With no local file the config hash is unchanged.
+- Cached game results are keyed on the config hash, the two teams' lineup overrides and the modification times of the
+  downloaded data files, so a data refresh or a lineup change for one game recomputes only what it affects.
+- Scheduled tasks run `pythonw.exe -m gridsim ...` (no console window); output goes to `logs/scheduled.log`. Every
+  `scan` saves a price snapshot, so closing-line value builds up without a separate `snapshot-markets` task.
+- Setup accepts any 64-bit (win-amd64) Python 3.11+; ARM64 and 32-bit Pythons are rejected because pyarrow/polars
+  wheels for them are missing or incomplete.

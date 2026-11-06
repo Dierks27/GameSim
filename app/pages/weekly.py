@@ -45,7 +45,10 @@ season = s["season"]
 try:
     sched = load_schedules(cfg).filter(pl.col("season") == season)
     played = sched.filter(pl.col("home_score").is_not_null())
-    last_done = int(played["week"].max()) if played.height else None
+    # last week whose games are ALL final (so a Friday after Thursday Night Football still points at last week)
+    done_weeks = (sched.group_by("week").agg(pl.col("home_score").is_null().sum().alias("open"))
+                  .filter(pl.col("open") == 0)["week"].to_list())
+    last_done = int(max(done_weeks)) if done_weeks else (int(played["week"].max()) if played.height else None)
     upcoming = sched.filter(pl.col("home_score").is_null())
     next_week = int(upcoming["week"].min()) if upcoming.height else None
 except Exception as e:
@@ -77,17 +80,24 @@ with st.container(border=True):
     st.caption("Simulates every game that has not kicked off yet and saves a frozen, time-stamped copy. These are "
                "what gets graded later — the honest record. Best: Wednesday, again Friday evening after the final "
                "injury reports, and optionally Sunday morning after inactives.")
-    sims = st.number_input("Sims per game", 500, 20000, int(cfg.sim["n_sims"]), step=500, key="wk_sims")
+    sims = st.number_input("Sims per game", 500, 20000, max(500, int(s["sims"])), step=500, key="wk_sims",
+                           help="500 or more. 2,000 is the normal setting (about 2 minutes for a full week). The seed "
+                                "and player-projection setting come from the sidebar, so This Week reuses these sims.")
     if st.button("Lock in predictions", type="primary", key="wk_predict", icon=":material/lock:",
                  disabled=next_week is None):
         bar = st.progress(0.0, text="starting ...")
         log = st.empty()
         try:
             with common.capture_output(log, keep_lines=6):
-                paths = live.predict_week(cfg, season, next_week, sims=int(sims),
+                paths = live.predict_week(cfg, season, next_week, sims=int(sims), seed=int(s["seed"]),
+                                          use_players=bool(s["players"]),
                                           progress=lambda f: bar.progress(min(f, 1.0), text=f"{100 * f:.0f}%"))
             bar.progress(1.0, text="done")
-            st.success(f"Saved {len(paths)} locked-in predictions for week {next_week}.")
+            if paths:
+                st.success(f"Saved {len(paths)} locked-in predictions for week {next_week} at {int(sims):,} sims per game. "
+                           "Games that had already kicked off are skipped.")
+            else:
+                st.info("Nothing to lock in: every game of this week has already kicked off.")
         except Exception as e:
             st.error(f"Could not finish: {type(e).__name__}: {e}")
 
@@ -102,7 +112,12 @@ with st.container(border=True):
             with st.spinner("Grading ..."):
                 rows = live.grade(cfg, season, int(gw), verbose=False)
             sc = live.scorecard(cfg, season)
-            st.success(f"Graded {len(rows)} new games for week {int(gw)}.")
+            if rows:
+                st.success(f"Graded {len(rows)} new games for week {int(gw)}.")
+            else:
+                st.info(f"Nothing new to grade for week {int(gw)}: either no predictions were locked in before those "
+                        "games, or they are already graded. Lock in predictions (step 2) every week so there is "
+                        "something to grade the following Tuesday.")
             ov = sc.get("overall") or {}
             if ov.get("games"):
                 st.markdown(f"Season so far: **{ov['games']} games**, Brier **{ov['brier']:.4f}** "
@@ -128,8 +143,9 @@ with st.container(border=True):
             with st.status(f"Re-playing weeks {first}-{last_done} ...", expanded=True) as box:
                 log = st.empty()
                 with common.capture_output(log, keep_lines=6):
+                    # one process: helper processes would re-run this page's script on start-up inside Streamlit
                     g, ex = run_backtest(cfg, season, list(range(first, last_done + 1)),
-                                         sims=int(cfg.tune["sims_per_game"]), verbose=True)
+                                         sims=int(cfg.tune["sims_per_game"]), verbose=True, workers=1)
                     diag = diagnose(g, ex["components"])
                     write_report(diag, cfg.resolve_path("diagnose") / f"{season}_wk{first}-{last_done}_{cfg.hash}",
                                  f"Diagnose {season} weeks {first}-{last_done}")
@@ -144,8 +160,10 @@ with st.container(border=True):
 with st.container(border=True):
     st.markdown("#### 5 · Self-tune (every few weeks, optional)")
     st.caption("Searches the model's settings on past seasons and tests the winner on a season it never saw. "
-               "Runs in the background for several hours and keeps your PC busy — start it in the evening. "
-               "It never changes your settings by itself: you decide below whether to use the result.")
+               "At 150 trials it runs for about 8-15 hours in the background and keeps your PC busy — start it in "
+               "the evening and leave the PC on. It keeps going even if you close GridSim (to stop it early: Task "
+               "Manager → end the python.exe that uses the most CPU). It never changes your settings by itself: "
+               "you decide below whether to use the result.")
     log_path = cfg.resolve_path("tuning") / "gui_tune.log"
     pid_path = cfg.resolve_path("tuning") / "gui_tune.pid"
     running = False
@@ -163,7 +181,9 @@ with st.container(border=True):
                "--trials", str(int(trials))]
         log_path.parent.mkdir(parents=True, exist_ok=True)
         fh = open(log_path, "w", encoding="utf-8")
-        kw = {"creationflags": 0x00000008 | 0x00000200} if sys.platform == "win32" else {"start_new_session": True}
+        # Windows: CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP -> no console windows (also for its worker processes),
+        # and it keeps running if the GridSim window is closed
+        kw = {"creationflags": 0x08000000 | 0x00000200} if sys.platform == "win32" else {"start_new_session": True}
         p = subprocess.Popen(cmd, cwd=str(ROOT), stdout=fh, stderr=subprocess.STDOUT, **kw)
         pid_path.write_text(json.dumps({"pid": p.pid, "started": dt.datetime.now().isoformat(timespec="minutes"),
                                         "cmd": " ".join(cmd)}))
@@ -188,5 +208,7 @@ with st.container(border=True):
         elif "Recommended: no" in txt:
             st.info("The tuned settings did not beat your current ones on the held-out season, so nothing changes.")
 
-st.caption("Prefer it automatic? Double-click \"Schedule GridSim\" in the GridSim folder once: steps 1-4 then run by "
-           "themselves (Tuesday morning and Friday evening).")
+st.caption("Prefer it automatic? Double-click \"Schedule GridSim\" in the GridSim folder once and press A: every "
+           "Tuesday 9:00 it refreshes the data, grades last week, runs the check-up and locks in the next week; every "
+           "Friday 19:00 it locks in fresh predictions after the final injury reports. It runs in the background "
+           "while you are signed in to Windows.")

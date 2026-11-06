@@ -2,7 +2,6 @@
 rem ---------------------------------------------------------------------------
 rem  Start GridSim: launches the GridSim app in your web browser.
 rem  Double-click this file (or the GridSim icon that Setup put on your desktop).
-rem  Phone on the same Wi-Fi: http://<this PC's IP address>:8501
 rem  To stop GridSim, close this black window.
 rem ---------------------------------------------------------------------------
 setlocal
@@ -17,10 +16,20 @@ if not exist "%VPY%" (
     pause
     exit /b 1
 )
+
+rem Already running in another window? Then just open the browser to it.
+powershell -NoProfile -Command "if (Get-NetTCPConnection -LocalPort 8501 -State Listen -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }" >nul 2>nul
+if not errorlevel 1 (
+    echo  GridSim is already running - opening it in your browser.
+    start "" "http://localhost:8501"
+    timeout /t 4 >nul
+    exit /b 0
+)
+
 echo.
 echo  Starting GridSim ... your browser will open in a few seconds.
 echo  Leave this window open while you use GridSim; close it to stop.
-echo  On your phone (same Wi-Fi): http://THIS-PC-IP:8501
+echo  For your phone (same Wi-Fi): use the "Network URL" line shown below.
 echo.
-"%VPY%" -m streamlit run app\streamlit_app.py --server.address 0.0.0.0 --server.port 8501
+"%VPY%" -m streamlit run app\streamlit_app.py --server.address 0.0.0.0 --server.port 8501 --server.showEmailPrompt false
 if errorlevel 1 pause

@@ -39,7 +39,7 @@ def kickoff_utc(game: dict) -> dt.datetime | None:
 
 
 def predict_week(cfg: Config, season: int | None = None, week: int | None = None, sims: int | None = None,
-                 verbose: bool = True, progress=None) -> list[Path]:
+                 verbose: bool = True, progress=None, seed: int | None = None, use_players: bool = True) -> list[Path]:
     season, week, games = week_slate(cfg, season, week)
     d = pred_dir(cfg, season, week)
     d.mkdir(parents=True, exist_ok=True)
@@ -52,9 +52,11 @@ def predict_week(cfg: Config, season: int | None = None, week: int | None = None
             if verbose:
                 print(f"  skip {g['game_id']}: already kicked off")
             continue
-        req = RunRequest(home=g["home_team"], away=g["away_team"], season=season, week=week, sims=sims,
+        req = RunRequest(home=g["home_team"], away=g["away_team"], season=season, week=week,
+                         sims=int(sims or cfg.sim["n_sims"]), seed=int(seed if seed is not None else cfg.sim["seed"]),
+                         use_players=use_players,
                          market_lines=True)
-        summ = run_game(req, cfg, use_cache=False)
+        summ = run_game(req, cfg, refresh=True)   # fresh sim; also refreshes the normal cache for This Week
         stamp = now.strftime("%Y%m%dT%H%M%SZ")
         summ["frozen"] = {"created_utc": now.isoformat(), "kickoff_utc": ko.isoformat() if ko else None,
                           "config_hash": cfg.hash, "game_id": g["game_id"]}

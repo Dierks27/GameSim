@@ -15,6 +15,9 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = REPO_ROOT / "config.yaml"
+# Your own changes (Settings page, promoted tuning) live here, merged over config.yaml. It is git-ignored and not in
+# the download, so updating GridSim (new ZIP / git pull) never wipes them.
+LOCAL_CONFIG_PATH = REPO_ROOT / "config.local.yaml"
 
 
 class Config:
@@ -86,9 +89,58 @@ def config_hash(raw: dict[str, Any]) -> str:
     return hashlib.sha1(blob).hexdigest()[:10]
 
 
-def load_config(path: str | Path | None = None, overrides: dict[str, Any] | None = None) -> Config:
+def deep_merge(base: dict, over: dict) -> dict:
+    out = copy.deepcopy(base)
+    for k, v in (over or {}).items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = deep_merge(out[k], v)
+        else:
+            out[k] = copy.deepcopy(v)
+    return out
+
+
+def deep_diff(new: dict, base: dict) -> dict:
+    """The parts of `new` that differ from `base` (leaf values; lists compared whole)."""
+    out = {}
+    for k, v in new.items():
+        b = base.get(k) if isinstance(base, dict) else None
+        if isinstance(v, dict) and isinstance(b, dict):
+            d = deep_diff(v, b)
+            if d:
+                out[k] = d
+        elif v != b:
+            out[k] = copy.deepcopy(v)
+    return out
+
+
+def load_local() -> dict:
+    if LOCAL_CONFIG_PATH.exists():
+        with open(LOCAL_CONFIG_PATH, "r", encoding="utf-8-sig") as fh:
+            return yaml.safe_load(fh) or {}
+    return {}
+
+
+def save_local(local: dict) -> Path:
+    """Write config.local.yaml (backing up the previous one to config.local.yaml.bak)."""
+    if LOCAL_CONFIG_PATH.exists():
+        LOCAL_CONFIG_PATH.with_name(LOCAL_CONFIG_PATH.name + ".bak").write_bytes(LOCAL_CONFIG_PATH.read_bytes())
+    with open(LOCAL_CONFIG_PATH, "w", encoding="utf-8") as fh:
+        fh.write("# Your GridSim settings: only the values you changed. Merged over config.yaml at load time.\n"
+                 "# Delete this file (or use Settings -> Reset to defaults) to go back to the shipped defaults.\n")
+        yaml.safe_dump(local, fh, sort_keys=True)
+    return LOCAL_CONFIG_PATH
+
+
+def load_config(path: str | Path | None = None, overrides: dict[str, Any] | None = None,
+                use_local: bool | None = None) -> Config:
+    """config.yaml, plus config.local.yaml merged over it when loading the default config."""
+    explicit = path is not None
     path = Path(path) if path else DEFAULT_CONFIG_PATH
     with open(path, "r", encoding="utf-8") as fh:
         raw = yaml.safe_load(fh)
+    if use_local is None:
+        use_local = not explicit or Path(path).resolve() == DEFAULT_CONFIG_PATH.resolve()
+    if use_local:
+        raw = deep_merge(raw, load_local())
     cfg = Config(raw, path)
     return cfg.copy_with(overrides) if overrides else cfg

@@ -114,6 +114,7 @@ def scan(cfg: Config, season: int | None = None, week: int | None = None, notify
     state = json.loads(state_p.read_text()) if state_p.exists() else {}
     now = dt.datetime.now(dt.timezone.utc)
     all_sigs = []
+    snap_games: dict = {}
     for gi, g in enumerate(games):
         if progress:
             progress(gi / max(len(games), 1), f"{g['away_team']} @ {g['home_team']}")
@@ -138,6 +139,7 @@ def scan(cfg: Config, season: int | None = None, week: int | None = None, notify
             if verbose:
                 print(f"  {g['game_id']}: Kalshi unavailable ({e})")
             continue
+        snap_games[g["game_id"]] = mk
         rows = edges(sim_probs(summ, mk), cfg)
         # MOE test: re-sim with more sims if an edge is big enough but within the noise
         need = [r for r in rows if r.get("edge") is not None and r["edge"] >= float(cfg.scanner["min_edge"])
@@ -169,6 +171,13 @@ def scan(cfg: Config, season: int | None = None, week: int | None = None, notify
         if verbose:
             for s in sigs[:6]:
                 print(f"  [{s['confidence']:<9}] {s['matchup']:<12} {s['label']:<24} {s['side']:<3} {s['reason']}")
+    # every scan also saves the prices it fetched: the last snapshot before kickoff is the closing price
+    # used to grade signals (closing-line value), so a scheduled scan alone keeps the record going
+    if snap_games:
+        sd = _dir(cfg) / "snapshots"
+        sd.mkdir(exist_ok=True)
+        (sd / f"{season}_wk{week:02d}_{now.strftime('%Y%m%dT%H%M%SZ')}.json").write_text(
+            json.dumps({"ts_utc": now.isoformat(), "season": season, "week": week, "games": snap_games}))
     # ledger + re-alert logic
     led = _dir(cfg) / "ledger.csv"
     new = not led.exists()

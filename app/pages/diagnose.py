@@ -23,7 +23,7 @@ if tdir.exists():
     cands += list(tdir.glob("*/diagnose_validation/diagnose.json"))
 cands.sort(key=lambda p: p.stat().st_mtime, reverse=True)
 if not cands:
-    st.info("No diagnose reports yet. Run `gridsim diagnose --seasons 2024-2025` (or `gridsim weekly`).")
+    st.info("No check-up reports yet. Open **Weekly routine** and press **Run check-up**.")
     st.stop()
 
 

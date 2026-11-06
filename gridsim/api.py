@@ -88,8 +88,9 @@ def week_slate(cfg: Config, season: int | None = None, week: int | None = None) 
 
 
 def cache_path(req: RunRequest, cfg: Config) -> Path:
-    """Disk cache location for a request. The key includes the config hash and the contents of the week's
-    overrides file, so editing overrides (or the config) never returns a stale result."""
+    """Disk cache location for a request. The key includes the config hash and the overrides of THIS game's two
+    teams, so editing a lineup (or the config) never returns a stale result, and editing one game's lineup does
+    not invalidate the other games of the week."""
     from .availability import default_overrides_path
     from .data import current_season
     season = req.season or current_season()
@@ -98,8 +99,24 @@ def cache_path(req: RunRequest, cfg: Config) -> Path:
         g = schedule_game(cfg, season, req.home.upper(), req.away.upper())
         week = (g or {}).get("week")
     ovp = Path(req.overrides_path) if req.overrides_path else default_overrides_path(cfg, season, week)
-    digest = hashlib.sha1(ovp.read_bytes()).hexdigest()[:8] if ovp.exists() else "none"
-    return cfg.resolve_path("out/cache") / f"{req.key(cfg.hash + digest)}.json"
+    digest = "none"
+    if ovp.exists():
+        from .availability import load_overrides
+        try:
+            ov = load_overrides(ovp)
+            mine = {t: ov.get(t) for t in (req.home.upper(), req.away.upper()) if ov.get(t)}
+            digest = hashlib.sha1(json.dumps(mine, sort_keys=True, default=str).encode()).hexdigest()[:8] if mine else "none"
+        except Exception:
+            digest = hashlib.sha1(ovp.read_bytes()).hexdigest()[:8]
+    # data version: refreshing the data (new injury report, new plays) must produce fresh sims, not old cached ones
+    cache_dir = cfg.resolve_path(cfg.data["cache_dir"])
+    stamps = []
+    for name in (f"pbp_{season}.parquet", "schedules.parquet", f"injuries_{season}.parquet",
+                 f"rosters_weekly_{season}.parquet", f"depth_charts_{season}.parquet"):
+        f = cache_dir / name
+        stamps.append(f"{name}:{int(f.stat().st_mtime)}" if f.exists() else f"{name}:-")
+    data_v = hashlib.sha1("|".join(stamps).encode()).hexdigest()[:8]
+    return cfg.resolve_path("out/cache") / f"{req.key(cfg.hash + digest + data_v)}.json"
 
 
 def cached_summary(req: RunRequest, cfg: Config) -> dict | None:

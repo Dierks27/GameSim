@@ -14,8 +14,10 @@ from .config import REPO_ROOT
 def load_env() -> dict:
     env = {}
     p = REPO_ROOT / ".env"
+    if not p.exists() and (REPO_ROOT / ".env.txt").exists():   # Notepad / Explorer often add ".txt"
+        p = REPO_ROOT / ".env.txt"
     if p.exists():
-        for line in p.read_text(encoding="utf-8").splitlines():
+        for line in p.read_text(encoding="utf-8-sig").splitlines():
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
                 k, _, v = line.partition("=")
@@ -55,8 +57,9 @@ def send(cfg, title: str, message: str, url: str | None = None, priority: str = 
               "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('GridSim').Show("
               "[Windows.UI.Notifications.ToastNotification]::new($t))")
         try:
-            subprocess.run(["powershell", "-NoProfile", "-Command", ps], timeout=10, capture_output=True)
-            sent.append("toast")
+            r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], timeout=10, capture_output=True)
+            if r.returncode == 0:
+                sent.append("toast")
         except Exception:
             pass
     return sent

@@ -11,7 +11,7 @@ s = common.settings()
 try:
     season, week, games = common.slate(s["season"], s["week"])
 except Exception as e:
-    st.error(f"Could not load the schedule ({e}). Run `gridsim refresh-data` once, then reload.")
+    st.error(f"Could not load the schedule ({e}). Open **Weekly routine** and press **Refresh data**, then reload this page.")
     st.stop()
 
 reqs = {g["game_id"]: common.make_request(g["home_team"], g["away_team"], season, week, s) for g in games}

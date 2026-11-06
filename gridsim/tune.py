@@ -211,17 +211,25 @@ def before_after_table(s: dict) -> str:
 
 
 def apply_tuned(cfg: Config) -> Path:
+    """Promote config.tuned.yaml: the tuned values are written to config.local.yaml (your settings layer), so
+    config.yaml stays as shipped and updates never undo a promoted tuning. Returns the backup of the previous
+    settings."""
+    from .config import DEFAULT_CONFIG_PATH, LOCAL_CONFIG_PATH, deep_diff, save_local
     src = cfg.resolve_path("config.tuned.yaml")
     if not src.exists():
         raise FileNotFoundError("no config.tuned.yaml — run `gridsim tune` first")
-    dst = cfg.resolve_path("config.yaml")
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-    backup = cfg.resolve_path("tuning") / f"config.backup.{stamp}.yaml"
+    backup = cfg.resolve_path("tuning") / f"config.local.backup.{stamp}.yaml"
     backup.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy(dst, backup)
-    # keep comments of the current file where possible: write tuned values as a fresh dump
-    shutil.copy(src, dst)
-    new = load_config(dst)
+    if LOCAL_CONFIG_PATH.exists():
+        shutil.copy(LOCAL_CONFIG_PATH, backup)
+    else:
+        backup.write_text("# (no config.local.yaml before this promotion: shipped defaults)\n", encoding="utf-8")
+    with open(src, encoding="utf-8") as fh:
+        tuned_raw = yaml.safe_load(fh)
+    base = load_config(DEFAULT_CONFIG_PATH, use_local=False)
+    save_local(deep_diff(tuned_raw, base.raw))
+    new = load_config()
     latest = sorted((cfg.resolve_path("tuning")).glob("*/summary.json"))
     held = json.loads(latest[-1].read_text()) if latest else {}
     hist = cfg.resolve_path("tuning") / "history.csv"

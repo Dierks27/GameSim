@@ -11,3 +11,9 @@ dist/
 *.bak
 signals/alert_state.json
 signals/
+logs/
+overrides/
+predictions/
+config.local.yaml
+config.local.yaml.bak
+config.tuned.yaml

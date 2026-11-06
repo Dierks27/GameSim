@@ -13,11 +13,12 @@ font = "sans serif"
 address = "0.0.0.0"
 port = 8501
 headless = false        # open a browser tab on start
+showEmailPrompt = false # never stop at Streamlit's first-run "enter your email" prompt in the black window
 runOnSave = false
 fileWatcherType = "none"
 
 [browser]
-serverAddress = "localhost"   # the tab opened on this PC uses localhost
+# (no serverAddress: Streamlit then prints the "Network URL" your phone can use in the black window)
 gatherUsageStats = false
 
 [client]

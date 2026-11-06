@@ -211,7 +211,7 @@ def availability_console(av: dict, qb_starts: dict) -> str:
         qs = qb_starts.get(team) or {}
         qtxt = ", ".join(f"{k} {100 * v:.0f}%" for k, v in qs.items()) or ", ".join(f"{q['name']} {100 * q['p_start']:.0f}%" for q in d["qb"][:2])
         L.append(f"  {team} QB starts: {qtxt}")
-        lst = [f"{p['name']} ({p['pos']}) {'OUT' if p['p_play'] == 0 else f'{100 * p['p_play']:.0f}% play'}"
+        lst = [f"{p['name']} ({p['pos']}) " + ("OUT" if p["p_play"] == 0 else f"{100 * p['p_play']:.0f}% play")
                for p in d["listed"] if p["pos"] in ("QB", "RB", "WR", "TE", "K") and p["p_play"] < 1]
         if lst:
             L.append("    " + "; ".join(lst[:12]))

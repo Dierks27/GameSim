@@ -120,9 +120,31 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _log_when_windowless() -> None:
+    """Started by pythonw.exe (Windows scheduled tasks): there is no console, so write output to
+    logs/scheduled.log next to config.yaml instead of losing it."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    import datetime as dt
+
+    from .config import REPO_ROOT
+    (REPO_ROOT / "logs").mkdir(exist_ok=True)
+    fh = open(REPO_ROOT / "logs" / "scheduled.log", "a", encoding="utf-8", buffering=1)
+    sys.stdout = sys.stderr = fh
+    print(f"\n=== {dt.datetime.now():%Y-%m-%d %H:%M} gridsim {' '.join(sys.argv[1:])}")
+
+
 def main(argv: list[str] | None = None) -> int:
+    _log_when_windowless()
     args = build_parser().parse_args(argv)
-    return int(args.func(args) or 0)
+    try:
+        return int(args.func(args) or 0)
+    except Exception:
+        if sys.stdout is not sys.__stdout__:   # windowless run: make sure the traceback lands in the log
+            import traceback
+            traceback.print_exc()
+            return 1
+        raise
 
 
 if __name__ == "__main__":

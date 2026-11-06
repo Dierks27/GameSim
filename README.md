@@ -97,24 +97,26 @@ positive live record (≥ 50 graded signals with positive closing-line value); u
 
 ## Scheduling on Windows (Task Scheduler)
 
-Create one task per line below (Task Scheduler → *Create Basic Task* → *Start a program*). Program:
-`C:\path\to\GameSim\.venv\Scripts\gridsim.exe`, *Start in*: `C:\path\to\GameSim`, arguments as shown.
+Easiest: double-click **`Schedule GridSim.bat`** and press **A** (press **R** to remove). It creates three tasks
+that run windowless with `.venv\Scripts\pythonw.exe` while you are signed in, catch up a run missed while the PC
+was off or asleep, and append their output to `logs\scheduled.log`:
+
+| Task | When | Arguments | What it does |
+|---|---|---|---|
+| GridSim Weekly | Tuesday 9:00 | `-m gridsim weekly` | refresh data, grade last week, diagnose, predict the next week |
+| GridSim Predict | Friday 19:00 (after final injury reports) | `-m gridsim predict-week` | fresh frozen predictions with Friday statuses |
+| GridSim Scan | Mon + Thu–Sun every 30 min, 8:00–24:00 | `-m gridsim scan --notify` | re-price Kalshi markets, save price snapshots (closing-line value), push alerts |
+
+Optional extras you can add by hand (Task Scheduler → *Create Basic Task* → *Start a program*, program
+`C:\path\to\GameSim\.venv\Scripts\gridsim.exe`, *Start in* the GridSim folder):
 
 | When | Arguments | What it does |
 |---|---|---|
-| Tuesday 9:00 | `weekly` | refresh data, grade last week, diagnose, predict the next week |
-| Friday 19:00 (after final injury reports) | `predict-week` | fresh frozen predictions with Friday statuses |
-| Thu–Sun every 30 min (game weeks) | `scan --notify` | re-price Kalshi markets, push alerts |
-| ~60 min before each kickoff window (Thu 19:15, Sun 12:00 / 15:05 / 19:20, Mon 19:15) | `snapshot-markets` | prices for closing-line value |
+| ~60 min before each kickoff window (Thu 19:15, Sun 12:00 / 15:05 / 19:20, Mon 19:15) | `snapshot-markets` | extra closing-price snapshots |
 | Every few weeks, overnight | `weekly --tune` | adds a tuning run (hours) |
 
-Or from PowerShell (example for the scan task):
-
-```powershell
-schtasks /Create /TN "GridSim scan" /SC MINUTE /MO 30 /TR "C:\path\to\GameSim\.venv\Scripts\gridsim.exe scan --notify" /ST 08:00
-```
-
-`scan` re-sims only when inputs changed (the cache key includes the config and the week's overrides file) or the
+`scan` re-sims only when inputs changed (the cache key includes the config, the two teams' lineup overrides and the
+version of the downloaded data) or the
 sim is older than `scanner.max_sim_age_hours`; otherwise it re-prices against the cached sim.
 
 ## Tests

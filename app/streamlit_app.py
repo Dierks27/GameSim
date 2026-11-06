@@ -21,7 +21,7 @@ def landing() -> None:
         season, week, games = common.slate(s["season"], s["week"])
         st.markdown(f"**{season} week {week}** — {len(games)} games on the slate.")
     except Exception as e:  # schedule not downloaded yet
-        st.warning(f"Schedule unavailable ({e}). Run `gridsim refresh-data` once.")
+        st.warning(f"Schedule not downloaded yet ({e}). Open **Weekly routine** and press **Refresh data**, then reload this page.")
     cards = [
         (common.WEEKLY_PAGE, "Weekly routine", ":material/checklist:",
          "Your weekly to-do list as buttons: refresh data, lock in predictions, grade last week, check-up."),

@@ -89,7 +89,7 @@ st.markdown("#### Current signals")
 if source:
     st.caption(f"From the {source}.")
 if not current:
-    st.info("No scan results yet — press **Scan now** (or run `gridsim scan`).")
+    st.info("No scan results yet — press **Scan now**.")
 else:
     live = [x for x in current if x.get("confidence") in ("strong", "moderate")]
     watch = [x for x in current if x.get("confidence") not in ("strong", "moderate")]
@@ -127,7 +127,7 @@ if trust:
                  column_config={"avg CLV": st.column_config.NumberColumn(format="%+.3f"),
                                 "P&L (units)": st.column_config.NumberColumn(format="%+.2f")})
 st.caption(f"A market type may alert only after {cfg.scanner['trust_min_graded']} graded signals with positive average "
-           "closing-line value and non-negative P&L. Signals are graded by `gridsim grade` once games are final.")
+           "closing-line value and non-negative P&L. Signals are graded when you press **Grade** on the Weekly routine page after the games.")
 
 if graded_p.exists():
     try:
