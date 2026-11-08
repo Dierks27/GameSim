@@ -80,3 +80,21 @@ def test_devig():
     assert abs(a - 0.5) < 1e-12 and abs(b - 0.5) < 1e-12
     h, _ = devig_two_way(american_to_prob(-200), american_to_prob(170))
     assert 0.63 < h < 0.65
+
+
+def test_kalshi_links_point_at_the_game_event():
+    """Links must name the event (one game); kalshi.com/markets/<series> alone opens an arbitrary game."""
+    from gridsim.markets import kalshi_url, quote
+    want = {
+        "KXNFLSPREAD-26NOV08CLENO": "https://kalshi.com/markets/kxnflspread/pro-football-spread/kxnflspread-26nov08cleno",
+        "KXNFLTOTAL-26NOV08CLENO": "https://kalshi.com/markets/kxnfltotal/pro-football-total-points/kxnfltotal-26nov08cleno",
+        "KXNFLGAME-26NOV08CLENO": "https://kalshi.com/markets/kxnflgame/nfl-game/kxnflgame-26nov08cleno",
+    }
+    for ev, url in want.items():
+        assert kalshi_url(ev) == url
+    # older ledger rows only have the market ticker: the event is the ticker minus its last "-strike" part
+    assert kalshi_url(None, "KXNFLSPREAD-26NOV08CLENO-NO3") == want["KXNFLSPREAD-26NOV08CLENO"]
+    assert kalshi_url(None, "KXNFLGAME-26NOV08CLENO-CLE") == want["KXNFLGAME-26NOV08CLENO"]
+    assert kalshi_url(None, None) is None and kalshi_url(None, "KXNFLGAME") is None
+    q = quote({"event_ticker": "KXNFLTOTAL-26NOV08CLENO", "ticker": "KXNFLTOTAL-26NOV08CLENO-42"})
+    assert q["url"] == want["KXNFLTOTAL-26NOV08CLENO"]

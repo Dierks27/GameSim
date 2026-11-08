@@ -123,7 +123,27 @@ def quote(m: dict) -> dict:
             "open_interest": _f(m.get("open_interest_fp")), "yes_ask_size": _f(m.get("yes_ask_size_fp")),
             "yes_bid_size": _f(m.get("yes_bid_size_fp")),
             "strike": _f(m.get("floor_strike")), "sub_title": m.get("yes_sub_title"), "title": m.get("title"),
-            "url": f"https://kalshi.com/markets/{(m.get('event_ticker') or '').split('-')[0].lower()}"}
+            "url": kalshi_url(m.get("event_ticker"), m.get("ticker"))}
+
+
+SERIES_SLUGS = {"KXNFLGAME": "nfl-game", "KXNFLSPREAD": "pro-football-spread", "KXNFLTOTAL": "pro-football-total-points"}
+
+
+def kalshi_url(event_ticker: str | None, market_ticker: str | None = None) -> str | None:
+    """kalshi.com page for ONE event (one game's moneyline, spread or total), e.g.
+    https://kalshi.com/markets/kxnflspread/pro-football-spread/kxnflspread-26nov08cleno.
+
+    The event ticker must be in the address: the bare series page (kalshi.com/markets/kxnflspread) opens an arbitrary
+    game. The middle segment is a cosmetic label Kalshi ignores and rewrites. When only a market ticker is known
+    (older ledger rows), the event is the market ticker minus its last "-strike" part."""
+    ev = (event_ticker or "").strip()
+    if not ev and market_ticker and market_ticker.count("-") >= 2:
+        ev = market_ticker.strip().rsplit("-", 1)[0]
+    if "-" not in ev:
+        return None
+    series = ev.split("-")[0].upper()
+    slug = SERIES_SLUGS.get(series, series.lower())
+    return f"https://kalshi.com/markets/{series.lower()}/{slug}/{ev.lower()}"
 
 
 def game_markets(k: Kalshi, game: dict) -> dict:

@@ -10,6 +10,7 @@ import streamlit as st
 import common
 import helpers
 from gridsim import scanner
+from gridsim.markets import kalshi_url
 
 hr = common.hr
 ss = st.session_state
@@ -53,6 +54,14 @@ def _matchup_from_id(gid: str) -> str:
     return f"{parts[2]} @ {parts[3]}" if len(parts) >= 4 else str(gid or "")
 
 
+def _link(x: dict) -> str | None:
+    """The game's own Kalshi page (rebuilt from the contract code, so older rows with series-only links work too)."""
+    u = x.get("url") or ""
+    if u.count("/") >= 6:                       # already https://kalshi.com/markets/<series>/<slug>/<event>
+        return u
+    return kalshi_url(None, x.get("ticker")) or (u or None)
+
+
 def _rows(sigs: list[dict]) -> list[dict]:
     out = []
     for x in sigs:
@@ -61,7 +70,7 @@ def _rows(sigs: list[dict]) -> list[dict]:
                     "edge (pts)": round(100 * float(x["edge"]), 1) if x.get("edge") not in (None, "") else None,
                     "price (¢)": round(100 * float(x["price"])) if x.get("price") not in (None, "") else None,
                     "depth ($)": round(float(x["depth_dollars"])) if x.get("depth_dollars") not in (None, "") else None,
-                    "reason": x.get("reason"), "url": x.get("url") or None})
+                    "reason": x.get("reason"), "url": _link(x)})
     return out
 
 
