@@ -415,3 +415,157 @@ def test_backfilled_closing_prices(env, monkeypatch):
     # the last candle at or before kickoff is the closing price (not the one after kickoff)
     assert scanner._closing_price(cfg, "2026_10_CLE_NO", "KXNFLSPREAD-26NOV08CLENO-NO3", "YES", ko) == pytest.approx(0.56)
     assert scanner.backfill_closing_prices(cfg, 2026, 10, verbose=False)["needed"] == 0   # nothing left to do
+
+
+# ---- second review round -------------------------------------------------------------------------------------------
+
+def fake_backup(where: Path, name: str, info: dict, files: dict | None = None) -> Path:
+    import zipfile
+    where.mkdir(parents=True, exist_ok=True)
+    z = where / f"{userdata.BACKUP_PREFIX}{name}.zip"
+    with zipfile.ZipFile(z, "w") as zz:
+        for rel, text in (files or {}).items():
+            zz.writestr(rel, text)
+        zz.writestr("gridsim_backup.json", json.dumps(info))
+    return z
+
+
+def test_two_program_folders_sharing_one_data_folder_dont_undo_resets(env, monkeypatch):
+    code2 = env["tmp"] / "OneDrive" / "Desktop" / "GameSim"
+    for c in (env["code"], code2):
+        make_install(c, [], [], {"config.local.yaml": "sim:\n  n_sims: 5000\n", "overrides/2026_wk09.yaml": "MIN: {}\n"})
+    for _ in range(3):
+        for c in (env["code"], code2):
+            monkeypatch.setattr(userdata, "REPO_ROOT", c)
+            userdata.ensure()
+        (env["data"] / "config.local.yaml").unlink(missing_ok=True)          # Reset to defaults
+        (env["data"] / "overrides" / "2026_wk09.yaml").unlink(missing_ok=True)
+    for c in (env["code"], code2):
+        monkeypatch.setattr(userdata, "REPO_ROOT", c)
+        rep = userdata.ensure()
+        assert not rep.get("added")
+    assert not (env["data"] / "config.local.yaml").exists()
+    assert not (env["data"] / "overrides" / "2026_wk09.yaml").exists()
+
+
+def test_a_bad_code_folder_file_does_not_stop_the_once_only_rule(env):
+    make_install(env["code"], [], [], {"config.local.yaml": "sim.n_sims=5000\n", "overrides/2026_wk09.yaml": "MIN: {}\n"})
+    rep = userdata.ensure()
+    assert "error" not in rep and any("not a list of settings" in n for n in rep["notes"])
+    (env["data"] / "overrides" / "2026_wk09.yaml").unlink()
+    userdata.ensure()
+    assert not (env["data"] / "overrides" / "2026_wk09.yaml").exists()
+
+
+def test_backups_from_before_ids_existed(env):
+    old_info = {"gridsim_backup": 1, "created": "2026-11-09T06:00:00+00:00", "reason": "grade",
+                "counts": {"predictions": 20, "signal records": 100}}
+    ub = [fake_backup(env["backups"], f"20261109-06000{i}-grade", old_info) for i in range(3)]
+    # an existing folder getting its first ID claims them: no false alarm
+    make_install(env["data"], ["2026-11-01T15:00:00+00:00"], [f"g{i}__1__h.json" for i in range(20)])
+    (env["data"] / "signals" / "ledger.csv").write_text("x\n" * 101)
+    assert not userdata.status()["warn_empty"]
+    # ...but if the folder is lost, they count as lost data, are never pruned, and auto backups pause
+    shutil.rmtree(env["data"])
+    userdata.ensure()
+    write_ledger(env["data"] / "signals" / "ledger.csv", [])
+    st = userdata.status()
+    assert st["warn_empty"] and st["restore_candidate"] in ub
+    assert userdata.auto_backup(None, "daily") is None
+    cfg = load_config().copy_with({"backup.keep": 1})
+    for i in range(3):
+        userdata.backup(cfg, f"m{i}")
+    assert all(z.exists() for z in ub)
+
+
+def test_data_gone_but_id_file_kept_still_warns(env):
+    make_install(env["data"], ["2026-11-01T15:00:00+00:00"], [f"g{i}__1__h.json" for i in range(5)])
+    userdata.backup(None, "grade")
+    shutil.rmtree(env["data"] / "predictions")
+    write_ledger(env["data"] / "signals" / "ledger.csv", [])
+    st = userdata.status()
+    assert st["warn_empty"]
+    userdata.restore(st["restore_candidate"])
+    assert not userdata.status()["warn_empty"]
+
+
+def test_another_pc_sharing_the_backup_folder_is_not_a_false_alarm(env):
+    make_install(env["data"], ["2026-11-01T15:00:00+00:00"], ["a__1__h.json"])
+    userdata.data_id()
+    other = {"gridsim_backup": 1, "created": "2026-11-09T07:00:00+00:00", "reason": "daily", "host": "LAPTOP",
+             "data_id": "f" * 32, "counts": {"predictions": 50, "signal records": 900}}
+    fake_backup(env["backups"], "20261109-070000-daily", other)
+    assert not userdata.status()["warn_empty"]
+    userdata.backup(load_config().copy_with({"backup.keep": 1}), "x")
+    assert (env["backups"] / f"{userdata.BACKUP_PREFIX}20261109-070000-daily.zip").exists()   # never pruned
+    # a brand-new PC (nothing yet) does get the offer to restore
+    shutil.rmtree(env["data"])
+    userdata.ensure()
+    assert userdata.status()["warn_empty"]
+
+
+def test_deleted_id_file_with_data_present_is_not_lost(env):
+    make_install(env["data"], ["2026-11-01T15:00:00+00:00"], ["a__1__h.json"])
+    old_id = userdata.data_id()
+    userdata.backup(None, "grade")
+    (env["data"] / userdata.ID_FILE).unlink()
+    assert not userdata.status()["warn_empty"] and userdata.data_id() == old_id
+    (env["data"] / userdata.ID_FILE).write_bytes(b"\xff\xfe garbage")
+    assert not userdata.status()["warn_empty"] and userdata.data_id() == old_id
+
+
+def test_second_loss_restore_clears_the_warning(env):
+    make_install(env["data"], ["2026-11-01T15:00:00+00:00"], ["a__1__h.json"])
+    userdata.backup(None, "x")
+    for _ in range(2):                                 # lose it, restore, lose it again, restore again
+        shutil.rmtree(env["data"])
+        userdata.ensure()
+        st = userdata.status()
+        assert st["warn_empty"]
+        userdata.restore(st["restore_candidate"])
+        assert not userdata.status()["warn_empty"]
+        import time
+        time.sleep(1.1)                                # backups a second apart, as in real life
+        userdata.backup(None, "after")
+
+
+def test_custom_backup_folder_is_still_found_after_the_data_folder_is_lost(env):
+    usb = env["tmp"] / "E" / "GridSim Backups"
+    make_install(env["data"], ["2026-11-01T15:00:00+00:00"], ["a__1__h.json"])
+    userdata.backup(load_config().copy_with({"backup.dir": str(usb)}), "x")
+    shutil.rmtree(env["data"])                         # the backup.dir setting is gone with it
+    userdata.ensure()
+    st = userdata.status(load_config())
+    assert st["warn_empty"] and st["restore_candidate"].parent == usb
+
+
+def test_program_folder_copies_wait_until_after_the_restore(env):
+    # code folder still holds the old version's settings; the user later changed them in the data folder
+    make_install(env["code"], [], [], {"config.local.yaml": "sim:\n  n_sims: 3000\n"})
+    userdata.ensure()
+    from gridsim.config import load_local, save_local
+    save_local({"sim": {"n_sims": 10000}})
+    make_install(env["data"], ["2026-11-01T15:00:00+00:00"], ["a__1__h.json"])
+    userdata.backup(None, "x")
+    shutil.rmtree(env["data"])
+    rep = userdata.ensure()                            # data lost: the move from the program folder waits
+    assert rep.get("deferred") and not (env["data"] / "config.local.yaml").exists()
+    userdata.restore(userdata.status()["restore_candidate"])
+    assert load_local()["sim"]["n_sims"] == 10000       # the backup's (newer) settings, not the stale copy
+    assert not userdata.ensure().get("added")
+
+
+def test_fewer_workers_than_seasons_hold_whole_seasons():
+    from gridsim.backtest import PinnedPool
+    from gridsim.resources import season_worker_gb  # noqa: F401
+
+    class P(PinnedPool):
+        def __init__(self, n, seasons=None):
+            self.ex, self.seasons = [None] * n, list(dict.fromkeys(seasons or []))
+    for n in (1, 2, 3):
+        p, held = P(n, [2022, 2023, 2024, 2025]), {}
+        for s_ in (2022, 2023, 2024, 2025):
+            for w in range(3, 19):
+                held.setdefault(p.slot(s_, w), set()).add(s_)
+        assert max(len(v) for v in held.values()) == -(-4 // n)
+

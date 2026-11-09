@@ -268,10 +268,11 @@ class PinnedPool:
         if season not in self.seasons:
             self.seasons.append(season)
         k = len(self.seasons)
+        i = self.seasons.index(season)
         if n >= k:
-            group = [w for w in range(n) if w % k == self.seasons.index(season)]
+            group = [w for w in range(n) if w % k == i]
             return group[week % len(group)]
-        return (season * 100 + week) % n
+        return i % n          # fewer workers than seasons: whole seasons per worker (ceil(k/n) each), never all
 
     def map(self, fn, jobs):
         futs = [self.ex[self.slot(j["season"], j["week"])].submit(fn, j) for j in jobs]

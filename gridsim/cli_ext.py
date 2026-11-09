@@ -129,6 +129,10 @@ def cmd_restore(args) -> int:
             print("no backups found")
             return 1
     print(format_report(restore(src, cfg)))
+    from .userdata import status
+    st = status(cfg)
+    print("data folder OK — the 'data looks lost' warning is cleared." if not st["warn_empty"] else
+          f"some backups still hold data this folder doesn't have — next one: {st['restore_candidate']}")
     return 0
 
 

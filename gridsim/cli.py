@@ -134,7 +134,7 @@ def _log_when_windowless() -> None:
     print(f"\n=== {dt.datetime.now():%Y-%m-%d %H:%M} gridsim {' '.join(sys.argv[1:])}")
 
 
-def _startup_checks() -> None:
+def _startup_checks(quiet: bool = False) -> None:
     """Move data from the code folder into the data folder (older versions kept it there) and warn loudly if the data
     folder is empty while backups exist (a fresh install that should be restored, not started fresh)."""
     try:
@@ -143,11 +143,13 @@ def _startup_checks() -> None:
         rep = ensure()
         if rep.get("added") or rep.get("records added"):
             print("moved your data into the data folder: " + format_report(rep), file=sys.stderr)
+        if rep.get("error"):
+            print(f"(could not move data from the program folder: {rep['error']})", file=sys.stderr)
         st = status(load_config())
-        if st["warn_empty"]:
+        if st["warn_empty"] and not quiet:
             bar = "!" * 78
-            print(f"{bar}\n  Your GridSim data folder ({st['data_dir']}) looks LOST or replaced: there are backups of\n"
-                  f"  another data folder in {st['backup_dir']} (newest: {st['restore_candidate'].name}).\n"
+            print(f"{bar}\n  Your GridSim data looks LOST: a backup holds predictions or records that the data folder\n"
+                  f"  ({st['data_dir']}) doesn't have — best one: {st['restore_candidate']}.\n"
                   "  Automatic backups are paused until you decide. To get your predictions and records back:\n"
                   f"    gridsim restore \"{st['restore_candidate']}\"     (or GridSim -> Settings -> Your data)\n"
                   f"{bar}", file=sys.stderr)
@@ -158,7 +160,7 @@ def _startup_checks() -> None:
 def main(argv: list[str] | None = None) -> int:
     _log_when_windowless()
     args = build_parser().parse_args(argv)
-    _startup_checks()
+    _startup_checks(quiet=args.cmd in ("restore", "import"))
     try:
         return int(args.func(args) or 0)
     except Exception:

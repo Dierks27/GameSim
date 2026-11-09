@@ -185,9 +185,16 @@ with tab_mine:
 
     st.markdown("##### Restore a backup")
     if stt["backups"]:
-        pick = st.selectbox("Backup", stt["backups"], format_func=lambda p: (
-            f"{common.mtime_text(p)} · {p.stem.split('-', 4)[-1] if p.stem.count('-') >= 4 else ''} · "
-            f"{p.stat().st_size / 1e6:.1f} MB"), key="ud_pick")
+        def _blabel(p) -> str:
+            p = Path(p)
+            info = userdata.backup_info(p)
+            c = info.get("counts") or {}
+            where = "" if info.get("host") in (None, userdata.host()) else f" · from {info['host']}"
+            return (f"{common.mtime_text(p)} · {info.get('reason', '?')} · {c.get('predictions', '?')} predictions, "
+                    f"{c.get('signal records', '?')} signal records{where} · {p.stat().st_size / 1e6:.1f} MB")
+        lost = set(stt.get("lost_backups") or [])
+        opts = sorted(stt["backups"], key=lambda p: (p != stt["restore_candidate"], p not in lost))
+        pick = st.selectbox("Backup", opts, format_func=_blabel, key="ud_pick")
         st.caption("Restoring brings back everything in that backup that's missing now. Nothing current is deleted "
                    "or overwritten (your current version is backed up first).")
         if st.button("Restore this backup", icon=":material/settings_backup_restore:"):
@@ -226,6 +233,7 @@ with tab_mine:
                     else:
                         loc["backup"]["dir"] = str(target)
                     save_local(loc)
+                    userdata.remember_backup_dir(userdata.backup_dir(load_config()))
                     ss["ud_msg"] = ("ok", f"Backups now go to {userdata.backup_dir(load_config())}")
                     st.rerun()
                 except OSError as e:

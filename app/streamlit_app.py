@@ -139,6 +139,8 @@ def data_guard() -> None:
         rep = userdata.ensure(c)
         if rep.get("added") or rep.get("records added"):
             ss["_data_moved"] = userdata.format_report(rep)
+        if rep.get("error"):
+            st.warning(f"Could not move some data from the GridSim program folder: {rep['error']}")
         userdata.auto_backup(c, "daily", min_interval_h=24)
     if ss.get("_data_moved"):
         st.toast(f"Moved your data into {userdata.data_dir()}", icon=":material/move_to_inbox:")
@@ -149,10 +151,10 @@ def data_guard() -> None:
     if stt["warn_empty"]:
         cand = stt["restore_candidate"]
         with st.container(border=True):
-            st.error(f"**Your GridSim data looks lost.** The data folder ({stt['data_dir']}) is new or empty, but "
-                     f"there are backups of your earlier one — the newest from {common.mtime_text(cand)}. Restore it "
-                     "before doing anything else, so your predictions and records carry on instead of starting from "
-                     "zero. (Automatic backups are paused until you decide.)")
+            st.error(f"**Your GridSim data looks lost.** A backup from {common.mtime_text(cand)} holds predictions or "
+                     f"records that your data folder ({stt['data_dir']}) doesn't have. Restore it before doing anything "
+                     "else, so your record carries on instead of starting over. Restoring only adds what's missing — "
+                     "nothing you have now is lost. (Automatic backups are paused until you decide.)")
             c1, c2, c3 = st.columns(3)
             if c1.button("Restore the latest backup", type="primary", icon=":material/settings_backup_restore:"):
                 try:
@@ -165,8 +167,8 @@ def data_guard() -> None:
                     st.rerun()
             c2.page_link(common.SETTINGS_PAGE, label="Other options: Settings → Your data", icon=":material/settings:")
             with c3.popover("Start fresh instead"):
-                st.markdown("Keep the new, empty data folder and stop this warning. Your old backups are not deleted; "
-                            "you can still restore one later in Settings → Your data.")
+                st.markdown("Keep the data folder as it is and stop this warning. No backup is deleted; you can "
+                            "still restore any of them later in Settings → Your data.")
                 if st.button("Yes, start fresh"):
                     userdata.start_fresh(c)
                     st.rerun()

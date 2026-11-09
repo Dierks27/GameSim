@@ -90,11 +90,48 @@ def backup_dir(cfg=None) -> Path:
     return Path.home() / "GridSim Backups"
 
 
-def list_backups(cfg=None) -> list[Path]:
-    d = backup_dir(cfg)
-    if not d.is_dir():
-        return []
-    return sorted(d.glob(f"{BACKUP_PREFIX}*.zip"), key=lambda p: p.name, reverse=True)   # newest first
+def _locations_file() -> Path:
+    return Path.home() / ".gridsim_backup_folders.txt"
+
+
+def remember_backup_dir(p: Path) -> None:
+    """Remember every backup folder ever used (outside the data folder), so backups stay findable after the data
+    folder — which holds the backup.dir setting — is lost."""
+    try:
+        f = _locations_file()
+        have = set(f.read_text(encoding="utf-8").splitlines()) if f.exists() else set()
+        if str(p) not in have:
+            with open(f, "a", encoding="utf-8") as fh:
+                fh.write(f"{p}\n")
+    except OSError:
+        pass
+
+
+def backup_dirs(cfg=None) -> list[Path]:
+    """The current backup folder first, then the automatic default and every folder used before."""
+    out = [backup_dir(cfg), backup_dir(None)]
+    try:
+        f = _locations_file()
+        if f.exists():
+            out += [Path(x) for x in f.read_text(encoding="utf-8").splitlines() if x.strip()]
+    except OSError:
+        pass
+    seen, res = set(), []
+    for d in out:
+        k = str(d).lower()
+        if k not in seen:
+            seen.add(k)
+            res.append(d)
+    return res
+
+
+def list_backups(cfg=None, everywhere: bool = True) -> list[Path]:
+    """Backups, newest first (names start with the time). everywhere=False: only the current backup folder."""
+    found = []
+    for d in (backup_dirs(cfg) if everywhere else [backup_dir(cfg)]):
+        if d.is_dir():
+            found += list(d.glob(f"{BACKUP_PREFIX}*.zip"))
+    return sorted(set(found), key=lambda p: p.name, reverse=True)
 
 
 def run_dirs(cfg, name: str) -> list[tuple[Path, bool]]:
@@ -112,44 +149,85 @@ KNOWN_FILE = ".gridsim_known_ids"
 LEGACY_FILE = ".legacy_imported.json"
 
 
+def host() -> str:
+    import socket
+    return (os.environ.get("COMPUTERNAME") or socket.gethostname() or "?").upper()
+
+
 def data_id(d: Path | None = None) -> str:
-    """A random ID for this data folder, kept inside it. Every backup records it, so a backup from a folder GridSim
-    doesn't know (a lost or replaced data folder) can be recognised."""
+    """A random ID for this data folder, kept inside it and recorded in every backup, so backups of a folder that
+    was lost or replaced can be told apart from this folder's own."""
+    import re
     d = d or data_dir()
     p = d / ID_FILE
-    if p.exists():
-        v = p.read_text(encoding="utf-8").strip()
-        if v:
-            return v
+    try:
+        v = p.read_text(encoding="utf-8", errors="replace").strip() if p.exists() else ""
+    except OSError:
+        v = ""
+    if re.fullmatch(r"[0-9a-f]{32}", v):
+        return v
     d.mkdir(parents=True, exist_ok=True)
-    v = uuid.uuid4().hex
-    p.write_text(v, encoding="utf-8")
+    full = has_data(d)
+    v = ""
+    if full:      # the ID file was deleted / damaged but the data is here: take back this folder's own ID
+        for z in list_backups():
+            info = backup_info(z)
+            if info.get("data_id") and info.get("host") == host() and info.get("data_dir") == str(d):
+                v = info["data_id"]
+                break
+    v = v or uuid.uuid4().hex
+    _atomic_write(p, v)
+    lines = [f"id:{v}"]
+    if full:      # an existing folder getting its first ID: backups made before IDs existed are its own
+        lines += [f"file:{z.name}" for z in list_backups() if not backup_info(z).get("data_id")]
+    _add_known(d, lines)
     return v
+
+
+def _known(d: Path | None = None) -> dict:
+    d = d or data_dir()
+    k = {"ids": set(), "files": set(), "fresh": ""}
+    p = d / KNOWN_FILE
+    if p.exists():
+        try:
+            for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
+                line = line.strip()
+                kind, _, val = line.partition(":") if ":" in line else ("id", "", line)
+                if kind == "id" and val:
+                    k["ids"].add(val)
+                elif kind == "file" and val:
+                    k["files"].add(val)
+                elif kind == "fresh" and val > k["fresh"]:
+                    k["fresh"] = val
+        except OSError:
+            pass
+    return k
+
+
+def _add_known(d: Path, lines) -> None:
+    lines = [x for x in lines if x and not x.endswith(":")]
+    if lines:
+        d.mkdir(parents=True, exist_ok=True)
+        with open(d / KNOWN_FILE, "a", encoding="utf-8") as fh:
+            fh.writelines(f"{x}\n" for x in lines)
 
 
 def known_ids(d: Path | None = None) -> set[str]:
     d = d or data_dir()
-    p = d / KNOWN_FILE
-    ids = {data_id(d)}
-    if p.exists():
-        ids |= {x.strip() for x in p.read_text(encoding="utf-8").splitlines() if x.strip()}
-    return ids
+    return _known(d)["ids"] | {data_id(d)}
 
 
 def remember_ids(ids, d: Path | None = None) -> None:
     d = d or data_dir()
     cur = known_ids(d)
-    new = {i for i in ids if i} - cur
-    if new:
-        with open(d / KNOWN_FILE, "a", encoding="utf-8") as fh:
-            fh.writelines(f"{i}\n" for i in sorted(new))
+    _add_known(d, [f"id:{i}" for i in sorted({i for i in ids if i} - cur)])
 
 
 _INFO_CACHE: dict = {}
 
 
 def backup_info(z: Path) -> dict:
-    """The manifest inside a backup ZIP (created, reason, data_id, counts); {} if unreadable."""
+    """The manifest inside a backup ZIP (created, reason, host, data_id, counts); {} if unreadable."""
     try:
         key = (str(z), z.stat().st_mtime_ns)
     except OSError:
@@ -159,15 +237,8 @@ def backup_info(z: Path) -> dict:
             with zipfile.ZipFile(z) as zz:
                 _INFO_CACHE[key] = json.loads(zz.read("gridsim_backup.json"))
         except Exception:
-            _INFO_CACHE[key] = {}
+            return {}            # e.g. an online-only OneDrive file while offline: try again next time
     return _INFO_CACHE[key]
-
-
-def foreign_backups(cfg=None) -> list[Path]:
-    """Backups (newest first) made from a data folder this one doesn't know: the data folder was lost, deleted or
-    replaced since they were made. Restoring one (or choosing to start fresh) makes its folder known."""
-    kn = known_ids()
-    return [b for b in list_backups(cfg) if backup_info(b).get("data_id") and backup_info(b)["data_id"] not in kn]
 
 
 def has_data(d: Path | None = None) -> bool:
@@ -194,45 +265,83 @@ def counts(d: Path | None = None) -> dict:
 
 
 def status(cfg=None) -> dict:
-    """warn_empty: the data folder looks lost — backups exist from a data folder this one doesn't know (or it is
-    empty while backups exist). While that is so, automatic backups pause and nothing from the lost folder is pruned."""
+    """warn_empty — "your data looks lost" — is true when a backup holds data this folder doesn't have:
+      * a backup made on THIS computer from a data folder this one doesn't know (the folder was lost, deleted or
+        replaced; the ID tells), or with MORE predictions or signal records than this folder has (those only ever
+        grow, so fewer means something was lost — whatever happened since, e.g. a scan or a lock-in);
+      * on a folder with no predictions at all: a backup from ANOTHER computer's unknown folder (a new PC).
+    Restoring such a backup or choosing "start fresh" clears it. While it is true, automatic backups pause and the
+    code-folder migration waits."""
     d = data_dir()
     b = list_backups(cfg)
-    empty = not has_data(d)
-    foreign = foreign_backups(cfg)
-    unlabeled = [z for z in b if not backup_info(z).get("data_id")]
-    return {"data_dir": d, "backup_dir": backup_dir(cfg), "backups": b, "empty": empty, "foreign": foreign,
-            "warn_empty": bool(foreign) or (empty and bool(unlabeled)),
-            "restore_candidate": (foreign or b or [None])[0], "counts": counts(d)}
+    mine = data_id(d)                    # first: a folder getting its first ID claims older unlabeled backups
+    cur = counts(d)
+    kn, me = _known(d), host()
+    ids = kn["ids"] | {mine}
+    lost = []
+    for z in b:
+        info = backup_info(z)
+        if not info:
+            continue
+        if kn["fresh"] and str(info.get("created", "")) <= kn["fresh"]:
+            continue
+        did, c = info.get("data_id"), info.get("counts") or {}
+        unknown = (did not in ids) if did else (z.name not in kn["files"])
+        if info.get("host") in (None, me):
+            behind = (int(c.get("predictions", 0)) > cur["predictions"]
+                      or int(c.get("signal records", 0)) > cur["signal records"])
+            if unknown or behind:
+                lost.append((z, c))
+        elif cur["predictions"] == 0 and unknown:
+            lost.append((z, c))
+    cand = (max(lost, key=lambda t: (int(t[1].get("predictions", 0)), int(t[1].get("signal records", 0)),
+                                     str(backup_info(t[0]).get("created", "")), t[0].name))[0]
+            if lost else (b[0] if b else None))
+    return {"data_dir": d, "backup_dir": backup_dir(cfg), "backups": b, "empty": not has_data(d),
+            "lost_backups": [z for z, _ in lost], "warn_empty": bool(lost), "restore_candidate": cand,
+            "counts": cur}
 
 
 def start_fresh(cfg=None) -> None:
-    """The user chose to keep the current (new) data folder: stop warning about backups of earlier folders."""
-    remember_ids({backup_info(z).get("data_id") for z in list_backups(cfg)})
+    """The user chose to keep the current data folder: stop warning about any backup made until now (they are not
+    deleted and can still be restored later)."""
+    d = data_dir()
+    bs = list_backups(cfg)
+    _add_known(d, [f"fresh:{dt.datetime.now().astimezone().isoformat(timespec='seconds')}"]
+               + [f"id:{backup_info(z)['data_id']}" for z in bs if backup_info(z).get("data_id")]
+               + [f"file:{z.name}" for z in bs if not backup_info(z).get("data_id")])
 
 
 # ---- start-up --------------------------------------------------------------------------------------------------------
 
 def ensure(cfg=None, verbose: bool = False) -> dict:
     """Create the data folder and move data from the code folder into it (older GridSim versions kept it there).
-    Safe to run on every start: each code-folder file is merged once."""
+    Safe to run on every start: each code-folder file is taken once. While the data looks lost (status), the move
+    waits until you restore or start fresh — so stale copies never get in ahead of your backup."""
     d = data_dir()
     d.mkdir(parents=True, exist_ok=True)
     data_id(d)
     rep = {}
     if _legacy_present(REPO_ROOT) and REPO_ROOT.resolve() != d.resolve():
-        # Each file of the code folder is taken ONCE (remembered by size + time): files an older GridSim copy writes
-        # there later are still picked up, but something you reset or deleted here never comes back.
+        if status(cfg)["warn_empty"]:
+            return {"deferred": True}
         mp = d / LEGACY_FILE
         try:
-            seen = json.loads(mp.read_text(encoding="utf-8")) if mp.exists() else {}
+            all_seen = json.loads(mp.read_text(encoding="utf-8")) if mp.exists() else {}
         except (OSError, ValueError):
-            seen = {}
+            all_seen = {}
+        if all_seen and all(isinstance(v, str) for v in all_seen.values()):     # older flat format
+            all_seen = {str(REPO_ROOT.resolve()): all_seen}
+        seen = all_seen.setdefault(str(REPO_ROOT.resolve()), {})   # per program folder: two installs don't clash
         try:
-            rep = import_folder(REPO_ROOT, backup_first=False, verbose=verbose, legacy=True, seen=seen)
-            _atomic_write(mp, json.dumps(seen, indent=0, sort_keys=True))
+            rep = import_folder(REPO_ROOT, cfg=cfg, backup_first=False, verbose=verbose, legacy=True, seen=seen)
         except Exception as e:  # never block start-up
             rep = {"error": str(e)}
+        finally:
+            try:
+                _atomic_write(mp, json.dumps(all_seen, indent=0, sort_keys=True))
+            except OSError:
+                pass
     rc = d / "regime_changes.yaml"
     if not rc.exists():
         rc.write_text(REGIME_TEMPLATE, encoding="utf-8")
@@ -284,7 +393,8 @@ def backup(cfg=None, reason: str = "manual", verbose: bool = False) -> Path:
                 n_files += 1
             z.writestr("gridsim_backup.json", json.dumps({
                 "gridsim_backup": 1, "created": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
-                "reason": reason, "data_dir": str(d), "data_id": did, "files": n_files, "counts": counts(d)},
+                "reason": reason, "host": host(), "data_dir": str(d), "data_id": did, "files": n_files,
+                "counts": counts(d)},
                 indent=1))
         if has_data(d) and n_files == 0:
             raise RuntimeError("nothing could be added to the backup")
@@ -302,6 +412,7 @@ def backup(cfg=None, reason: str = "manual", verbose: bool = False) -> Path:
                 tmp.unlink()
         except OSError:
             pass
+    remember_backup_dir(out_dir)
     keep = max(1, int(((cfg.raw.get("backup") or {}).get("keep", 40)) if cfg is not None else 40))
     _prune(cfg, keep)
     if verbose:
@@ -310,18 +421,15 @@ def backup(cfg=None, reason: str = "manual", verbose: bool = False) -> Path:
 
 
 def _prune(cfg, keep: int) -> None:
-    """Keep the newest `keep` backups of THIS data folder. Backups of any other data folder (e.g. the one that was
-    lost) are never deleted automatically except to keep just the newest 3 of each."""
+    """Delete only THIS data folder's oldest backups (beyond the newest `keep`) in the current backup folder.
+    Backups of any other data folder or computer, and backups made before IDs existed, are never deleted."""
     mine = data_id()
-    by_id: dict[str, list[Path]] = {}
-    for z in list_backups(cfg):                                   # newest first
-        by_id.setdefault(backup_info(z).get("data_id") or mine, []).append(z)
-    for did, zs in by_id.items():
-        for old in zs[(keep if did == mine else 3):]:
-            try:
-                old.unlink()
-            except OSError:
-                pass
+    own = [z for z in list_backups(cfg, everywhere=False) if backup_info(z).get("data_id") == mine]
+    for old in own[keep:]:
+        try:
+            old.unlink()
+        except OSError:
+            pass
 
 
 def auto_backup(cfg=None, reason: str = "auto", min_interval_h: float | None = None) -> Path | None:
@@ -331,7 +439,8 @@ def auto_backup(cfg=None, reason: str = "auto", min_interval_h: float | None = N
         if not has_data() or status(cfg)["warn_empty"]:
             return None
         if min_interval_h:
-            b = list_backups(cfg)
+            mine = data_id()
+            b = [z for z in list_backups(cfg, everywhere=False) if backup_info(z).get("data_id") == mine]
             if b and (dt.datetime.now().timestamp() - b[0].stat().st_mtime) < min_interval_h * 3600:
                 return None
         return backup(cfg, reason)
@@ -371,8 +480,17 @@ def find_source(path: str | Path) -> Path:
 
 
 def restore(zip_path: str | Path, cfg=None, verbose: bool = False) -> dict:
-    """Put a backup back. Merges: anything in the backup that is missing now comes back; nothing current is lost."""
-    return import_folder(zip_path, cfg=cfg, verbose=verbose)
+    """Put a backup back. Merges: anything in the backup that is missing now comes back; nothing current is lost.
+    Afterwards the folder it came from counts as known, and the code-folder move (if it was waiting) runs."""
+    z = Path(str(zip_path).strip().strip('"'))
+    rep = import_folder(z, cfg=cfg, verbose=verbose)
+    if z.suffix.lower() == ".zip" and not backup_info(z).get("data_id"):
+        _add_known(data_dir(), [f"file:{x.name}" for x in list_backups(cfg) if not backup_info(x).get("data_id")])
+    later = ensure(cfg)
+    if later.get("added") or later.get("records added"):
+        rep["notes"].append("also moved in what was left in the GridSim program folder (" + format_report(later)
+                            .split(": ", 1)[-1].split("\n")[0] + ")")
+    return rep
 
 
 def import_folder(src: str | Path, cfg=None, backup_first: bool = True, verbose: bool = False,
@@ -408,6 +526,8 @@ def import_folder(src: str | Path, cfg=None, backup_first: bool = True, verbose:
             r = import_folder(root, cfg=cfg, backup_first=backup_first, verbose=False, legacy=True,
                               label=label or f"{src_p.name}")
             remember_ids({info.get("data_id")} | set(r.pop("_ids", set())))
+            if r["added"] or r["records added"]:
+                auto_backup(cfg, "after-restore")
             if verbose:
                 print(format_report(r))
             return r
@@ -427,7 +547,7 @@ def import_folder(src: str | Path, cfg=None, backup_first: bool = True, verbose:
             fn(*a)
             if seen is not None:
                 seen[key] = fp
-        except (OSError, ValueError, UnicodeDecodeError, csv.Error, yaml.YAMLError, zipfile.BadZipFile) as e:
+        except Exception as e:      # one bad file never stops the rest
             rep["failed"].append(f"{key}: could not be read ({type(e).__name__}: {e}) — skipped")
 
     rep["_guard"] = guarded
@@ -440,26 +560,44 @@ def import_folder(src: str | Path, cfg=None, backup_first: bool = True, verbose:
             guarded(_copy_file, name, src_p / name, dest / name, name, rep)
     if (src_p / "config.local.yaml").is_file():
         guarded(_merge_settings, "config.local.yaml", src_p / "config.local.yaml", dest / "config.local.yaml", rep)
-    if (src_p / "regime_changes.yaml").is_file() and src_p.resolve() != REPO_ROOT.resolve():
+    if (src_p / "regime_changes.yaml").is_file():
         guarded(_merge_regime, "regime_changes.yaml", src_p / "regime_changes.yaml", dest / "regime_changes.yaml", rep)
     if (src_p / LEGACY_FILE).is_file() and not legacy_code_folder(src_p):
         try:                                           # which code-folder files were already taken: keep them taken
             mp = dest / LEGACY_FILE
             cur = json.loads(mp.read_text(encoding="utf-8")) if mp.exists() else {}
-            cur.update({k: v for k, v in json.loads((src_p / LEGACY_FILE).read_text(encoding="utf-8")).items()
-                        if k not in cur})
+            inc = json.loads((src_p / LEGACY_FILE).read_text(encoding="utf-8"))
+            for blob in (cur, inc):
+                if blob and all(isinstance(v, str) for v in blob.values()):
+                    flat = dict(blob)
+                    blob.clear()
+                    blob[str(REPO_ROOT.resolve())] = flat
+            for root, m in inc.items():
+                tgt = cur.setdefault(root, {})
+                tgt.update({k: v for k, v in m.items() if k not in tgt})
             _atomic_write(mp, json.dumps(cur, indent=0, sort_keys=True))
-        except (OSError, ValueError):
+        except (OSError, ValueError, AttributeError):
             pass
-    if (src_p / ID_FILE).is_file():                    # an old data folder: it is now known, not "lost"
+    ids = set()
+    for f in (src_p / ID_FILE, src_p / KNOWN_FILE):    # an old data folder and what it knew: known, not "lost"
         try:
-            rep["_ids"] = {(src_p / ID_FILE).read_text(encoding="utf-8").strip()}
-            if not legacy:
-                remember_ids(rep["_ids"])
+            if f.is_file():
+                for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
+                    line = line.strip()
+                    if line.startswith("id:"):
+                        ids.add(line[3:])
+                    elif line and ":" not in line:
+                        ids.add(line)
         except OSError:
             pass
+    rep["_ids"] = ids
+    if not legacy:
+        remember_ids(ids)
+        rep.pop("_ids")
     rep.pop("_guard", None)
     rep.pop("_seen", None)
+    if not legacy and (rep["added"] or rep["records added"]):
+        auto_backup(cfg, "after-import")               # so what was just brought in is backed up right away
     if verbose:
         print(format_report(rep))
     return rep
@@ -577,9 +715,12 @@ def _merge_settings(f: Path, t: Path, rep: dict) -> None:
     from .config import save_local
     try:
         src = yaml.safe_load(f.read_text(encoding="utf-8-sig")) or {}
-        cur = yaml.safe_load(t.read_text(encoding="utf-8-sig")) or {} if t.exists() else {}
+        cur = (yaml.safe_load(t.read_text(encoding="utf-8-sig")) or {}) if t.exists() else {}
     except (OSError, yaml.YAMLError) as e:
         rep["notes"].append(f"config.local.yaml: could not read ({e}); skipped")
+        return
+    if not isinstance(src, dict) or not isinstance(cur, dict):
+        rep["notes"].append("config.local.yaml: not a list of settings; skipped")
         return
     merged = deep_merge(src, cur)                    # your current settings win; imported ones fill the gaps
     if merged == cur:
