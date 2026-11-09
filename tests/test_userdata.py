@@ -492,16 +492,22 @@ def test_data_gone_but_id_file_kept_still_warns(env):
 def test_another_pc_sharing_the_backup_folder_is_not_a_false_alarm(env):
     make_install(env["data"], ["2026-11-01T15:00:00+00:00"], ["a__1__h.json"])
     userdata.data_id()
-    other = {"gridsim_backup": 1, "created": "2026-11-09T07:00:00+00:00", "reason": "daily", "host": "LAPTOP",
+    import datetime as dt
+    later = (dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1)).isoformat(timespec="seconds")
+    other = {"gridsim_backup": 1, "created": later, "reason": "daily", "host": "LAPTOP",
              "data_id": "f" * 32, "counts": {"predictions": 50, "signal records": 900}}
-    fake_backup(env["backups"], "20261109-070000-daily", other)
+    fake_backup(env["backups"], "20991109-070000-daily", other)       # the laptop keeps backing up its own folder
     assert not userdata.status()["warn_empty"]
     userdata.backup(load_config().copy_with({"backup.keep": 1}), "x")
-    assert (env["backups"] / f"{userdata.BACKUP_PREFIX}20261109-070000-daily.zip").exists()   # never pruned
-    # a brand-new PC (nothing yet) does get the offer to restore
+    assert (env["backups"] / f"{userdata.BACKUP_PREFIX}20991109-070000-daily.zip").exists()   # never pruned
+    # a brand-new PC: another computer's backups made before this folder existed are offered for restore
     shutil.rmtree(env["data"])
+    old_pc = {**other, "created": "2026-01-01T00:00:00+00:00", "data_id": "e" * 32, "host": "OLDPC"}
+    fake_backup(env["backups"], "20260101-000000-daily", old_pc)
     userdata.ensure()
-    assert userdata.status()["warn_empty"]
+    st = userdata.status()
+    assert st["warn_empty"] and any(z.name.endswith("20260101-000000-daily.zip") for z in st["lost_backups"])
+    assert not any("20991109" in z.name for z in st["lost_backups"])   # the laptop's later backups are its own
 
 
 def test_deleted_id_file_with_data_present_is_not_lost(env):
@@ -568,4 +574,126 @@ def test_fewer_workers_than_seasons_hold_whole_seasons():
             for w in range(3, 19):
                 held.setdefault(p.slot(s_, w), set()).add(s_)
         assert max(len(v) for v in held.values()) == -(-4 // n)
+
+
+# ---- final review round: content, not counts -------------------------------------------------------------------------
+
+def test_partial_loss_keeps_warning_however_much_is_added_later(env):
+    cfg = load_config().copy_with({"backup.keep": 2})
+    make_install(env["data"], [f"2026-11-0{i}T15:00:00+00:00" for i in range(1, 6)],
+                 [f"2026_09_G{i}__1__h.json" for i in range(5)])
+    good = userdata.backup(cfg, "grade")
+    import time
+    time.sleep(1.1)
+    shutil.rmtree(env["data"] / "predictions")       # one folder goes missing; the ledger and the ID file stay
+    # many scans and lock-ins later: far MORE predictions and rows than the backup had
+    write_ledger(env["data"] / "signals" / "ledger.csv",
+                 [ledger_row(f"2026-11-0{i}T15:00:00+00:00") for i in range(1, 6)]
+                 + [ledger_row(f"2026-11-2{i % 10}T15:00:00+00:00", ticker=f"T{i}") for i in range(200)])
+    make_install(env["data"], [], [f"2026_10_N{i}__1__h.json" for i in range(40)])
+    write_ledger(env["data"] / "signals" / "ledger.csv",
+                 [ledger_row(f"2026-11-0{i}T15:00:00+00:00") for i in range(1, 6)]
+                 + [ledger_row(f"2026-11-2{i % 10}T15:00:00+00:00", ticker=f"T{i}") for i in range(200)])
+    st = userdata.status(cfg)
+    assert st["warn_empty"] and st["restore_candidate"] == good
+    assert "5 predictions" in st["missing"][good.name]
+    for i in range(4):                                # manual backups never prune the one holding the lost files
+        time.sleep(1.1)
+        userdata.backup(cfg, f"m{i}")
+    assert good.exists()
+    userdata.restore(good, cfg)
+    assert not userdata.status(cfg)["warn_empty"]
+
+
+def test_lost_ledger_rows_are_found_even_after_new_scans(env):
+    make_install(env["data"], [f"2026-11-0{i}T15:00:00+00:00" for i in range(1, 9)], ["a__1__h.json"])
+    good = userdata.backup(None, "grade")
+    write_ledger(env["data"] / "signals" / "ledger.csv",       # older rows lost; 50 newer rows appended since
+                 [ledger_row(f"2026-11-2{i % 10}T1{i % 10}:00:00+00:00", ticker=f"T{i}") for i in range(50)])
+    st = userdata.status()
+    assert st["warn_empty"] and "8 signal records" in st["missing"][good.name]
+
+
+def test_renamed_pc_still_checks_its_own_backups(env, monkeypatch):
+    make_install(env["data"], ["2026-11-01T15:00:00+00:00"], ["a__1__h.json", "b__1__h.json"])
+    monkeypatch.setenv("COMPUTERNAME", "DESKTOP-7H2K9QF")
+    userdata.backup(None, "grade")
+    monkeypatch.setenv("COMPUTERNAME", "JOHNS-PC")
+    assert not userdata.status()["warn_empty"]
+    shutil.rmtree(env["data"] / "predictions")
+    assert userdata.status()["warn_empty"]
+
+
+def test_start_fresh_never_lets_pruning_delete_what_was_set_aside(env):
+    cfg = load_config().copy_with({"backup.keep": 1})
+    make_install(env["data"], ["2026-11-01T15:00:00+00:00"], ["a__1__h.json"])
+    good = userdata.backup(cfg, "grade")
+    shutil.rmtree(env["data"] / "predictions")
+    assert userdata.status(cfg)["warn_empty"]
+    userdata.start_fresh(cfg)
+    assert not userdata.status(cfg)["warn_empty"]
+    import time
+    for i in range(3):
+        time.sleep(1.1)
+        assert userdata.auto_backup(cfg, f"d{i}") is not None
+    assert good.exists()
+
+
+def test_upgrade_with_pre_id_backups_is_not_a_false_alarm(env):
+    make_install(env["data"], ["2026-11-01T15:00:00+00:00"], [f"g{i}__1__h.json" for i in range(14)])
+    userdata.data_id()                                # an ID already exists (made by an earlier build)
+    info = {"gridsim_backup": 1, "created": "2026-11-09T06:00:00+00:00", "reason": "lock-in",
+            "counts": {"predictions": 14, "signal records": 1}}
+    fake_backup(env["backups"], "20261109-060000-lock-in", info)
+    assert not userdata.status()["warn_empty"]
+    assert userdata.auto_backup(None, "daily") is not None
+
+
+def test_kept_aside_copies_come_back_on_restore(env):
+    make_install(env["data"], ["2026-11-01T15:00:00+00:00"], ["a__1__h.json"],
+                 {".env": "NTFY_TOPIC=new\n", ".env.from-import": "NTFY_TOPIC=old\n"})
+    z = userdata.backup(None, "x")
+    shutil.rmtree(env["data"])
+    userdata.ensure()
+    userdata.restore(z)
+    assert (env["data"] / ".env.from-import").read_text() == "NTFY_TOPIC=old\n"
+
+
+def test_backup_inventory_matches_what_was_zipped(env):
+    import zipfile
+    make_install(env["data"], ["2026-11-01T15:00:00+00:00", "2026-11-02T15:00:00+00:00"], ["a__1__h.json"])
+    z = userdata.backup(None, "x")
+    info = userdata.backup_info(z)
+    names = set(zipfile.ZipFile(z).namelist())
+    assert set(info["inventory"]["files"]) <= names
+    assert info["inventory"]["rows"]["signals/ledger.csv"] == {"n": 2, "max": "2026-11-02T15:00:00+00:00"}
+    assert info["counts"]["predictions"] == 1 and info["host"]
+
+
+def test_file_lock_serialises_and_recovers(env):
+    import threading
+    import time
+    f = env["tmp"] / "x.csv"
+    order = []
+
+    def hold():
+        with userdata.file_lock(f):
+            order.append("a-in")
+            time.sleep(0.6)
+            order.append("a-out")
+    th = threading.Thread(target=hold)
+    th.start()
+    time.sleep(0.1)
+    with userdata.file_lock(f):
+        order.append("b-in")
+    th.join()
+    assert order == ["a-in", "a-out", "b-in"]
+    lk = env["tmp"] / "x.csv.lock"
+    lk.write_text("")
+    os_old = time.time() - 3600
+    import os
+    os.utime(lk, (os_old, os_old))                    # left over from a crash: taken over
+    with userdata.file_lock(f, timeout=2):
+        pass
+    assert not lk.exists()
 

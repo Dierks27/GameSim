@@ -195,7 +195,7 @@ backup:
   # Lock in, Grade, the weekly run and once a day. Empty = automatic: <your OneDrive>\GridSim Backups when OneDrive is
   # set up (a copy off this PC), else <your user folder>\GridSim Backups. A USB drive works too: E:\GridSim Backups
   dir: ""
-  keep: 40                     # newest backups kept; older ones are deleted
+  keep: 30                     # newest backups of this data folder kept (~3 weeks; late in the season ~40 MB each)
 
 resources:
   # Keeps the PC usable while tuning / backtests run in the background (they also run at low priority).

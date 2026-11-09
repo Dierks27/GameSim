@@ -147,19 +147,24 @@ def data_guard() -> None:
         ss["_data_moved"] = None
     if ss.get("_restored"):
         st.success(ss.pop("_restored"))
-    stt = userdata.status(c)
+    import time
+    if ss.get("_status") is None or time.time() - ss.get("_status_t", 0) > 60:   # checked at most once a minute
+        ss["_status"], ss["_status_t"] = userdata.status(c), time.time()
+    stt = ss["_status"]
     if stt["warn_empty"]:
         cand = stt["restore_candidate"]
+        what = ", ".join(stt["missing"].get(cand.name, [])) or "predictions or records"
         with st.container(border=True):
-            st.error(f"**Your GridSim data looks lost.** A backup from {common.mtime_text(cand)} holds predictions or "
-                     f"records that your data folder ({stt['data_dir']}) doesn't have. Restore it before doing anything "
-                     "else, so your record carries on instead of starting over. Restoring only adds what's missing — "
-                     "nothing you have now is lost. (Automatic backups are paused until you decide.)")
+            st.error(f"**Your GridSim data looks lost.** A backup from {common.mtime_text(cand)} holds {what} that your "
+                     f"data folder ({stt['data_dir']}) doesn't have. Restore it before doing anything else, so your "
+                     "record carries on instead of starting over. Restoring only adds what's missing — nothing you "
+                     "have now is lost. (Automatic backups are paused until you decide.)")
             c1, c2, c3 = st.columns(3)
             if c1.button("Restore the latest backup", type="primary", icon=":material/settings_backup_restore:"):
                 try:
                     rep = userdata.restore(cand, c)
                     ss["_restored"] = "Restored — " + userdata.format_report(rep)
+                    ss["_status"] = None
                 except Exception as e:
                     ss["_restored"] = None
                     st.error(f"Restore failed — {e}")
@@ -168,9 +173,11 @@ def data_guard() -> None:
             c2.page_link(common.SETTINGS_PAGE, label="Other options: Settings → Your data", icon=":material/settings:")
             with c3.popover("Start fresh instead"):
                 st.markdown("Keep the data folder as it is and stop this warning. No backup is deleted; you can "
-                            "still restore any of them later in Settings → Your data.")
+                            "still restore any of them later in Settings → Your data. (Anything an older GridSim left "
+                            "in the program folder stays there too.)")
                 if st.button("Yes, start fresh"):
                     userdata.start_fresh(c)
+                    ss["_status"] = None
                     st.rerun()
 
 

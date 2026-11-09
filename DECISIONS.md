@@ -283,7 +283,7 @@ gaps as hypotheses to grade live (`grade`, `scorecard`, signal CLV), not as edge
   the data folder and in every backup.
 - Automatic backups: after predict-week (Friday's locked-in predictions are the most irreplaceable moment, so not
   only after weekly/grade as the spec listed), grade, weekly, reconstruct, lineup edits (≤ 1/h), before applying
-  tuned settings or a reset, and at most once a day from scans and from opening the GUI. `backup.keep` = 40.
+  tuned settings or a reset, and at most once a day from scans and from opening the GUI. `backup.keep` = 30 (late-season backups are ~40 MB each because of the price snapshots, so 30 is ~1.2 GB on OneDrive).
 - Restore and "import an old folder" are the same merge: frozen predictions and snapshots are only added (never
   replaced), CSV records are unioned by key (ledger: whole row; graded: ts+ticker+side; scorecards:
   game_id+pred_file), alert state keeps the newer entry, settings merge with the current values winning, differing
@@ -296,11 +296,18 @@ gaps as hypotheses to grade live (`grade`, `scorecard`, signal CLV), not as edge
 - Backfilled Kalshi prices come from Kalshi's public hourly candlesticks: the last candle ending at or before
   kickoff gives the closing bid/ask. They are real exchange history, so they count for closing-line value; the
   snapshot file is marked `backfilled`.
-- Lost-folder detection: each data folder has a random ID (`.gridsim_data_id`) recorded in every backup. Backups
-  whose ID is neither this folder's nor one it restored/imported mean the data folder was lost or replaced: the CLI
-  and every GUI page warn, automatic backups pause, and pruning never deletes the newest 3 backups of any other
-  folder. (A first version keyed this on "folder empty", which one scheduled scan defeated — it writes a ledger
-  header — after which count-based pruning would have rotated the good backups away.) "Start fresh" marks them known.
+- Lost-data detection (third design, after two adversarial review rounds): every backup's manifest carries an
+  inventory of what it holds — the names of frozen predictions, price snapshots and run files (things GridSim never
+  deletes), and for the append-only record files the row count + newest time stamp (ledger, graded) or the graded
+  game IDs (scorecards). "Data looks lost" = some backup holds an item the folder no longer has, whatever has been
+  added since. Counting totals (the first two designs) was defeated by routine scans/lock-ins that re-grew the totals
+  after a partial loss. Backups considered: this computer's, this folder's own / known folders' (whatever the
+  computer name — PCs get renamed), and other computers' backups made before this folder existed (a new PC).
+  Backups made before inventories existed fall back to comparing totals. The inventory is built from the bytes
+  actually zipped (no race with a scan writing meanwhile). Pruning deletes only this folder's own oldest backups and
+  never one holding something missing; "start fresh" sets aside the existing backups by name (time zones and clock
+  changes can't break it) and leaves the program folder's old data where it is. Ledger / graded / scorecard writes
+  and merges share a small lock file so a restore never drops rows a scan is appending.
 - Code-folder migration takes each file once (`.legacy_imported.json`: size + mtime), so resets and deletions stick
   while files an older GridSim copy writes there later are still picked up. Alert state is taken only if none exists.
 - Scorecard: one row per game; when a game was graded in two installs the later pre-kickoff prediction counts

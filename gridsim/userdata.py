@@ -58,6 +58,7 @@ CSV_KEYS = {
     "tuning/history.csv": None,
 }
 SKIP_NAMES = {"gui_tune.pid", ".DS_Store", "Thumbs.db", "desktop.ini"}
+SKIP_SUFFIXES = (".partial", ".lock")
 REGIME_TEMPLATE = ("# Coaching / play-caller changes (yours). Plays by that team before `date` get regime.pre_change_weight\n"
                    "# (config.yaml) for play-call tendencies only. Example:\n"
                    "# - team: MIN\n#   date: 2026-10-20\n#   note: \"OC fired; HC takes over play calling\"\n[]\n")
@@ -167,26 +168,36 @@ def data_id(d: Path | None = None) -> str:
     if re.fullmatch(r"[0-9a-f]{32}", v):
         return v
     d.mkdir(parents=True, exist_ok=True)
-    full = has_data(d)
     v = ""
-    if full:      # the ID file was deleted / damaged but the data is here: take back this folder's own ID
+    if has_data(d):   # the ID file was deleted / damaged but the data is here: take back this folder's own ID
         for z in list_backups():
             info = backup_info(z)
-            if info.get("data_id") and info.get("host") == host() and info.get("data_dir") == str(d):
+            if info.get("data_id") and info.get("data_dir") == str(d):
                 v = info["data_id"]
                 break
     v = v or uuid.uuid4().hex
     _atomic_write(p, v)
-    lines = [f"id:{v}"]
-    if full:      # an existing folder getting its first ID: backups made before IDs existed are its own
-        lines += [f"file:{z.name}" for z in list_backups() if not backup_info(z).get("data_id")]
-    _add_known(d, lines)
+    _add_known(d, [f"id:{v}", f"born:{_utcnow()}"])
     return v
 
 
+def _utcnow() -> str:
+    return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+
+
+def _when(text) -> dt.datetime | None:
+    try:
+        t = dt.datetime.fromisoformat(str(text))
+        return t if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
 def _known(d: Path | None = None) -> dict:
+    """What this folder knows: IDs of data folders it restored / brought in (id:), backups the user chose to set aside
+    with "start fresh" (dismiss:), and when this folder was created (born:)."""
     d = d or data_dir()
-    k = {"ids": set(), "files": set(), "fresh": ""}
+    k = {"ids": set(), "dismissed": set(), "born": None}
     p = d / KNOWN_FILE
     if p.exists():
         try:
@@ -195,10 +206,15 @@ def _known(d: Path | None = None) -> dict:
                 kind, _, val = line.partition(":") if ":" in line else ("id", "", line)
                 if kind == "id" and val:
                     k["ids"].add(val)
-                elif kind == "file" and val:
-                    k["files"].add(val)
-                elif kind == "fresh" and val > k["fresh"]:
-                    k["fresh"] = val
+                elif kind == "dismiss" and val:
+                    k["dismissed"].add(val)
+                elif kind == "born" and _when(val) and (k["born"] is None or _when(val) < k["born"]):
+                    k["born"] = _when(val)
+        except OSError:
+            pass
+    if k["born"] is None:              # folders made before this was recorded: the ID file's age
+        try:
+            k["born"] = dt.datetime.fromtimestamp((d / ID_FILE).stat().st_mtime, dt.timezone.utc)
         except OSError:
             pass
     return k
@@ -264,52 +280,162 @@ def counts(d: Path | None = None) -> dict:
             "tuning runs": n("tuning", "summary.json"), "check-ups": n("diagnose", "diagnose.json")}
 
 
+# What a backup holds, so a later check can tell exactly what is missing (not just "fewer"). Only things GridSim
+# never deletes are checked: frozen predictions, Kalshi price snapshots, tuning / check-up / backtest runs, and the
+# rows of the append-only record files. Lineup files, settings and .env can be changed or removed on purpose.
+INVENTORY_DIRS = ("predictions", "signals/snapshots", "tuning", "backtests", "diagnose")
+ROW_FILES = {"signals/ledger.csv": "ts_utc", "signals/graded.csv": "ts_utc", "predictions/scorecard.csv": "game_id",
+             "predictions/scorecard_reconstructed.csv": "game_id", "tuning/history.csv": None}
+_INV_SKIP = {"gui_tune.log", "gui_tune.pid"}
+
+
+def _inventory_file(rel: str) -> bool:
+    return (any(rel.startswith(x + "/") for x in INVENTORY_DIRS) and rel not in ROW_FILES
+            and rel.rsplit("/", 1)[-1] not in _INV_SKIP and not rel.endswith(".partial"))
+
+
+def _row_stats(rel: str, data: bytes) -> dict:
+    """Append-only record file -> what to remember: rows (and the newest time stamp), or the games graded."""
+    col = ROW_FILES[rel]
+    try:
+        rows = list(csv.DictReader(io.StringIO(data.decode("utf-8-sig", errors="replace"))))
+    except csv.Error:
+        return {}
+    if col == "game_id":
+        return {"games": sorted({r.get("game_id") or "" for r in rows} - {""})}
+    if col == "ts_utc":
+        ts = [r.get("ts_utc") or "" for r in rows]
+        return {"n": len(rows), "max": max(ts) if ts else ""}
+    return {"n": len(rows)}
+
+
+_CUR_CACHE: dict = {}
+
+
+def _current(d: Path) -> dict:
+    """The folder's present contents in the same terms as a backup's inventory."""
+    files = set()
+    for x in INVENTORY_DIRS:
+        base = d / x
+        if base.is_dir():
+            for f in base.rglob("*"):
+                if f.is_file():
+                    rel = f.relative_to(d).as_posix()
+                    if _inventory_file(rel):
+                        files.add(rel)
+    rows = {}
+    for rel, col in ROW_FILES.items():
+        f = d / rel
+        if not f.is_file():
+            continue
+        try:
+            key = (str(f), f.stat().st_size, f.stat().st_mtime_ns)
+            if key not in _CUR_CACHE:
+                text = f.read_bytes().decode("utf-8-sig", errors="replace")
+                rs = list(csv.DictReader(io.StringIO(text)))
+                if col == "game_id":
+                    _CUR_CACHE[key] = {"games": {r.get("game_id") or "" for r in rs}}
+                elif col == "ts_utc":
+                    _CUR_CACHE[key] = {"ts": sorted(r.get("ts_utc") or "" for r in rs)}
+                else:
+                    _CUR_CACHE[key] = {"n": len(rs)}
+            rows[rel] = _CUR_CACHE[key]
+        except (OSError, csv.Error):
+            pass
+    return {"files": files, "rows": rows}
+
+
+def missing_from(info: dict, cur: dict, cur_counts: dict) -> list[str]:
+    """What a backup holds that the folder doesn't, in plain words ([] = nothing missing)."""
+    import bisect
+    out = []
+    inv = info.get("inventory")
+    if inv is None:                     # backups made before inventories existed: compare the totals
+        c = info.get("counts") or {}
+        for k in ("predictions", "signal records"):
+            n = int(c.get(k, 0)) - int(cur_counts.get(k, 0))
+            if n > 0:
+                out.append(f"{n} {k}")
+        return out
+    gone = [f for f in inv.get("files", []) if f not in cur["files"]]
+    if gone:
+        by = {}
+        for f in gone:
+            lab = ("predictions" if f.startswith("predictions/") else "price snapshots" if "snapshots" in f
+                   else f.split("/", 1)[0] + " files")
+            by[lab] = by.get(lab, 0) + 1
+        out += [f"{n} {k}" for k, n in by.items()]
+    names = {"signals/ledger.csv": "signal records", "signals/graded.csv": "graded signals",
+             "predictions/scorecard.csv": "graded games", "predictions/scorecard_reconstructed.csv":
+             "graded reconstructed games", "tuning/history.csv": "tuning history rows"}
+    for rel, st in (inv.get("rows") or {}).items():
+        have = cur["rows"].get(rel, {})
+        if "games" in st:
+            n = len(set(st["games"]) - set(have.get("games", set())))
+        elif "max" in st:
+            ts = have.get("ts", [])
+            n = int(st.get("n", 0)) - bisect.bisect_right(ts, st["max"])   # rows up to the backup's newest one
+        else:
+            n = int(st.get("n", 0)) - int(have.get("n", 0))
+        if n > 0:
+            out.append(f"{n} {names.get(rel, rel)}")
+    return out
+
+
 def status(cfg=None) -> dict:
-    """warn_empty — "your data looks lost" — is true when a backup holds data this folder doesn't have:
-      * a backup made on THIS computer from a data folder this one doesn't know (the folder was lost, deleted or
-        replaced; the ID tells), or with MORE predictions or signal records than this folder has (those only ever
-        grow, so fewer means something was lost — whatever happened since, e.g. a scan or a lock-in);
-      * on a folder with no predictions at all: a backup from ANOTHER computer's unknown folder (a new PC).
-    Restoring such a backup or choosing "start fresh" clears it. While it is true, automatic backups pause and the
-    code-folder migration waits."""
+    """warn_empty — "your data looks lost" — is true when a backup holds something the data folder doesn't have
+    (a frozen prediction, a price snapshot, a run, or record rows; see missing_from), whatever was added since.
+    Which backups are checked: this computer's, this folder's own and folders it knows (whatever computer), and —
+    a new PC — other computers' backups made before this folder existed. Backups the user set aside with "start fresh"
+    are skipped. While it is true, automatic backups pause, nothing missing is ever pruned, and the move from the
+    program folder waits."""
     d = data_dir()
+    mine = data_id(d)
     b = list_backups(cfg)
-    mine = data_id(d)                    # first: a folder getting its first ID claims older unlabeled backups
-    cur = counts(d)
     kn, me = _known(d), host()
     ids = kn["ids"] | {mine}
+    cur, cur_counts = _current(d), counts(d)
     lost = []
     for z in b:
+        if z.name in kn["dismissed"]:
+            continue
         info = backup_info(z)
         if not info:
             continue
-        if kn["fresh"] and str(info.get("created", "")) <= kn["fresh"]:
+        created = _when(info.get("created"))
+        relevant = (info.get("host") in (None, me) or info.get("data_id") in ids
+                    or (kn["born"] is not None and created is not None and created < kn["born"]))
+        if not relevant:
             continue
-        did, c = info.get("data_id"), info.get("counts") or {}
-        unknown = (did not in ids) if did else (z.name not in kn["files"])
-        if info.get("host") in (None, me):
-            behind = (int(c.get("predictions", 0)) > cur["predictions"]
-                      or int(c.get("signal records", 0)) > cur["signal records"])
-            if unknown or behind:
-                lost.append((z, c))
-        elif cur["predictions"] == 0 and unknown:
-            lost.append((z, c))
-    cand = (max(lost, key=lambda t: (int(t[1].get("predictions", 0)), int(t[1].get("signal records", 0)),
-                                     str(backup_info(t[0]).get("created", "")), t[0].name))[0]
-            if lost else (b[0] if b else None))
+        miss = missing_from(info, cur, cur_counts)
+        if miss:
+            lost.append((z, miss))
+    cand = lost[0][0] if lost else (b[0] if b else None)        # newest backup that holds what's missing
     return {"data_dir": d, "backup_dir": backup_dir(cfg), "backups": b, "empty": not has_data(d),
-            "lost_backups": [z for z, _ in lost], "warn_empty": bool(lost), "restore_candidate": cand,
-            "counts": cur}
+            "lost_backups": [z for z, _ in lost], "missing": dict((z.name, m) for z, m in lost),
+            "warn_empty": bool(lost), "restore_candidate": cand, "counts": cur_counts}
 
 
 def start_fresh(cfg=None) -> None:
-    """The user chose to keep the current data folder: stop warning about any backup made until now (they are not
-    deleted and can still be restored later)."""
+    """The user chose to keep the data folder as it is: set aside every backup made so far (none is deleted — they
+    can still be restored), and leave what's in the program folder where it is."""
     d = data_dir()
-    bs = list_backups(cfg)
-    _add_known(d, [f"fresh:{dt.datetime.now().astimezone().isoformat(timespec='seconds')}"]
-               + [f"id:{backup_info(z)['data_id']}" for z in bs if backup_info(z).get("data_id")]
-               + [f"file:{z.name}" for z in bs if not backup_info(z).get("data_id")])
+    _add_known(d, [f"dismiss:{z.name}" for z in list_backups(cfg)])
+    if _legacy_present(REPO_ROOT) and REPO_ROOT.resolve() != d.resolve():
+        mp = d / LEGACY_FILE
+        try:
+            all_seen = json.loads(mp.read_text(encoding="utf-8")) if mp.exists() else {}
+        except (OSError, ValueError):
+            all_seen = {}
+        seen = all_seen.setdefault(str(REPO_ROOT.resolve()), {})
+        for f in REPO_ROOT.rglob("*"):
+            try:
+                rel = f.relative_to(REPO_ROOT).as_posix()
+                if f.is_file() and rel.split("/", 1)[0] in DATA_ITEMS + ("config.local.yaml.bak",):
+                    seen[rel] = _fp(f)
+            except OSError:
+                pass
+        _atomic_write(mp, json.dumps(all_seen, indent=0, sort_keys=True))
 
 
 # ---- start-up --------------------------------------------------------------------------------------------------------
@@ -362,6 +488,47 @@ def _legacy_present(root: Path) -> bool:
     return False
 
 
+# ---- a small lock so a merge never overwrites rows another GridSim process is appending ---------------------------------
+
+class file_lock:
+    """Exclusive lock on <file>.lock (a scan appending ledger rows vs. a restore rewriting the ledger). Waits up to
+    60 s; a lock older than 10 minutes is treated as left over from a crash."""
+
+    def __init__(self, path: Path, timeout: float = 60.0):
+        self.lock = Path(str(path) + ".lock")
+        self.timeout = timeout
+        self.fd = None
+
+    def __enter__(self):
+        t0 = time.time()
+        self.lock.parent.mkdir(parents=True, exist_ok=True)
+        while True:
+            try:
+                self.fd = os.open(self.lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                return self
+            except FileExistsError:
+                try:
+                    if time.time() - self.lock.stat().st_mtime > 600:
+                        self.lock.unlink()
+                        continue
+                except OSError:
+                    pass
+                if time.time() - t0 > self.timeout:
+                    return self            # never hang GridSim: go ahead without the lock
+                time.sleep(0.2)
+            except OSError:
+                return self                # read-only folder etc.: proceed unlocked
+
+    def __exit__(self, *exc):
+        if self.fd is not None:
+            os.close(self.fd)
+            try:
+                self.lock.unlink()
+            except OSError:
+                pass
+        return False
+
+
 # ---- backup ----------------------------------------------------------------------------------------------------------
 
 def backup(cfg=None, reason: str = "manual", verbose: bool = False) -> Path:
@@ -380,22 +547,36 @@ def backup(cfg=None, reason: str = "manual", verbose: bool = False) -> Path:
     inside = bdir != d_res and d_res in bdir.parents       # backups kept in a subfolder of the data folder
     did = data_id(d)
     n_files = 0
+    inv = {"files": [], "rows": {}}
+    n_pred = 0
     try:
         with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED) as z:
             for f in sorted(d.rglob("*")):
-                if not f.is_file() or f.name in SKIP_NAMES or f.suffix == ".partial":
+                if not f.is_file() or f.name in SKIP_NAMES or f.suffix in SKIP_SUFFIXES:
                     continue
                 if f.name.startswith(BACKUP_PREFIX) and f.suffix == ".zip":             # never zip a backup
                     continue
                 if inside and bdir in f.resolve().parents:
                     continue
-                z.write(f, f.relative_to(d).as_posix())
+                rel = f.relative_to(d).as_posix()
+                if rel in ROW_FILES:            # the inventory describes exactly the bytes that went in
+                    with file_lock(f):
+                        data = f.read_bytes()
+                    z.writestr(rel, data)
+                    inv["rows"][rel] = _row_stats(rel, data)
+                else:
+                    z.write(f, rel)
+                    if _inventory_file(rel):
+                        inv["files"].append(rel)
+                        n_pred += rel.startswith("predictions/") and "__" in f.name and f.suffix == ".json"
                 n_files += 1
+            cts = counts(d)
+            cts["predictions"] = n_pred
+            cts["signal records"] = int((inv["rows"].get("signals/ledger.csv") or {}).get("n", 0))
             z.writestr("gridsim_backup.json", json.dumps({
-                "gridsim_backup": 1, "created": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
+                "gridsim_backup": 2, "created": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
                 "reason": reason, "host": host(), "data_dir": str(d), "data_id": did, "files": n_files,
-                "counts": counts(d)},
-                indent=1))
+                "counts": cts, "inventory": inv}, indent=0))
         if has_data(d) and n_files == 0:
             raise RuntimeError("nothing could be added to the backup")
         for attempt in range(5):        # OneDrive may hold the folder for a moment while it syncs
@@ -413,7 +594,7 @@ def backup(cfg=None, reason: str = "manual", verbose: bool = False) -> Path:
         except OSError:
             pass
     remember_backup_dir(out_dir)
-    keep = max(1, int(((cfg.raw.get("backup") or {}).get("keep", 40)) if cfg is not None else 40))
+    keep = max(1, int(((cfg.raw.get("backup") or {}).get("keep", 30)) if cfg is not None else 30))
     _prune(cfg, keep)
     if verbose:
         print(f"backup: {final}")
@@ -421,11 +602,18 @@ def backup(cfg=None, reason: str = "manual", verbose: bool = False) -> Path:
 
 
 def _prune(cfg, keep: int) -> None:
-    """Delete only THIS data folder's oldest backups (beyond the newest `keep`) in the current backup folder.
-    Backups of any other data folder or computer, and backups made before IDs existed, are never deleted."""
-    mine = data_id()
+    """Delete only THIS data folder's oldest backups (beyond the newest `keep`) in the current backup folder, and
+    never one that holds something the folder no longer has (even one set aside with "start fresh"). Backups of other
+    folders or computers, and pre-ID backups, are never deleted."""
+    d = data_dir()
+    mine = data_id(d)
     own = [z for z in list_backups(cfg, everywhere=False) if backup_info(z).get("data_id") == mine]
+    if len(own) <= keep:
+        return
+    cur, cur_counts = _current(d), counts(d)
     for old in own[keep:]:
+        if missing_from(backup_info(old), cur, cur_counts):
+            continue
         try:
             old.unlink()
         except OSError:
@@ -555,7 +743,9 @@ def import_folder(src: str | Path, cfg=None, backup_first: bool = True, verbose:
         s = src_p / name
         if s.is_dir():
             _merge_tree(s, dest / name, name, rep)
-    for name in ("config.tuned.yaml", "config.local.yaml.bak", ".env", ".env.txt"):
+    tops = ["config.tuned.yaml", "config.local.yaml.bak", ".env", ".env.txt"]
+    tops += sorted(f.name for f in src_p.glob("*.from-import") if f.is_file())     # kept-aside copies come back too
+    for name in tops:
         if (src_p / name).is_file():
             guarded(_copy_file, name, src_p / name, dest / name, name, rep)
     if (src_p / "config.local.yaml").is_file():
@@ -615,7 +805,7 @@ def _fp(p: Path) -> str:
 def _merge_tree(s: Path, d: Path, top: str, rep: dict) -> None:
     shipped = SHIPPED_RUNS.get(top, set())
     for f in sorted(s.rglob("*")):
-        if not f.is_file() or f.name in SKIP_NAMES or f.suffix == ".partial":
+        if not f.is_file() or f.name in SKIP_NAMES or f.suffix in SKIP_SUFFIXES:
             continue
         rel = f.relative_to(s)
         if rel.parts[0] in shipped or f.name.endswith(DEV_PREDICTION_MARK):
@@ -662,6 +852,11 @@ def _read_csv(p: Path) -> tuple[list[str], list[dict]]:
 
 
 def _merge_csv(f: Path, t: Path, key_cols, rep: dict) -> None:
+    with file_lock(t):
+        _merge_csv_locked(f, t, key_cols, rep)
+
+
+def _merge_csv_locked(f: Path, t: Path, key_cols, rep: dict) -> None:
     if not t.exists():
         _copy_file(f, t, str(t.name), rep)
         return

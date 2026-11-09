@@ -221,7 +221,7 @@ GridSim keeps two kinds of files apart:
 
 **Automatic backups.** After every **Lock in predictions**, **Grade**, the Tuesday weekly run, lineup changes and
 once a day, GridSim zips your data folder into **GridSim Backups** — in your **OneDrive** folder if you have one (so
-there's always a copy off the PC), otherwise in your user folder. The newest 40 are kept. You can choose another
+there's always a copy off the PC), otherwise in your user folder. The newest 30 are kept (about three weeks; any backup holding something your folder no longer has is never deleted). You can choose another
 place (a USB drive, for example) in *Settings → Your data → Where backups go*.
 
 **Settings → Your data** has:

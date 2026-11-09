@@ -180,9 +180,10 @@ def scan(cfg: Config, season: int | None = None, week: int | None = None, notify
             json.dumps({"ts_utc": now.isoformat(), "season": season, "week": week, "games": snap_games}))
     # ledger + re-alert logic
     led = _dir(cfg) / "ledger.csv"
-    new = not led.exists()
     alerts = []
-    with open(led, "a", newline="", encoding="utf-8") as fh:
+    from .userdata import file_lock
+    with file_lock(led), open(led, "a", newline="", encoding="utf-8") as fh:
+        new = fh.tell() == 0
         w = csv.DictWriter(fh, fieldnames=LEDGER_FIELDS, extrasaction="ignore")
         if new:
             w.writeheader()
@@ -350,8 +351,9 @@ def grade_signals(cfg: Config) -> int:
         close = _closing_price(cfg, r["game_id"], r["ticker"], r["side"], r.get("kickoff_utc"))
         rows.append({**r, "won": win, "pnl": pnl, "closing": close, "clv": (close - float(r["price"])) if close is not None else None})
     if rows:
-        new = not gp.exists()
-        with open(gp, "a", newline="", encoding="utf-8") as fh:
+        from .userdata import file_lock
+        with file_lock(gp), open(gp, "a", newline="", encoding="utf-8") as fh:
+            new = fh.tell() == 0
             w = csv.DictWriter(fh, fieldnames=LEDGER_FIELDS + ["won", "pnl", "closing", "clv"], extrasaction="ignore")
             if new:
                 w.writeheader()

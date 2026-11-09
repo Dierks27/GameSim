@@ -157,6 +157,7 @@ with tab_mine:
             ss["ud_msg"] = ("ok", f"Backed up to {pth}")
         except Exception as e:
             ss["ud_msg"] = ("err", f"Backup failed — {type(e).__name__}: {e}")
+        ss["_status"] = None
         st.rerun()
     if sys.platform == "win32":
         if b2.button("Open data folder", icon=":material/folder_open:", width="stretch"):
@@ -181,6 +182,7 @@ with tab_mine:
         except Exception as e:
             ss["ud_msg"] = ("err", f"Stopped with an error ({type(e).__name__}: {e}). Anything already brought in "
                                    "stays; pressing Bring it in again is safe.")
+        ss["_status"] = None
         st.rerun()
 
     st.markdown("##### Restore a backup")
@@ -204,6 +206,7 @@ with tab_mine:
                                 "Restored — " + userdata.format_report(rep).replace("\n", "  \n"))
             except Exception as e:
                 ss["ud_msg"] = ("err", f"Restore failed — {e}. Pressing Restore again is safe.")
+            ss["_status"] = None
             st.rerun()
     else:
         st.caption("No backups yet — the first one is made after your next Lock in, Grade or **Back up now**.")
