@@ -157,8 +157,8 @@ def _append_card(card: Path, rows: list[dict]) -> None:
     if not rows:
         return
     card.parent.mkdir(parents=True, exist_ok=True)
-    from .userdata import file_lock
-    with file_lock(card), open(card, "a", newline="", encoding="utf-8") as fh:
+    from .userdata import file_lock, healed as _healed
+    with file_lock(card), _healed(card), open(card, "a", newline="", encoding="utf-8") as fh:
         new = fh.tell() == 0
         w = csv.DictWriter(fh, fieldnames=SCORE_FIELDS)
         if new:

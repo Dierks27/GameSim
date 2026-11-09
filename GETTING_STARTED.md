@@ -230,8 +230,7 @@ place (a USB drive, for example) in *Settings → Your data → Where backups go
   nothing you have now is deleted or overwritten.
 - **Bring in data from an old GridSim folder** — for an old install that still has your predictions and records.
   In Explorer, hold **Shift**, right-click the old folder → **Copy as path**, paste it into the box and press **Bring
-  it in**. It merges: new records are added, nothing is overwritten (where both have a setting, your current one
-  stays), and a backup is made first. Running it twice is harmless.
+  it in**. It merges: new records are added and nothing is overwritten (if you already have your own settings, they stay and the old folder's are saved beside them as `config.local.yaml.from-import`), and a backup is made first. Running it twice is harmless.
 - **Recover a lost week** — only if a week's data is gone and isn't in any backup: **Fill in missing Kalshi closing
   prices** (from Kalshi's own price history, marked *backfilled*) and **Re-create that week's predictions**
   (re-simulated with only the data from before that week, marked *reconstructed*). Reconstructed predictions are

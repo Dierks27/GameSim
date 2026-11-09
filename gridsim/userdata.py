@@ -24,6 +24,7 @@ import io
 import json
 import os
 import shutil
+import sys
 import tempfile
 import time
 import uuid
@@ -32,7 +33,7 @@ from pathlib import Path
 
 import yaml
 
-from .config import REPO_ROOT, data_dir, deep_merge
+from .config import REPO_ROOT, data_dir
 
 BACKUP_PREFIX = "GridSim-backup-"
 # Example runs shipped with the code (developer backtests / tuning / check-up). They stay in the code folder and are
@@ -205,9 +206,14 @@ def _known(d: Path | None = None) -> dict:
                 line = line.strip()
                 kind, _, val = line.partition(":") if ":" in line else ("id", "", line)
                 if kind == "id" and val:
-                    k["ids"].add(val)
+                    i, _, when = val.partition("@")           # id:<x>@<utc>: known since then
+                    k["ids"].add(i)
+                    if when and _when(when):
+                        k.setdefault("since", {})[i] = max(k.setdefault("since", {}).get(i, _when(when)), _when(when))
                 elif kind == "dismiss" and val:
                     k["dismissed"].add(val)
+                elif kind == "reset" and _when(val):
+                    k["reset"] = max(k.get("reset") or _when(val), _when(val))
                 elif kind == "born" and _when(val) and (k["born"] is None or _when(val) < k["born"]):
                     k["born"] = _when(val)
         except OSError:
@@ -218,6 +224,14 @@ def _known(d: Path | None = None) -> dict:
         except OSError:
             pass
     return k
+
+
+def _dismissed_outside() -> set[str]:
+    try:
+        f = Path.home() / ".gridsim_dismissed_backups.txt"
+        return set(f.read_text(encoding="utf-8").split()) if f.exists() else set()
+    except OSError:
+        return set()
 
 
 def _add_known(d: Path, lines) -> None:
@@ -236,7 +250,7 @@ def known_ids(d: Path | None = None) -> set[str]:
 def remember_ids(ids, d: Path | None = None) -> None:
     d = d or data_dir()
     cur = known_ids(d)
-    _add_known(d, [f"id:{i}" for i in sorted({i for i in ids if i} - cur)])
+    _add_known(d, [f"id:{i}@{_utcnow()}" for i in sorted({i for i in ids if i} - cur)])
 
 
 _INFO_CACHE: dict = {}
@@ -266,6 +280,16 @@ def has_data(d: Path | None = None) -> bool:
                                            "config.local.yaml"))
 
 
+def _ledger_rows(led: Path) -> int:
+    if not led.exists():
+        return 0
+    try:
+        with open(led, "rb") as fh:
+            return max(0, sum(chunk.count(b"\n") for chunk in iter(lambda: fh.read(1 << 20), b"")) - 1)
+    except OSError:
+        return 0
+
+
 def counts(d: Path | None = None) -> dict:
     d = d or data_dir()
 
@@ -275,7 +299,7 @@ def counts(d: Path | None = None) -> dict:
 
     led = d / "signals" / "ledger.csv"
     return {"predictions": n("predictions", "*__*.json"), "price snapshots": n("signals/snapshots", "*.json"),
-            "signal records": max(0, sum(1 for _ in open(led, encoding="utf-8")) - 1) if led.exists() else 0,
+            "signal records": _ledger_rows(led),
             "lineup files": n("overrides", "*.yaml"),
             "tuning runs": n("tuning", "summary.json"), "check-ups": n("diagnose", "diagnose.json")}
 
@@ -294,19 +318,32 @@ def _inventory_file(rel: str) -> bool:
             and rel.rsplit("/", 1)[-1] not in _INV_SKIP and not rel.endswith(".partial"))
 
 
+def _col_values(lines, col: str):
+    """Stream one column out of CSV text lines (no dicts — ledgers grow to hundreds of thousands of rows)."""
+    r = csv.reader(lines)
+    head = next(r, None)
+    if not head or col not in head:
+        return
+    i = head.index(col)
+    for row in r:
+        if len(row) > i:
+            yield row[i]
+
+
 def _row_stats(rel: str, data: bytes) -> dict:
-    """Append-only record file -> what to remember: rows (and the newest time stamp), or the games graded."""
+    """Append-only record file -> what to remember. Ledger / graded rows: how many rows per time stamp (all rows of
+    one scan share one), so rows lost at one time can't be "made up" by rows from another. Scorecards: the games."""
+    from collections import Counter
     col = ROW_FILES[rel]
+    lines = io.StringIO(data.decode("utf-8-sig", errors="replace"))
     try:
-        rows = list(csv.DictReader(io.StringIO(data.decode("utf-8-sig", errors="replace"))))
+        if col == "game_id":
+            return {"games": sorted(set(_col_values(lines, "game_id")) - {""})}
+        if col == "ts_utc":
+            return {"by_ts": dict(Counter(_col_values(lines, "ts_utc")))}
+        return {"keys": sorted(set(_col_values(lines, "promoted_at")))}
     except csv.Error:
         return {}
-    if col == "game_id":
-        return {"games": sorted({r.get("game_id") or "" for r in rows} - {""})}
-    if col == "ts_utc":
-        ts = [r.get("ts_utc") or "" for r in rows]
-        return {"n": len(rows), "max": max(ts) if ts else ""}
-    return {"n": len(rows)}
 
 
 _CUR_CACHE: dict = {}
@@ -324,22 +361,18 @@ def _current(d: Path) -> dict:
                     if _inventory_file(rel):
                         files.add(rel)
     rows = {}
-    for rel, col in ROW_FILES.items():
+    for rel in ROW_FILES:
         f = d / rel
         if not f.is_file():
             continue
         try:
-            key = (str(f), f.stat().st_size, f.stat().st_mtime_ns)
-            if key not in _CUR_CACHE:
-                text = f.read_bytes().decode("utf-8-sig", errors="replace")
-                rs = list(csv.DictReader(io.StringIO(text)))
-                if col == "game_id":
-                    _CUR_CACHE[key] = {"games": {r.get("game_id") or "" for r in rs}}
-                elif col == "ts_utc":
-                    _CUR_CACHE[key] = {"ts": sorted(r.get("ts_utc") or "" for r in rs)}
-                else:
-                    _CUR_CACHE[key] = {"n": len(rs)}
-            rows[rel] = _CUR_CACHE[key]
+            stt = f.stat()
+            hit = _CUR_CACHE.get(str(f))
+            if not hit or hit[0] != (stt.st_size, stt.st_mtime_ns):
+                with open(f, "rb") as fh:
+                    data = fh.read()
+                _CUR_CACHE[str(f)] = ((stt.st_size, stt.st_mtime_ns), _row_stats(rel, data))   # newest only
+            rows[rel] = _CUR_CACHE[str(f)][1]
         except (OSError, csv.Error):
             pass
     return {"files": files, "rows": rows}
@@ -347,7 +380,6 @@ def _current(d: Path) -> dict:
 
 def missing_from(info: dict, cur: dict, cur_counts: dict) -> list[str]:
     """What a backup holds that the folder doesn't, in plain words ([] = nothing missing)."""
-    import bisect
     out = []
     inv = info.get("inventory")
     if inv is None:                     # backups made before inventories existed: compare the totals
@@ -371,12 +403,14 @@ def missing_from(info: dict, cur: dict, cur_counts: dict) -> list[str]:
     for rel, st in (inv.get("rows") or {}).items():
         have = cur["rows"].get(rel, {})
         if "games" in st:
-            n = len(set(st["games"]) - set(have.get("games", set())))
-        elif "max" in st:
-            ts = have.get("ts", [])
-            n = int(st.get("n", 0)) - bisect.bisect_right(ts, st["max"])   # rows up to the backup's newest one
+            n = len(set(st["games"]) - set(have.get("games", ())))
+        elif "keys" in st:
+            n = len(set(st["keys"]) - set(have.get("keys", ())))
+        elif "by_ts" in st:                    # per scan time stamp: rows of one time can't stand in for another's
+            cur_ts = have.get("by_ts", {})
+            n = sum(max(0, c - cur_ts.get(t, 0)) for t, c in st["by_ts"].items())
         else:
-            n = int(st.get("n", 0)) - int(have.get("n", 0))
+            continue                           # an older inventory format: nothing reliable to compare
         if n > 0:
             out.append(f"{n} {names.get(rel, rel)}")
     return out
@@ -396,15 +430,20 @@ def status(cfg=None) -> dict:
     ids = kn["ids"] | {mine}
     cur, cur_counts = _current(d), counts(d)
     lost = []
+    dismissed = kn["dismissed"] | _dismissed_outside()
     for z in b:
-        if z.name in kn["dismissed"]:
+        if z.name in dismissed:
             continue
         info = backup_info(z)
         if not info:
             continue
         created = _when(info.get("created"))
-        relevant = (info.get("host") in (None, me) or info.get("data_id") in ids
-                    or (kn["born"] is not None and created is not None and created < kn["born"]))
+        did = info.get("data_id")
+        since = (kn.get("since") or {}).get(did)
+        relevant = (did == mine or info.get("host") in (None, me)
+                    # a folder restored / brought in: its backups up to then (later ones are that PC's own business)
+                    or (did in ids and (since is None or created is None or created <= since))
+                    or (kn["born"] is not None and created is not None and created <= kn["born"]))
         if not relevant:
             continue
         miss = missing_from(info, cur, cur_counts)
@@ -416,11 +455,22 @@ def status(cfg=None) -> dict:
             "warn_empty": bool(lost), "restore_candidate": cand, "counts": cur_counts}
 
 
+def note_settings_reset() -> None:
+    """Settings -> Reset to defaults: remembered, so restoring an older backup doesn't bring the old settings back."""
+    _add_known(data_dir(), [f"reset:{_utcnow()}"])
+
+
 def start_fresh(cfg=None) -> None:
     """The user chose to keep the data folder as it is: set aside every backup made so far (none is deleted — they
     can still be restored), and leave what's in the program folder where it is."""
     d = data_dir()
-    _add_known(d, [f"dismiss:{z.name}" for z in list_backups(cfg)])
+    names = [z.name for z in list_backups(cfg)]
+    _add_known(d, [f"dismiss:{n}" for n in names])
+    try:                                   # also outside the data folder, so it survives its hidden files
+        with open(Path.home() / ".gridsim_dismissed_backups.txt", "a", encoding="utf-8") as fh:
+            fh.writelines(f"{n}\n" for n in names)
+    except OSError:
+        pass
     if _legacy_present(REPO_ROOT) and REPO_ROOT.resolve() != d.resolve():
         mp = d / LEGACY_FILE
         try:
@@ -490,6 +540,62 @@ def _legacy_present(root: Path) -> bool:
 
 # ---- a small lock so a merge never overwrites rows another GridSim process is appending ---------------------------------
 
+def pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+        h = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)        # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return False
+        code = ctypes.c_ulong()
+        ok = ctypes.windll.kernel32.GetExitCodeProcess(h, ctypes.byref(code))
+        ctypes.windll.kernel32.CloseHandle(h)
+        return bool(ok) and code.value == 259                              # STILL_ACTIVE
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+
+
+def heal_partial_line(path: Path) -> None:
+    """Before appending: if a crash left a half-written last line, drop it (the next row would be glued to it)."""
+    try:
+        with open(path, "rb+") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            if size == 0:
+                return
+            fh.seek(size - 1)
+            if fh.read(1) == b"\n":
+                return
+            back = min(size, 1 << 20)
+            fh.seek(size - back)
+            tail = fh.read(back)
+            cut = tail.rfind(b"\n")
+            fh.truncate(size - back + cut + 1 if cut >= 0 else 0)
+    except OSError:
+        pass
+
+
+class healed:
+    """Context helper: heal a half-written last line (see heal_partial_line) right before appending."""
+
+    def __init__(self, path: Path):
+        self.path = path
+
+    def __enter__(self):
+        if Path(self.path).exists():
+            heal_partial_line(Path(self.path))
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
 class file_lock:
     """Exclusive lock on <file>.lock (a scan appending ledger rows vs. a restore rewriting the ledger). Waits up to
     60 s; a lock older than 10 minutes is treated as left over from a crash."""
@@ -505,10 +611,13 @@ class file_lock:
         while True:
             try:
                 self.fd = os.open(self.lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.write(self.fd, str(os.getpid()).encode())
                 return self
             except FileExistsError:
                 try:
-                    if time.time() - self.lock.stat().st_mtime > 600:
+                    txt = self.lock.read_text(encoding="utf-8", errors="replace").strip()
+                    dead = txt.isdigit() and not pid_alive(int(txt))       # its process crashed / was closed
+                    if dead or time.time() - self.lock.stat().st_mtime > 600:
                         self.lock.unlink()
                         continue
                 except OSError:
@@ -572,7 +681,7 @@ def backup(cfg=None, reason: str = "manual", verbose: bool = False) -> Path:
                 n_files += 1
             cts = counts(d)
             cts["predictions"] = n_pred
-            cts["signal records"] = int((inv["rows"].get("signals/ledger.csv") or {}).get("n", 0))
+            cts["signal records"] = sum(((inv["rows"].get("signals/ledger.csv") or {}).get("by_ts") or {}).values())
             z.writestr("gridsim_backup.json", json.dumps({
                 "gridsim_backup": 2, "created": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
                 "reason": reason, "host": host(), "data_dir": str(d), "data_id": did, "files": n_files,
@@ -612,8 +721,8 @@ def _prune(cfg, keep: int) -> None:
         return
     cur, cur_counts = _current(d), counts(d)
     for old in own[keep:]:
-        if missing_from(backup_info(old), cur, cur_counts):
-            continue
+        if "inventory" not in backup_info(old) or missing_from(backup_info(old), cur, cur_counts):
+            continue                       # pre-inventory backups and ones holding something missing stay
         try:
             old.unlink()
         except OSError:
@@ -629,7 +738,8 @@ def auto_backup(cfg=None, reason: str = "auto", min_interval_h: float | None = N
         if min_interval_h:
             mine = data_id()
             b = [z for z in list_backups(cfg, everywhere=False) if backup_info(z).get("data_id") == mine]
-            if b and (dt.datetime.now().timestamp() - b[0].stat().st_mtime) < min_interval_h * 3600:
+            if (b and "inventory" in backup_info(b[0])        # (first start after an update: a full baseline now)
+                    and (dt.datetime.now().timestamp() - b[0].stat().st_mtime) < min_interval_h * 3600):
                 return None
         return backup(cfg, reason)
     except Exception as e:
@@ -682,7 +792,8 @@ def restore(zip_path: str | Path, cfg=None, verbose: bool = False) -> dict:
 
 
 def import_folder(src: str | Path, cfg=None, backup_first: bool = True, verbose: bool = False,
-                  legacy: bool = False, seen: dict | None = None, label: str | None = None) -> dict:
+                  legacy: bool = False, seen: dict | None = None, label: str | None = None,
+                  src_time: dt.datetime | None = None) -> dict:
     """Merge GridSim data from `src` (an old GridSim folder, a data folder or a backup ZIP) into the data folder.
     Returns a report {category: count, ...} with 'notes' for decisions and 'failed' for files that couldn't be read
     (the rest is still merged). seen: {file: fingerprint} of code-folder files already taken (ensure())."""
@@ -712,7 +823,7 @@ def import_folder(src: str | Path, cfg=None, backup_first: bool = True, verbose:
                 except (OSError, ValueError):
                     info = {}
             r = import_folder(root, cfg=cfg, backup_first=backup_first, verbose=False, legacy=True,
-                              label=label or f"{src_p.name}")
+                              label=label or f"{src_p.name}", src_time=_when(info.get("created")))
             remember_ids({info.get("data_id")} | set(r.pop("_ids", set())))
             if r["added"] or r["records added"]:
                 auto_backup(cfg, "after-restore")
@@ -724,7 +835,7 @@ def import_folder(src: str | Path, cfg=None, backup_first: bool = True, verbose:
     if backup_first and has_data(dest):
         auto_backup(cfg, "before-import")
     rep = {"added": 0, "already there": 0, "records added": 0, "notes": [], "failed": [],
-           "source": label or str(src_p), "_seen": seen}
+           "source": label or str(src_p), "_seen": seen, "_src_time": src_time}
 
     def guarded(fn, key, *a):
         try:
@@ -786,6 +897,7 @@ def import_folder(src: str | Path, cfg=None, backup_first: bool = True, verbose:
         rep.pop("_ids")
     rep.pop("_guard", None)
     rep.pop("_seen", None)
+    rep.pop("_src_time", None)
     if not legacy and (rep["added"] or rep["records added"]):
         auto_backup(cfg, "after-import")               # so what was just brought in is backed up right away
     if verbose:
@@ -907,23 +1019,29 @@ def _merge_alert_state(f: Path, t: Path, rep: dict) -> None:
 
 
 def _merge_settings(f: Path, t: Path, rep: dict) -> None:
-    from .config import save_local
-    try:
-        src = yaml.safe_load(f.read_text(encoding="utf-8-sig")) or {}
-        cur = (yaml.safe_load(t.read_text(encoding="utf-8-sig")) or {}) if t.exists() else {}
-    except (OSError, yaml.YAMLError) as e:
-        rep["notes"].append(f"config.local.yaml: could not read ({e}); skipped")
-        return
-    if not isinstance(src, dict) or not isinstance(cur, dict):
+    """Your current settings are never changed by a restore or bring-in. If you have none, the imported ones are
+    used — unless you pressed Reset to defaults after they were saved."""
+    src = yaml.safe_load(f.read_text(encoding="utf-8-sig"))
+    if not isinstance(src, dict):
         rep["notes"].append("config.local.yaml: not a list of settings; skipped")
         return
-    merged = deep_merge(src, cur)                    # your current settings win; imported ones fill the gaps
-    if merged == cur:
-        rep["already there"] += 1
+    if t.exists():
+        cur = yaml.safe_load(t.read_text(encoding="utf-8-sig")) or {}
+        if cur == src:
+            rep["already there"] += 1
+            return
+        alt = t.with_name(t.name + ".from-import")
+        shutil.copy2(f, alt)
+        rep["notes"].append(f"settings: kept your current settings; the other ones are saved beside them as {alt.name}")
         return
-    save_local(merged)
+    reset = _known(t.parent).get("reset")
+    src_time = rep.get("_src_time") or dt.datetime.fromtimestamp(f.stat().st_mtime, dt.timezone.utc)
+    if reset and src_time and src_time < reset:
+        rep["notes"].append("settings: you reset them to the defaults after this copy was made; left as defaults")
+        return
+    from .config import save_local
+    save_local(src)
     rep["added"] += 1
-    rep["notes"].append("settings: brought in the setting changes you didn't have yet (where both had one, yours stayed)")
 
 
 def _merge_regime(f: Path, t: Path, rep: dict) -> None:

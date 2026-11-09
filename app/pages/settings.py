@@ -123,6 +123,7 @@ with tab_cfg:
             st.markdown("Removes all your changes (a backup is kept as `config.local.yaml.bak`).")
             if st.button("Yes, reset all settings", type="primary"):
                 userdata.auto_backup(cfg, "before-reset")
+                userdata.note_settings_reset()
                 LOCAL_CONFIG_PATH.with_name(LOCAL_CONFIG_PATH.name + ".bak").write_bytes(LOCAL_CONFIG_PATH.read_bytes())
                 LOCAL_CONFIG_PATH.unlink()
                 ss["cfg_saved"] = "All settings are back to the defaults."

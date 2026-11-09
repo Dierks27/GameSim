@@ -115,8 +115,8 @@ def test_old_folder_plus_fresh_install_then_delete_and_restore(env):
     assert (env["data"] / "tuning" / "20261107-220000" / "summary.json").exists()
     assert not (env["data"] / "tuning" / "20261105-074738").exists()                 # shipped example skipped
     local = yaml.safe_load((env["data"] / "config.local.yaml").read_text())
-    assert local["sim"]["n_sims"] == 4000                                               # current setting wins
-    assert local["players"]["recent_games"] == 8                                        # missing one filled in
+    assert local == {"sim": {"n_sims": 4000}}                                           # your settings untouched
+    assert "recent_games" in (env["data"] / "config.local.yaml.from-import").read_text()   # the old ones set aside
     assert (env["data"] / ".env").read_text() == "NTFY_TOPIC=old-topic\n"
     assert any("before-import" in b.name for b in userdata.list_backups())             # backed up first
 
@@ -666,7 +666,9 @@ def test_backup_inventory_matches_what_was_zipped(env):
     info = userdata.backup_info(z)
     names = set(zipfile.ZipFile(z).namelist())
     assert set(info["inventory"]["files"]) <= names
-    assert info["inventory"]["rows"]["signals/ledger.csv"] == {"n": 2, "max": "2026-11-02T15:00:00+00:00"}
+    assert info["inventory"]["rows"]["signals/ledger.csv"] == {"by_ts": {"2026-11-01T15:00:00+00:00": 1,
+                                                                         "2026-11-02T15:00:00+00:00": 1}}
+    assert info["counts"]["signal records"] == 2
     assert info["counts"]["predictions"] == 1 and info["host"]
 
 
@@ -696,4 +698,88 @@ def test_file_lock_serialises_and_recovers(env):
     with userdata.file_lock(f, timeout=2):
         pass
     assert not lk.exists()
+
+
+# ---- last recheck -----------------------------------------------------------------------------------------------------
+
+def test_older_rows_brought_in_cannot_hide_lost_rows(env):
+    make_install(env["data"], [f"2026-11-0{i}T15:00:00+00:00" for i in range(1, 9)], ["a__1__h.json"])
+    good = userdata.backup(None, "grade")
+    write_ledger(env["data"] / "signals" / "ledger.csv", [])                 # the ledger loses its rows
+    old = env["tmp"] / "old"
+    make_install(old, [f"2026-10-{i:02d}T15:00:00+00:00" for i in range(1, 11)], [])   # 10 OLDER rows elsewhere
+    userdata.import_folder(old)
+    st = userdata.status()
+    assert st["warn_empty"] and "8 signal records" in st["missing"][good.name]
+
+
+def test_old_pc_keeps_backing_up_after_moving_to_a_new_pc(env, monkeypatch):
+    monkeypatch.setenv("COMPUTERNAME", "OLDPC")
+    make_install(env["data"], ["2026-11-01T15:00:00+00:00"], ["a__1__h.json"])
+    old_zip = userdata.backup(None, "daily")
+    old_id = userdata.data_id()
+    # new PC: empty folder, restores the old PC's backup
+    shutil.rmtree(env["data"])
+    monkeypatch.setenv("COMPUTERNAME", "NEWPC")
+    userdata.ensure()
+    assert userdata.status()["warn_empty"]
+    userdata.restore(old_zip)
+    assert not userdata.status()["warn_empty"]
+    import time
+    time.sleep(1.1)
+    # the old PC is still on and makes a later backup of ITS folder with a new snapshot
+    later = {"gridsim_backup": 2, "created": userdata._utcnow(), "reason": "daily", "host": "OLDPC",
+             "data_id": old_id, "counts": {"predictions": 1, "signal records": 1},
+             "inventory": {"files": ["signals/snapshots/new.json"], "rows": {}}}
+    fake_backup(env["backups"], "20991231-000000-daily", later)
+    assert not userdata.status()["warn_empty"]
+    assert userdata.auto_backup(None, "lock-in") is not None
+
+
+def test_lock_left_by_a_crashed_process_is_taken_over_at_once(env):
+    import subprocess
+    import sys
+    import time
+    p = subprocess.Popen([sys.executable, "-c", "pass"])
+    p.wait()
+    f = env["tmp"] / "ledger.csv"
+    (env["tmp"] / "ledger.csv.lock").write_text(str(p.pid))
+    t0 = time.time()
+    with userdata.file_lock(f, timeout=30):
+        pass
+    assert time.time() - t0 < 2
+
+
+def test_half_written_last_line_is_dropped_before_appending(env):
+    f = env["tmp"] / "x.csv"
+    f.write_bytes(b"a,b\n1,2\n3,")
+    userdata.heal_partial_line(f)
+    assert f.read_bytes() == b"a,b\n1,2\n"
+    f.write_bytes(b"a,b")
+    userdata.heal_partial_line(f)
+    assert f.read_bytes() == b""
+
+
+def test_restore_never_brings_settings_back_after_a_reset(env):
+    from gridsim.config import save_local
+    make_install(env["data"], ["2026-11-01T15:00:00+00:00"], ["a__1__h.json"])
+    save_local({"sim": {"n_sims": 9000}})
+    z = userdata.backup(None, "x")
+    import time
+    time.sleep(1.1)
+    (env["data"] / "config.local.yaml").unlink()      # Settings -> Reset to defaults
+    userdata.note_settings_reset()
+    rep = userdata.restore(z)
+    assert not (env["data"] / "config.local.yaml").exists()
+    assert any("reset them to the defaults" in n for n in rep["notes"])
+
+
+def test_first_start_after_an_update_makes_a_full_baseline_backup(env):
+    make_install(env["data"], ["2026-11-01T15:00:00+00:00"], [f"g{i}__1__h.json" for i in range(3)])
+    did = userdata.data_id()
+    info = {"gridsim_backup": 1, "created": userdata._utcnow(), "reason": "daily", "data_id": did,
+            "data_dir": str(env["data"]), "counts": {"predictions": 3, "signal records": 1}}
+    fake_backup(env["backups"], "20991231-000000-daily", info)     # made an hour ago by an older build
+    z = userdata.auto_backup(None, "daily", min_interval_h=24)
+    assert z is not None and "inventory" in userdata.backup_info(z)
 

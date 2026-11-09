@@ -285,9 +285,10 @@ gaps as hypotheses to grade live (`grade`, `scorecard`, signal CLV), not as edge
   only after weekly/grade as the spec listed), grade, weekly, reconstruct, lineup edits (≤ 1/h), before applying
   tuned settings or a reset, and at most once a day from scans and from opening the GUI. `backup.keep` = 30 (late-season backups are ~40 MB each because of the price snapshots, so 30 is ~1.2 GB on OneDrive).
 - Restore and "import an old folder" are the same merge: frozen predictions and snapshots are only added (never
-  replaced), CSV records are unioned by key (ledger: whole row; graded: ts+ticker+side; scorecards:
-  game_id+pred_file), alert state keeps the newer entry, settings merge with the current values winning, differing
-  text files are kept beside yours as `*.from-import`. So restoring can never lose newer data, and running it twice
+  replaced), CSV records are unioned by key (ledger: whole row; graded: ts+ticker+side; scorecards: game_id, the later
+  pre-kickoff prediction winning), alert state is only seeded, your current settings are never changed (the imported
+  ones are kept beside them as `config.local.yaml.from-import`; with none of your own, they are used unless you
+  pressed Reset to defaults after they were saved), differing text files are kept beside yours as `*.from-import`. So restoring can never lose newer data, and running it twice
   changes nothing. Example runs shipped with the code and the developer's early week-9 test predictions are never
   imported.
 - Reconstructed predictions go to `predictions/<season>/wk<NN>/reconstructed/` with `frozen.provenance =
