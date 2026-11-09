@@ -52,7 +52,7 @@ gridsim impact --home KC --away NYJ --player "Patrick Mahomes"       # with vs w
 gridsim impact --home BAL --away JAX --player "Lamar Jackson" --qb "Tyler Huntley"   # QB swap
 ```
 
-Weekly overrides live in `overrides\<season>_wk<NN>.yaml` (the GUI's lineup toggles write the same file):
+Weekly overrides live in `overrides\<season>_wk<NN>.yaml` in the data folder (`%USERPROFILE%\GridSim Data`; the GUI's lineup toggles write the same file):
 
 ```yaml
 MIN: {out: ["J.Jefferson"], qb: "S.Darnold"}
@@ -90,7 +90,7 @@ gridsim slate --week 10          # every game of the week in parallel, one combi
 gridsim season                   # playoff / division / seed odds from the remaining schedule
 ```
 
-Push alerts: create a `.env` file next to `config.yaml` (it is git-ignored) with
+Push alerts: create a `.env` file in the data folder (`%USERPROFILE%\GridSim Data`, never committed) with
 `NTFY_TOPIC=your-private-topic-name` and install the free ntfy app on your phone, subscribed to that topic.
 Optional: `DISCORD_WEBHOOK_URL=...`. A market type (moneyline, spread, total) only sends alerts after it has a
 positive live record (≥ 50 graded signals with positive closing-line value); until then it shows as "watchlist".
@@ -138,9 +138,9 @@ gridsim reconstruct --season 2026 --week 9       # re-sim a lost week with data 
 ```
 
 Backups go to `backup.dir` (default `%OneDrive%\GridSim Backups`, else `%USERPROFILE%\GridSim Backups`), newest
-`backup.keep` kept. If the data folder is empty while backups exist, every CLI command and every GUI page says so.
+`backup.keep` kept. If backups exist from a data folder this one does not know (the folder was lost or replaced), every CLI command and every GUI page says so and automatic backups pause until you restore or choose to start fresh.
 Long jobs (tune / backtest / slate) start only as many workers as fit `resources.max_ram_fraction` (whole PC ≤ 80% of
-RAM, ~3 GB per worker) and `resources.free_cores`, at low priority. `backup` and `resources` are not part of the config
+RAM; tuning workers hold one season each, ~2 GB) and `resources.free_cores`, at low priority. `backup` and `resources` are not part of the config
 hash.
 
 ## Tests
@@ -194,7 +194,7 @@ Pages:
 * **Game**: one matchup in depth: win %, fair lines, market comparison, margin/total histograms, a cover
   calculator for any spread or total you type (computed from the stored sims, no re-sim), alt lines, quarters,
   team stat ranges, top scores, availability. The **Lineup** tab lets you rule players OUT, force them IN or pick the
-  starting QB; "Re-sim with these changes" writes them to the week's `overrides\<season>_wk<week>.yaml` (the same
+  starting QB; "Re-sim with these changes" writes them to the week's `overrides\<season>_wk<week>.yaml` in the data folder (the same
   file the CLI reads) and re-simulates. The Details tab shows the equivalent CLI command and downloads the HTML
   report / JSON.
 

@@ -143,9 +143,10 @@ def run_tune(cfg: Config, train: list[int], validate: int, trials: int, sims: in
     from .backtest import PinnedPool
     _be_nice()
     # leave cores and memory free so the PC stays usable while tuning runs for hours (config `resources`)
-    from .resources import worker_count
-    workers = workers or worker_count(cfg, verbose=verbose)
-    pool = PinnedPool(workers)
+    from .resources import tune_worker_count
+    seasons = list(dict.fromkeys(list(train) + [validate]))
+    workers = workers or tune_worker_count(cfg, len(seasons), verbose=verbose)
+    pool = PinnedPool(workers, seasons=seasons)
     base_train, _ = score_config(cfg, train, weeks, sims, seed, every, workers, pool=pool)
     base_obj = objective_value(base_train, weights)
     if verbose:

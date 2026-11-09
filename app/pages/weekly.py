@@ -160,8 +160,10 @@ with st.container(border=True):
 with st.container(border=True):
     st.markdown("#### 5 · Self-tune (every few weeks, optional)")
     st.caption("Searches the model's settings on past seasons and tests the winner on a season it never saw. "
-               "At 150 trials it runs for about 8-15 hours in the background, at low priority and leaving two "
-               "processor cores free, so the PC stays usable (it shows as many “Python” entries in Task Manager — "
+               "At 150 trials it runs for many hours in the background, at low priority, leaving "
+               f"{(common.cfg().raw.get('resources') or {}).get('free_cores', 2)} processor cores free and keeping the "
+               f"whole PC under {100 * float((common.cfg().raw.get('resources') or {}).get('max_ram_fraction', 0.8)):.0f}% "
+               "memory, so the PC stays usable (it shows as many “Python” entries in Task Manager — "
                "that's normal). Starting it in the evening is easiest. It keeps going even if you close GridSim; to "
                "stop it early, restart the PC (nothing is harmed, that run's progress is just lost). It never "
                "changes your settings by itself: you decide below whether to use the result.")

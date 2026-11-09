@@ -251,15 +251,30 @@ def parse_weeks(s: str) -> list[int]:
 
 class PinnedPool:
     """N single-process executors; a (season, week) job always goes to the same worker, so each worker's
-    model cache (keyed by build-relevant config) is hit again by later tuning trials."""
+    model cache (keyed by build-relevant config) is hit again by later tuning trials.
 
-    def __init__(self, n: int):
+    seasons: the seasons the job will touch. With at least as many workers as seasons, each worker only ever gets
+    ONE season, so it holds one season of play-by-play (~2 GB) instead of all of them (~3.5 GB for 4) — about twice
+    as many workers fit in the same memory."""
+
+    def __init__(self, n: int, seasons: list[int] | None = None):
         import multiprocessing as mp
         ctx = mp.get_context("spawn")
         self.ex = [ProcessPoolExecutor(max_workers=1, mp_context=ctx) for _ in range(max(1, n))]
+        self.seasons = list(dict.fromkeys(seasons or []))
+
+    def slot(self, season: int, week: int) -> int:
+        n = len(self.ex)
+        if season not in self.seasons:
+            self.seasons.append(season)
+        k = len(self.seasons)
+        if n >= k:
+            group = [w for w in range(n) if w % k == self.seasons.index(season)]
+            return group[week % len(group)]
+        return (season * 100 + week) % n
 
     def map(self, fn, jobs):
-        futs = [self.ex[(j["season"] * 100 + j["week"]) % len(self.ex)].submit(fn, j) for j in jobs]
+        futs = [self.ex[self.slot(j["season"], j["week"])].submit(fn, j) for j in jobs]
         return [f.result() for f in futs]
 
     def close(self):
@@ -282,8 +297,8 @@ def run_backtest(cfg: Config, season: int, weeks: list[int], sims: int = 1000, s
     jobs = [{"cfg_raw": cfg.raw, "season": season, "week": w, "games": gs, "sims": sims, "seed": seed}
             for w, gs in sorted(by_week.items())]
     if not workers:
-        from .resources import worker_count
-        workers = worker_count(cfg, jobs=len(jobs))
+        from .resources import season_worker_gb, worker_count
+        workers = worker_count(cfg, per_worker_gb=season_worker_gb(1), jobs=len(jobs))
     rows: list[dict] = []
     if pool is not None:
         for j, res in zip(jobs, pool.map(sim_week, jobs)):

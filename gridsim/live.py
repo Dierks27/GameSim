@@ -98,9 +98,11 @@ def grade(cfg: Config, season: int, week: int, verbose: bool = True) -> list[dic
     done = set()
     if card.exists():
         with open(card, encoding="utf-8") as fh:
-            done = {(r["game_id"], r["pred_file"]) for r in csv.DictReader(fh)}
+            done = {r["game_id"] for r in csv.DictReader(fh)}      # one graded row per game
     rows = []
     for gm in g.iter_rows(named=True):
+        if gm["game_id"] in done:
+            continue
         ko = kickoff_utc(gm)
         cands = []
         for f in sorted(d.glob(f"{gm['game_id']}__*.json")):
@@ -113,8 +115,6 @@ def grade(cfg: Config, season: int, week: int, verbose: bool = True) -> list[dic
                 print(f"  {gm['game_id']}: no pre-kickoff prediction")
             continue
         created, f, p = max(cands, key=lambda x: x[0])
-        if (gm["game_id"], f.name) in done:
-            continue
         rows.append(_score_row(season, week, gm, f, p))
     _append_card(card, rows)
     if verbose:
@@ -221,11 +221,11 @@ def grade_reconstructed(cfg: Config, season: int, week: int, verbose: bool = Tru
     done = set()
     if card.exists():
         with open(card, encoding="utf-8") as fh:
-            done = {(r["game_id"], r["pred_file"]) for r in csv.DictReader(fh)}
+            done = {r["game_id"] for r in csv.DictReader(fh)}
     rows = []
     for gm in g.iter_rows(named=True):
         files = sorted(rd.glob(f"{gm['game_id']}__*.json"))
-        if not files or (gm["game_id"], files[-1].name) in done:
+        if not files or gm["game_id"] in done:
             continue
         rows.append(_score_row(season, week, gm, files[-1], json.loads(files[-1].read_text())))
     _append_card(card, rows)
@@ -234,11 +234,22 @@ def grade_reconstructed(cfg: Config, season: int, week: int, verbose: bool = Tru
     return rows
 
 
-def scorecard(cfg: Config, season: int | None = None) -> dict:
-    card = cfg.resolve_path("predictions") / "scorecard.csv"
+def load_card(cfg: Config, name: str = "scorecard.csv") -> pl.DataFrame | None:
+    """The graded record, one row per game (if a game was graded twice — e.g. after merging two installs — the later
+    pre-kickoff prediction counts, the same rule grade() uses)."""
+    card = cfg.resolve_path("predictions") / name
     if not card.exists():
-        return {"games": 0}
+        return None
     df = pl.read_csv(card, infer_schema_length=None)
+    if df.height and "created_utc" in df.columns:
+        df = df.sort("created_utc").unique(subset=["game_id"], keep="last", maintain_order=True)
+    return df
+
+
+def scorecard(cfg: Config, season: int | None = None) -> dict:
+    df = load_card(cfg)
+    if df is None:
+        return {"games": 0}
     if season:
         df = df.filter(pl.col("season") == season)
 

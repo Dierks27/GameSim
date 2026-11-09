@@ -158,7 +158,7 @@ on these days:
 | Tuesday | box 4 → **Run check-up** | lists the top 3 things GridSim is getting wrong lately (a few minutes) |
 | Wednesday, and again Friday evening | box 1 → **Refresh data**, then box 2 → **Lock in predictions** | saves time-stamped predictions for every game that hasn't started (the injury reports come out Wednesday–Friday) |
 | Sunday morning (optional) | Game → **Lineup** tab for late scratches, then box 2 → **Lock in predictions** | locking in again makes the Scorecard use the updated lineups (games already started are skipped) |
-| Every few weeks, in the evening | box 5 → **Start tuning in the background** | GridSim tests better settings on past seasons. At 150 trials this takes about **8–15 hours**. It runs at low priority and leaves two processor cores free, so the PC stays usable (Task Manager shows many *Python* entries — normal). To stop it early, restart the PC (nothing is harmed; that run's progress is lost). Come back later and press **Refresh status**. Only if the tuned settings did better do you get a **Use the tuned settings** button — you decide. |
+| Every few weeks, in the evening | box 5 → **Start tuning in the background** | GridSim tests better settings on past seasons. At 150 trials this takes many hours (overnight, or longer on a PC with less memory). It runs at low priority, leaves two processor cores free and keeps the whole PC under 80% memory, so the PC stays usable (Task Manager shows several *Python* entries — normal; both limits can be changed under *Settings → Config → resources*). To stop it early, restart the PC (nothing is harmed; that run's progress is lost). Come back later and press **Refresh status**. Only if the tuned settings did better do you get a **Use the tuned settings** button — you decide. |
 
 **Want it automatic?** Double-click **Schedule GridSim** in the GridSim folder and press **A**. Windows will then,
 in the background (no windows pop up):
@@ -238,13 +238,16 @@ place (a USB drive, for example) in *Settings → Your data → Where backups go
   shown separately on the Scorecard and **never count** toward your record or toward Signals trust — only predictions
   locked in before kickoff do.
 
-**If GridSim ever starts with an empty data folder while backups exist** (for example on a new PC with your OneDrive
-signed in), every page shows a red banner with a **Restore the latest backup** button. Press it before doing anything
-else.
+**If your data folder is ever lost or replaced** (deleted by accident, a new PC with your OneDrive signed in…),
+GridSim notices that the backups come from a data folder it doesn't know, and every page shows a red banner with a
+**Restore the latest backup** button — press it before doing anything else. Until you decide, automatic backups pause
+and the lost folder's backups are never deleted, so nothing good can be rotated away. (If you really want to start
+over, the banner also has **Start fresh instead**.)
 
 The first time you start this version, GridSim moves the data from the old place (inside the program folder) into
 your data folder by itself — and does so again at every start, so anything an older copy of GridSim wrote there is
-picked up too. The old files are left where they were.
+picked up too (each file only once, so something you reset or delete later stays that way). The old files are left
+where they were.
 
 ## If something goes wrong
 
@@ -253,7 +256,7 @@ picked up too. The old files are left where they were.
 | Setup says Python wasn't found | Install Python (step 1) and make sure "Add python.exe to PATH" was ticked. If you forgot, run the Python installer again → *Modify* → *Next* → tick *Add Python to environment variables*. |
 | Setup says it can't find the GridSim files | You opened it from inside the ZIP. Extract the ZIP first (step 2.4) and run Setup from the extracted folder. |
 | "Windows protected your PC" | *More info → Run anyway* (or Unblock the ZIP before extracting, step 2.3). |
-| GridSim shows a red "data folder is empty" banner | Press **Restore the latest backup**. If your data is in an old GridSim folder instead, use *Settings → Your data → Bring in data from an old GridSim folder*. |
+| GridSim shows a red "your data looks lost" banner | Press **Restore the latest backup**. If your data is in an old GridSim folder instead, use *Settings → Your data → Bring in data from an old GridSim folder*. |
 | An error says a file was blocked by antivirus or an *Application Control policy* | Windows Security → *Virus & threat protection* → *Protection history* → allow / restore the file (or check your antivirus quarantine), then run Setup again. |
 | Black window says *"Port 8501 is not available"* | GridSim is already open (or still starting) in another black window. Close this one, wait a few seconds, then use the open browser tab or <http://localhost:8501>. |
 | Browser didn't open | Open it yourself and go to <http://localhost:8501>. |

@@ -296,8 +296,19 @@ gaps as hypotheses to grade live (`grade`, `scorecard`, signal CLV), not as edge
 - Backfilled Kalshi prices come from Kalshi's public hourly candlesticks: the last candle ending at or before
   kickoff gives the closing bid/ask. They are real exchange history, so they count for closing-line value; the
   snapshot file is marked `backfilled`.
+- Lost-folder detection: each data folder has a random ID (`.gridsim_data_id`) recorded in every backup. Backups
+  whose ID is neither this folder's nor one it restored/imported mean the data folder was lost or replaced: the CLI
+  and every GUI page warn, automatic backups pause, and pruning never deletes the newest 3 backups of any other
+  folder. (A first version keyed this on "folder empty", which one scheduled scan defeated — it writes a ledger
+  header — after which count-based pruning would have rotated the good backups away.) "Start fresh" marks them known.
+- Code-folder migration takes each file once (`.legacy_imported.json`: size + mtime), so resets and deletions stick
+  while files an older GridSim copy writes there later are still picked up. Alert state is taken only if none exists.
+- Scorecard: one row per game; when a game was graded in two installs the later pre-kickoff prediction counts
+  (merge and readers both apply it; grade() skips games already graded).
 - Resources: tuning ran one ~2.6 GB worker per CPU thread, which on the user's PC (30 workers) pushed memory to 99%
   and into swapping. Workers are now capped so the whole PC stays at or below `resources.max_ram_fraction` (0.8) of
-  RAM at the start of the job (3 GB budgeted per worker) and `resources.free_cores` (2) cores stay free; tuning runs
-  at below-normal priority. These sections are excluded from the config hash.
+  RAM at the start of the job and `resources.free_cores` (2) cores stay free; tuning runs at below-normal priority.
+  Measured worker memory is ~1.9 / 3.1 / 3.5 GB holding 1 / 3 / 4 seasons, so the tuning pool now pins each worker to
+  one season (when workers >= seasons), budgeting 1.5 + 0.55 GB per season held — about twice as many workers fit.
+  These sections are excluded from the config hash.
 

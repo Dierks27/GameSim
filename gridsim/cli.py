@@ -146,9 +146,10 @@ def _startup_checks() -> None:
         st = status(load_config())
         if st["warn_empty"]:
             bar = "!" * 78
-            print(f"{bar}\n  Your GridSim data folder ({st['data_dir']}) is EMPTY, but backups exist in\n"
-                  f"  {st['backup_dir']} (newest: {st['backups'][0].name}).\n"
-                  "  To get your predictions and records back:  gridsim restore --latest   (or Settings -> Your data)\n"
+            print(f"{bar}\n  Your GridSim data folder ({st['data_dir']}) looks LOST or replaced: there are backups of\n"
+                  f"  another data folder in {st['backup_dir']} (newest: {st['restore_candidate'].name}).\n"
+                  "  Automatic backups are paused until you decide. To get your predictions and records back:\n"
+                  f"    gridsim restore \"{st['restore_candidate']}\"     (or GridSim -> Settings -> Your data)\n"
                   f"{bar}", file=sys.stderr)
     except Exception as e:  # never block a command
         print(f"(data folder check skipped: {e})", file=sys.stderr)

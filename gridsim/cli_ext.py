@@ -119,15 +119,15 @@ def cmd_backup(args) -> int:
 
 def cmd_restore(args) -> int:
     from .config import load_config
-    from .userdata import format_report, list_backups, restore
+    from .userdata import format_report, restore
     cfg = load_config(args.config)
     src = args.zip
     if args.latest or not src:
-        b = list_backups(cfg)
-        if not b:
+        from .userdata import status
+        src = status(cfg)["restore_candidate"]      # the lost folder's newest backup if there is one, else the newest
+        if src is None:
             print("no backups found")
             return 1
-        src = b[0]
     print(format_report(restore(src, cfg)))
     return 0
 

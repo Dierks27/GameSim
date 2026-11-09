@@ -137,8 +137,10 @@ def test_old_folder_plus_fresh_install_then_delete_and_restore(env):
     st = userdata.status()
     assert st["empty"] and st["warn_empty"]
     userdata.restore(st["backups"][0])
-    after = {p: p.read_bytes() for p in env["data"].rglob("*") if p.is_file() and p.name != "regime_changes.yaml"}
-    assert after == {p: b for p, b in before.items() if p.name != "regime_changes.yaml"}
+    def mine(p):        # GridSim's own bookkeeping files (folder ID etc.) differ by design after a loss
+        return p.name not in ("regime_changes.yaml", userdata.ID_FILE, userdata.KNOWN_FILE, userdata.LEGACY_FILE)
+    after = {p: p.read_bytes() for p in env["data"].rglob("*") if p.is_file() and mine(p)}
+    assert after == {p: b for p, b in before.items() if mine(p)}
     assert not userdata.status()["warn_empty"]
 
 
@@ -194,12 +196,170 @@ def test_worker_count_respects_memory_and_cores(monkeypatch):
     monkeypatch.setattr(resources.os, "cpu_count", lambda: 32)
     monkeypatch.setattr(resources, "memory_gb", lambda: (32.0, 22.0))
     cfg = load_config()
-    # whole PC at most 80%: 22 GB free - 6.4 GB headroom = 15.6 GB for GridSim; minus 1.5 main -> 4 workers of 3 GB
-    assert resources.worker_count(cfg) == 4
+    # whole PC at most 80%: 22 GB free - 6.4 GB headroom = 15.6 GB for GridSim, minus 1.5 for the main process.
+    # Tuning on 4 seasons, one season per worker (~2.05 GB each): 6 workers (7 would need 15.85 GB).
+    assert resources.tune_worker_count(cfg, 4) == 6
+    assert resources.worker_count(cfg, per_worker_gb=resources.season_worker_gb(4)) == 3
     monkeypatch.setattr(resources, "memory_gb", lambda: (256.0, 250.0))
-    assert resources.worker_count(cfg) == 30                                           # 32 cores - 2 kept free
+    assert resources.tune_worker_count(cfg, 4) == 30                                   # 32 cores - 2 kept free
     monkeypatch.setattr(resources, "memory_gb", lambda: (16.0, 2.0))
-    assert resources.worker_count(cfg) == 1                                            # never zero
+    assert resources.tune_worker_count(cfg, 4) == 1                                    # never zero
+    monkeypatch.setattr(resources, "memory_gb", lambda: (32.0, None))                  # e.g. macOS: no crash
+    assert 1 <= resources.tune_worker_count(cfg, 4, verbose=True) <= 30
+    monkeypatch.setattr(resources, "memory_gb", lambda: (None, None))
+    assert resources.tune_worker_count(cfg, 4) == 4
+    assert cfg.copy_with({"resources.free_cores": 40}) and resources.worker_count(cfg.copy_with({"resources.free_cores": 40})) == 1
+
+
+def test_tuning_workers_each_hold_one_season():
+    from gridsim.backtest import PinnedPool
+
+    class P(PinnedPool):
+        def __init__(self, n, seasons=None):
+            self.ex, self.seasons = [None] * n, list(dict.fromkeys(seasons or []))
+    for n in (4, 6, 7, 9):
+        p, held = P(n, [2022, 2023, 2024, 2025]), {}
+        for s_ in (2022, 2023, 2024, 2025):
+            for w in range(3, 19):
+                held.setdefault(p.slot(s_, w), set()).add(s_)
+        assert all(len(v) == 1 for v in held.values()) and len(held) == n
+
+
+# ---- review findings ----------------------------------------------------------------------------------------------
+
+def test_code_folder_data_is_taken_once_so_resets_stick(env):
+    make_install(env["code"], [], [], {"config.local.yaml": "sim:\n  n_sims: 5000\nscanner:\n  min_edge: 0.07\n",
+                                       "overrides/2026_wk09.yaml": "MIN: {out: [X]}\n",
+                                       "signals/alert_state.json": '{"T|YES": {"edge": 0.1, "ts": "2026"}}'})
+    userdata.ensure()
+    from gridsim.config import load_local, save_local
+    loc = load_local()
+    loc["sim"].pop("n_sims")                          # user sets it back to the default in Settings
+    save_local(loc)
+    (env["data"] / "overrides" / "2026_wk09.yaml").unlink()      # user clears the lineup change
+    (env["data"] / "signals" / "alert_state.json").write_text("{}")   # scan dropped a stale alert key
+    rep = userdata.ensure()
+    assert "n_sims" not in (load_local().get("sim") or {})
+    assert not (env["data"] / "overrides" / "2026_wk09.yaml").exists()
+    assert json.loads((env["data"] / "signals" / "alert_state.json").read_text()) == {}
+    assert not rep.get("added") and not rep.get("records added")
+    (env["data"] / "config.local.yaml").unlink()      # Reset to defaults
+    userdata.ensure()
+    assert not (env["data"] / "config.local.yaml").exists()
+    # an older GridSim copy writes something NEW into the code folder later: that is still picked up
+    make_install(env["code"], [], ["2026_10_X_Y__20261112T010000Z__cccc.json"])
+    userdata.ensure()
+    assert list((env["data"] / "predictions").rglob("2026_10_X_Y__*.json"))
+
+
+def test_lost_data_folder_keeps_warning_and_keeps_the_good_backups(env):
+    cfg = load_config().copy_with({"backup.keep": 3})
+    make_install(env["data"], ["2026-11-01T15:00:00+00:00"], [f"g{i}__1__h.json" for i in range(20)])
+    good = [userdata.backup(cfg, f"good{i}") for i in range(3)]
+    shutil.rmtree(env["data"])                        # the data folder is lost
+    userdata.ensure()
+    write_ledger(env["data"] / "signals" / "ledger.csv", [])     # a scheduled scan writes a header-only ledger
+    (env["data"] / "predictions").mkdir()
+    (env["data"] / "predictions" / "new__1__h.json").write_text("{}")   # ... and a Friday lock-in happens
+    st = userdata.status(cfg)
+    assert st["warn_empty"] and st["restore_candidate"] == good[-1]
+    for _ in range(6):                                # automatic backups pause; nothing is rotated out
+        assert userdata.auto_backup(cfg, "daily") is None
+    userdata.backup(cfg, "manual")                    # even manual backups never prune the lost folder's newest 3
+    assert all(g.exists() for g in good)
+    userdata.restore(st["restore_candidate"], cfg)
+    assert not userdata.status(cfg)["warn_empty"]
+    assert len(list((env["data"] / "predictions").rglob("*.json"))) == 21
+
+
+def test_start_fresh_stops_the_warning(env):
+    make_install(env["data"], ["2026-11-01T15:00:00+00:00"], ["a__1__h.json"])
+    userdata.backup(None, "x")
+    shutil.rmtree(env["data"])
+    userdata.ensure()
+    assert userdata.status()["warn_empty"]
+    userdata.start_fresh()
+    assert not userdata.status()["warn_empty"]
+
+
+def test_zip_made_by_explorer_is_found_inside_its_folder(env):
+    import zipfile
+    old = env["tmp"] / "x" / "GameSim-claude-friendly-turing-wk7xhb"
+    make_install(old, ["2026-11-01T15:00:00+00:00"], ["a__1__h.json"])
+    z = env["tmp"] / "GameSim.zip"
+    with zipfile.ZipFile(z, "w") as zz:
+        for f in old.rglob("*"):
+            if f.is_file():
+                zz.write(f, f.relative_to(old.parent).as_posix())
+    rep = userdata.import_folder(z)
+    assert rep["added"] == 2 and rep["source"] == "GameSim.zip"
+    empty = env["tmp"] / "empty.zip"
+    with zipfile.ZipFile(empty, "w") as zz:
+        zz.writestr("readme.txt", "hi")
+    with pytest.raises(ValueError, match="No GridSim data in empty.zip"):
+        userdata.import_folder(empty)
+
+
+def test_backup_folder_that_contains_the_data_folder_still_backs_up_everything(env):
+    make_install(env["data"], ["2026-11-01T15:00:00+00:00"], ["a__1__h.json"])
+    import zipfile
+    for where in (env["tmp"], env["data"]):           # the user folder itself / the data folder itself
+        z = userdata.backup(load_config().copy_with({"backup.dir": str(where)}), "x")
+        names = zipfile.ZipFile(z).namelist()
+        assert "signals/ledger.csv" in names and any(n.startswith("predictions/") for n in names)
+        assert not any(n.startswith(userdata.BACKUP_PREFIX) for n in names)
+
+
+def test_backup_dir_text_is_expanded_or_ignored(env, monkeypatch):
+    monkeypatch.setenv("OneDrive", str(env["tmp"] / "OD"))
+    assert userdata.normalize_dir('"%OneDrive%/GridSim Backups"') == env["tmp"] / "OD" / "GridSim Backups"
+    assert userdata.normalize_dir("relative/folder") is None
+    assert userdata.normalize_dir("%NOPE_NOT_SET%/x") is None
+    cfg = load_config().copy_with({"backup.dir": "relative/folder"})
+    assert userdata.backup_dir(cfg).is_absolute()
+
+
+def test_same_game_graded_in_two_installs_counts_once(env):
+    from gridsim import live
+    cols = live.SCORE_FIELDS
+
+    def card(root, rows):
+        p = root / "predictions" / "scorecard.csv"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "w", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=cols)
+            w.writeheader()
+            for r in rows:
+                w.writerow({c: r.get(c, 0.5) for c in cols})
+    base = {"season": 2026, "week": 9, "home": "MIN", "away": "BUF", "home_score": 24, "away_score": 20,
+            "config_hash": "h", "home_win": 1.0, "p_tie": 0.0}
+    card(env["data"], [{**base, "game_id": "G1", "pred_file": "A", "created_utc": "2026-11-04T10:00:00", "p_home": 0.6}])
+    old = env["tmp"] / "old"
+    card(old, [{**base, "game_id": "G1", "pred_file": "B", "created_utc": "2026-11-06T23:00:00", "p_home": 0.7},
+               {**base, "game_id": "G2", "pred_file": "C", "created_utc": "2026-11-06T23:00:00", "p_home": 0.5}])
+    rep = userdata.import_folder(old)
+    rows = read_rows(env["data"] / "predictions" / "scorecard.csv")
+    assert sorted((r["game_id"], r["pred_file"]) for r in rows) == [("G1", "B"), ("G2", "C")]
+    assert any("graded in both" in n for n in rep["notes"])
+    assert live.scorecard(load_config())["overall"]["games"] == 2
+
+
+def test_unreadable_files_are_reported_and_the_rest_is_still_merged(env, monkeypatch):
+    old = env["tmp"] / "old"
+    make_install(old, ["2026-11-01T15:00:00+00:00"], ["a__1__h.json", "b__1__h.json"])
+    real = shutil.copy2
+
+    def flaky(src, dst, *a, **k):
+        if "a__1__h" in str(src):
+            raise OSError(362, "The cloud file provider is not running")
+        return real(src, dst, *a, **k)
+    monkeypatch.setattr(userdata.shutil, "copy2", flaky)
+    rep = userdata.import_folder(old)
+    assert len(rep["failed"]) == 1 and "cloud file provider" in rep["failed"][0]
+    assert (env["data"] / "signals" / "ledger.csv").exists()
+    assert list((env["data"] / "predictions").rglob("b__1__h.json"))
+    assert not list((env["data"] / "predictions").rglob("*.partial"))
+    assert "could not be read" in userdata.format_report(rep)
 
 
 def test_reconstructed_predictions_are_kept_apart_and_never_counted(env):

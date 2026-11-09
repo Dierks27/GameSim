@@ -173,9 +173,14 @@ with tab_mine:
     if st.button("Bring it in", icon=":material/move_to_inbox:", disabled=not old_dir.strip()):
         try:
             rep = userdata.import_folder(old_dir, cfg)
-            ss["ud_msg"] = ("ok", "Done — " + userdata.format_report(rep).replace("\n", "  \n"))
-        except Exception as e:
+            ss["ud_msg"] = ("err" if rep.get("failed") else "ok",
+                            ("Partly done — " if rep.get("failed") else "Done — ")
+                            + userdata.format_report(rep).replace("\n", "  \n"))
+        except ValueError as e:
             ss["ud_msg"] = ("err", f"Nothing was changed — {e}")
+        except Exception as e:
+            ss["ud_msg"] = ("err", f"Stopped with an error ({type(e).__name__}: {e}). Anything already brought in "
+                                   "stays; pressing Bring it in again is safe.")
         st.rerun()
 
     st.markdown("##### Restore a backup")
@@ -188,9 +193,10 @@ with tab_mine:
         if st.button("Restore this backup", icon=":material/settings_backup_restore:"):
             try:
                 rep = userdata.restore(pick, cfg)
-                ss["ud_msg"] = ("ok", "Restored — " + userdata.format_report(rep).replace("\n", "  \n"))
+                ss["ud_msg"] = ("err" if rep.get("failed") else "ok",
+                                "Restored — " + userdata.format_report(rep).replace("\n", "  \n"))
             except Exception as e:
-                ss["ud_msg"] = ("err", f"Restore failed — {e}")
+                ss["ud_msg"] = ("err", f"Restore failed — {e}. Pressing Restore again is safe.")
             st.rerun()
     else:
         st.caption("No backups yet — the first one is made after your next Lock in, Grade or **Back up now**.")
@@ -203,13 +209,27 @@ with tab_mine:
                                 "E:\\GridSim Backups.")
         if st.button("Save backup folder") and nd.strip() != cur_dir:
             from gridsim.config import load_local, save_local
-            loc = load_local()
-            loc.setdefault("backup", {})["dir"] = nd.strip().strip('"')
-            if not loc["backup"]["dir"]:
-                loc["backup"].pop("dir")
-            save_local(loc)
-            ss["ud_msg"] = ("ok", f"Backups now go to {userdata.backup_dir(load_config())}")
-            st.rerun()
+            target = userdata.normalize_dir(nd) if nd.strip() else None
+            if nd.strip() and target is None:
+                st.error("Please type a full folder path, such as E:\\GridSim Backups (with the drive letter).")
+            else:
+                try:
+                    if target is not None:
+                        target.mkdir(parents=True, exist_ok=True)
+                        probe = target / ".gridsim-write-test"
+                        probe.write_text("ok")
+                        probe.unlink()
+                    loc = load_local()
+                    loc.setdefault("backup", {})
+                    if target is None:
+                        loc["backup"].pop("dir", None)
+                    else:
+                        loc["backup"]["dir"] = str(target)
+                    save_local(loc)
+                    ss["ud_msg"] = ("ok", f"Backups now go to {userdata.backup_dir(load_config())}")
+                    st.rerun()
+                except OSError as e:
+                    st.error(f"GridSim can't write to that folder ({e}). Pick another one.")
 
     with st.expander("Recover a lost week (after a data loss)"):
         st.caption("Only for weeks whose data is gone and not in any backup. **Kalshi closing prices** come back from "
@@ -218,8 +238,13 @@ with tab_mine:
                    "Scorecard but never count toward your record or the Signals trust — only predictions locked in "
                    "before kickoff do.")
         rc1, rc2 = st.columns(2)
+        try:
+            _cur_week = int(s["week"] or common.slate(s["season"], None)[1])
+        except Exception:
+            _cur_week = 3
         r_season = rc1.number_input("Season", 2021, 2100, int(s["season"]), key="ud_rs")
-        r_week = rc2.number_input("Week", 1, 22, max(1, int(s["week"] or 2) - 1), key="ud_rw")
+        r_week = rc2.number_input("Week", 2, 22, max(2, _cur_week - 1), key="ud_rw",
+                                  help="Predictions can be re-created from week 2 on (week 1 has no earlier week).")
         x1, x2 = st.columns(2)
         if x1.button("Fill in missing Kalshi closing prices", width="stretch"):
             with st.spinner("Reading Kalshi's price history …"):
@@ -316,8 +341,8 @@ with tab_note:
             st.warning("No channel reached — none is configured (or all failed, see above). Create a `.env` file in "
                        f"your data folder ({data_dir()}) with `{nc['ntfy_topic_env']}=your-private-topic` (free ntfy app on your phone) "
                        f"and/or `{nc['discord_webhook_env']}=https://discord.com/api/webhooks/…`.")
-    st.caption(f"`.env` lives in your data folder: `{data_dir() / '.env'}` (an older one in the GridSim program folder "
-               "is still read). Values are never shown here.")
+    st.caption(f"`.env` lives in your data folder: `{data_dir() / '.env'}` (one left in the GridSim program folder by an "
+               "older version is moved there automatically). Values are never shown here.")
 
 # ======================================================================================================
 with tab_sched:

@@ -60,10 +60,9 @@ else:
     st.dataframe([_row({"week": w}, b) for w, b in sc.get("by_week", {}).items()], hide_index=True, width="stretch",
                  column_config=FMT)
 
-card = cfg.resolve_path("predictions") / "scorecard.csv"
-if card.exists():
+df = live.load_card(cfg)
+if df is not None:
     try:
-        df = pl.read_csv(card, infer_schema_length=None)
         if not all_seasons:
             df = df.filter(pl.col("season") == s["season"])
         if df.height:
@@ -75,10 +74,9 @@ if card.exists():
     except Exception as e:
         st.warning(f"Could not chart calibration ({e}).")
 
-rec = cfg.resolve_path("predictions") / "scorecard_reconstructed.csv"
-if rec.exists():
+rdf = live.load_card(cfg, "scorecard_reconstructed.csv")
+if rdf is not None:
     try:
-        rdf = pl.read_csv(rec, infer_schema_length=None)
         if not all_seasons:
             rdf = rdf.filter(pl.col("season") == s["season"])
         if rdf.height:
