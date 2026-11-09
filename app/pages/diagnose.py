@@ -9,6 +9,7 @@ import streamlit as st
 
 import common
 import helpers
+from gridsim import userdata
 
 hr = common.hr
 cfg = common.cfg()
@@ -16,20 +17,26 @@ cfg = common.cfg()
 common.page_header("Diagnose", "Where is the sim wrong? Every bias is measured in standard errors so noise is not "
                                "mistaken for a problem. The diagnosis never changes code or config.")
 
-root = cfg.resolve_path("diagnose")
-cands = list(root.glob("*/diagnose.json")) if root.exists() else []
-tdir = cfg.resolve_path("tuning")
-if tdir.exists():
-    cands += list(tdir.glob("*/diagnose_validation/diagnose.json"))
-cands.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+# yours (data folder) first, newest first; then the example reports shipped with GridSim
+SHIPPED: set[str] = set()
+cands = []
+for name, pat in (("diagnose", "*/diagnose.json"), ("tuning", "*/diagnose_validation/diagnose.json")):
+    for d_, shipped in userdata.run_dirs(cfg, name):
+        found = list(d_.glob(pat)) if d_.exists() else []
+        if shipped:
+            SHIPPED.update(str(p) for p in found)
+        cands += found
+cands.sort(key=lambda p: (str(p) in SHIPPED, -p.stat().st_mtime))
 if not cands:
     st.info("No check-up reports yet. Open **Weekly routine** and press **Run check-up**.")
     st.stop()
 
 
 def _label(p: Path) -> str:
-    rel = p.parent.relative_to(cfg.resolve_path("."))
-    return f"{rel.as_posix()} · {common.mtime_text(p)}"
+    parts = p.parent.parts
+    i = max((k for k, x in enumerate(parts) if x in ("diagnose", "tuning")), default=len(parts) - 1)
+    rel = "/".join(parts[i:])
+    return f"{rel} · {common.mtime_text(p)}" + (" · example shipped with GridSim" if str(p) in SHIPPED else "")
 
 
 ss = st.session_state

@@ -2,7 +2,7 @@
 rem ===========================================================================
 rem  Schedule GridSim (optional): adds Windows scheduled tasks so the weekly
 rem  routine runs by itself, in the background (no windows pop up; output goes
-rem  to logs\scheduled.log in this folder).
+rem  to logs\scheduled.log in your data folder, %USERPROFILE%\GridSim Data).
 rem    GridSim Weekly    Tuesday 9:00    refresh data, grade last week, check-up, lock in next week
 rem    GridSim Predict   Friday 19:00    fresh locked-in predictions after the final injury reports
 rem    GridSim Scan      Mon + Thu-Sun every 30 min, 8:00-24:00
@@ -39,7 +39,7 @@ if errorlevel 1 echo  Note: the tasks were added, but their laptop settings coul
 echo.
 echo  Done. In the Windows "Task Scheduler" app they are listed as
 echo  GridSim Weekly, GridSim Predict and GridSim Scan.
-echo  What they did is written to logs\scheduled.log in this folder.
+echo  What they did is written to logs\scheduled.log in your GridSim Data folder.
 pause
 exit /b 0
 

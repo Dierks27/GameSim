@@ -160,10 +160,11 @@ with st.container(border=True):
 with st.container(border=True):
     st.markdown("#### 5 · Self-tune (every few weeks, optional)")
     st.caption("Searches the model's settings on past seasons and tests the winner on a season it never saw. "
-               "At 150 trials it runs for about 8-15 hours in the background and keeps your PC busy — start it in "
-               "the evening and leave the PC on. It keeps going even if you close GridSim (to stop it early: Task "
-               "Manager → end the python.exe that uses the most CPU). It never changes your settings by itself: "
-               "you decide below whether to use the result.")
+               "At 150 trials it runs for about 8-15 hours in the background, at low priority and leaving two "
+               "processor cores free, so the PC stays usable (it shows as many “Python” entries in Task Manager — "
+               "that's normal). Starting it in the evening is easiest. It keeps going even if you close GridSim; to "
+               "stop it early, restart the PC (nothing is harmed, that run's progress is just lost). It never "
+               "changes your settings by itself: you decide below whether to use the result.")
     log_path = cfg.resolve_path("tuning") / "gui_tune.log"
     pid_path = cfg.resolve_path("tuning") / "gui_tune.pid"
     running = False
@@ -181,9 +182,11 @@ with st.container(border=True):
                "--trials", str(int(trials))]
         log_path.parent.mkdir(parents=True, exist_ok=True)
         fh = open(log_path, "w", encoding="utf-8")
-        # Windows: CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP -> no console windows (also for its worker processes),
-        # and it keeps running if the GridSim window is closed
-        kw = {"creationflags": 0x08000000 | 0x00000200} if sys.platform == "win32" else {"start_new_session": True}
+        # Windows: CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | BELOW_NORMAL_PRIORITY_CLASS -> no console windows
+        # (also for its worker processes), keeps running if the GridSim window is closed, and yields to anything
+        # else you do on the PC
+        kw = ({"creationflags": 0x08000000 | 0x00000200 | 0x00004000} if sys.platform == "win32"
+              else {"start_new_session": True})
         p = subprocess.Popen(cmd, cwd=str(ROOT), stdout=fh, stderr=subprocess.STDOUT, **kw)
         pid_path.write_text(json.dumps({"pid": p.pid, "started": dt.datetime.now().isoformat(timespec="minutes"),
                                         "cmd": " ".join(cmd)}))

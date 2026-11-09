@@ -8,7 +8,7 @@ import polars as pl
 import streamlit as st
 
 import common
-from gridsim import live
+from gridsim import live, userdata
 from gridsim.metrics import calibration_table
 
 hr = common.hr
@@ -75,16 +75,34 @@ if card.exists():
     except Exception as e:
         st.warning(f"Could not chart calibration ({e}).")
 
+rec = cfg.resolve_path("predictions") / "scorecard_reconstructed.csv"
+if rec.exists():
+    try:
+        rdf = pl.read_csv(rec, infer_schema_length=None)
+        if not all_seasons:
+            rdf = rdf.filter(pl.col("season") == s["season"])
+        if rdf.height:
+            st.markdown("##### Reconstructed predictions (not counted)")
+            st.caption("Re-created after a data loss from data before each week (Settings → Your data). Shown for "
+                       "reference only: they are **not** in the record above, because they were not made before "
+                       "kickoff.")
+            st.dataframe(rdf.select(["season", "week", "home", "away", "home_score", "away_score", "p_home",
+                                     "pred_margin", "pred_total"]), hide_index=True, width="stretch")
+    except Exception as e:
+        st.warning(f"Could not read reconstructed predictions ({e}).")
+
 # ---- backtests -----------------------------------------------------------------------------------------
 st.markdown("#### Saved backtests")
 bt_rows = []
-for p in sorted(cfg.resolve_path(cfg.backtest["out_dir"]).glob("*/metrics.json"), key=lambda q: q.stat().st_mtime, reverse=True):
+_bt = [(p, shipped) for d, shipped in userdata.run_dirs(cfg, cfg.backtest["out_dir"]) for p in d.glob("*/metrics.json")]
+for p, shipped in sorted(_bt, key=lambda q: (q[1], -q[0].stat().st_mtime)):
     try:
         m = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         continue
     mk = m.get("market") or {}
-    bt_rows.append({"label": m.get("label"), "config": m.get("config_hash"), "saved": common.mtime_text(p),
+    bt_rows.append({"label": m.get("label") + (" (example run shipped with GridSim)" if shipped else ""),
+                    "config": m.get("config_hash"), "saved": common.mtime_text(p),
                     "games": m.get("games"), "sims/game": m.get("sims_per_game"),
                     "Brier": m.get("brier"), "Brier (mkt)": mk.get("brier"),
                     "Log loss": m.get("log_loss"), "Log loss (mkt)": mk.get("log_loss"),
@@ -114,12 +132,13 @@ if hist.exists():
     except Exception as e:
         st.warning(f"Could not read tuning history ({e}).")
 runs = []
-for p in sorted(tdir.glob("*/summary.json"), reverse=True) if tdir.exists() else []:
+_tr = [(p, shipped) for d, shipped in userdata.run_dirs(cfg, "tuning") for p in sorted(d.glob("*/summary.json"), reverse=True)]
+for p, shipped in _tr:
     try:
         t = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         continue
-    runs.append({"run": p.parent.name, "train": ", ".join(map(str, t.get("train_seasons") or [])),
+    runs.append({"run": p.parent.name + (" (example)" if shipped else ""), "train": ", ".join(map(str, t.get("train_seasons") or [])),
                  "validate": t.get("validate_season"), "trials": t.get("trials"),
                  "train gain": (t.get("train") or {}).get("gain"), "validation gain": (t.get("validation") or {}).get("gain"),
                  "recommended": t.get("recommended"), "likely overfit": t.get("likely_overfit"),

@@ -126,4 +126,43 @@ nav = st.navigation(pages)
 for _k in [k for k in st.session_state.keys() if isinstance(k, str) and k.startswith(common.KEEP)]:
     st.session_state[_k] = st.session_state[_k]
 sidebar()
+
+
+def data_guard() -> None:
+    """Once per session: move data from the program folder into the data folder (older versions kept it there) and
+    make the daily backup. On every page: a loud banner if the data folder is empty while backups exist."""
+    from gridsim import userdata
+    ss = st.session_state
+    c = common.cfg()
+    if not ss.get("_data_checked"):
+        ss["_data_checked"] = True
+        rep = userdata.ensure(c)
+        if rep.get("added") or rep.get("records added"):
+            ss["_data_moved"] = userdata.format_report(rep)
+        userdata.auto_backup(c, "daily", min_interval_h=24)
+    if ss.get("_data_moved"):
+        st.toast(f"Moved your data into {userdata.data_dir()}", icon=":material/move_to_inbox:")
+        ss["_data_moved"] = None
+    stt = userdata.status(c)
+    if stt["warn_empty"]:
+        newest = stt["backups"][0]
+        with st.container(border=True):
+            st.error(f"**Your GridSim data folder is empty** ({stt['data_dir']}), but there are backups — "
+                     f"the newest is from {common.mtime_text(newest)}. Restore it before doing anything else, so "
+                     "your predictions and records carry on instead of starting from zero.")
+            c1, c2 = st.columns(2)
+            if c1.button("Restore the latest backup", type="primary", icon=":material/settings_backup_restore:"):
+                try:
+                    rep = userdata.restore(newest, c)
+                    st.success("Restored — " + userdata.format_report(rep))
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Restore failed — {e}")
+            c2.page_link(common.SETTINGS_PAGE, label="Other options: Settings → Your data", icon=":material/settings:")
+
+
+try:
+    data_guard()
+except Exception as e:  # never block the app
+    st.caption(f"(data folder check skipped: {e})")
 nav.run()

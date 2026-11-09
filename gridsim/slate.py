@@ -3,7 +3,6 @@ sim-vs-market disagreement."""
 from __future__ import annotations
 
 import html
-import os
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
@@ -27,7 +26,9 @@ def run_slate(cfg: Config, season: int | None = None, week: int | None = None, s
     jobs = [{"cfg_raw": cfg.raw, "req": RunRequest(home=g["home_team"], away=g["away_team"], season=season, week=week,
                                                     sims=sims, market_lines=True).__dict__}
             for g in games if g.get("home_score") is None]
-    workers = workers or max(1, min(len(jobs), os.cpu_count() or 2))
+    if not workers:
+        from .resources import SLATE_WORKER_GB, worker_count
+        workers = worker_count(cfg, per_worker_gb=SLATE_WORKER_GB, jobs=len(jobs))
     if workers > 1 and len(jobs) > 1:
         with ProcessPoolExecutor(max_workers=workers, mp_context=mp.get_context("spawn")) as ex:
             out = list(ex.map(_one, jobs))

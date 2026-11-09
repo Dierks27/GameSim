@@ -196,6 +196,8 @@ with tabs[4]:
                     else:
                         ov_path.unlink(missing_ok=True)
                 else:
+                    from gridsim.userdata import auto_backup
+                    auto_backup(common.cfg(), "lineup", min_interval_h=1)
                     st.rerun()
         if existing:
             with st.expander("Current overrides file"):

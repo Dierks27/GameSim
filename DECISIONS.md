@@ -271,3 +271,33 @@ gaps as hypotheses to grade live (`grade`, `scorecard`, signal CLV), not as edge
   `scan` saves a price snapshot, so closing-line value builds up without a separate `snapshot-markets` task.
 - Setup accepts any 64-bit (win-amd64) Python 3.11+; ARM64 and 32-bit Pythons are rejected because pyarrow/polars
   wheels for them are missing or incomplete.
+
+## Data safety (data folder, backups, recovery)
+
+- Irreplaceable data lives in one data folder outside the code folder, `<user folder>/GridSim Data` (env
+  `GRIDSIM_DATA` overrides). The spec asked for the location to be set in config, but config.yaml lives in the code
+  folder that updates replace — a fixed default outside it means a fresh install finds the data with no restore
+  step. It is deliberately not on OneDrive: the ledger is rewritten every 30 minutes and live-syncing a file being
+  written risks conflicts; finished backup ZIPs go to OneDrive instead (written as `.partial`, then renamed).
+- Configs and lineup overrides are not committed to the repository (the user updates by ZIP, not git); they are in
+  the data folder and in every backup.
+- Automatic backups: after predict-week (Friday's locked-in predictions are the most irreplaceable moment, so not
+  only after weekly/grade as the spec listed), grade, weekly, reconstruct, lineup edits (≤ 1/h), before applying
+  tuned settings or a reset, and at most once a day from scans and from opening the GUI. `backup.keep` = 40.
+- Restore and "import an old folder" are the same merge: frozen predictions and snapshots are only added (never
+  replaced), CSV records are unioned by key (ledger: whole row; graded: ts+ticker+side; scorecards:
+  game_id+pred_file), alert state keeps the newer entry, settings merge with the current values winning, differing
+  text files are kept beside yours as `*.from-import`. So restoring can never lose newer data, and running it twice
+  changes nothing. Example runs shipped with the code and the developer's early week-9 test predictions are never
+  imported.
+- Reconstructed predictions go to `predictions/<season>/wk<NN>/reconstructed/` with `frozen.provenance =
+  reconstructed` and are graded into `scorecard_reconstructed.csv`; the live grader only looks at the week folder
+  itself and at files created before kickoff, so they can never enter the live scorecard or the signal trust gate.
+- Backfilled Kalshi prices come from Kalshi's public hourly candlesticks: the last candle ending at or before
+  kickoff gives the closing bid/ask. They are real exchange history, so they count for closing-line value; the
+  snapshot file is marked `backfilled`.
+- Resources: tuning ran one ~2.6 GB worker per CPU thread, which on the user's PC (30 workers) pushed memory to 99%
+  and into swapping. Workers are now capped so the whole PC stays at or below `resources.max_ram_fraction` (0.8) of
+  RAM at the start of the job (3 GB budgeted per worker) and `resources.free_cores` (2) cores stay free; tuning runs
+  at below-normal priority. These sections are excluded from the config hash.
+

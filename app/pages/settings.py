@@ -1,5 +1,6 @@
-"""Settings: config.yaml editor (values + their inline comments, line-preserving save with a backup), data
-refresh with per-source freshness, notification test, and the recommended Windows schedule."""
+"""Settings: config.yaml editor (values + their inline comments, line-preserving save with a backup), your data
+folder (backups, restore, bring in an old GridSim folder, recover a lost week), data refresh with per-source
+freshness, notification test, and the recommended Windows schedule."""
 from __future__ import annotations
 
 import math
@@ -11,7 +12,8 @@ import streamlit as st
 
 import common
 import helpers
-from gridsim.config import DEFAULT_CONFIG_PATH, REPO_ROOT, load_config
+from gridsim import userdata
+from gridsim.config import DEFAULT_CONFIG_PATH, REPO_ROOT, data_dir, load_config
 
 hr = common.hr
 ss = st.session_state
@@ -21,7 +23,7 @@ cfg = common.cfg()
 CFG_PATH = Path(os.environ.get("GRIDSIM_GUI_CONFIG") or DEFAULT_CONFIG_PATH)
 
 common.page_header("Settings", "Model configuration, data, notifications and the recommended schedule.")
-tab_cfg, tab_data, tab_note, tab_sched = st.tabs(["Config", "Data", "Notifications", "Schedule"])
+tab_cfg, tab_mine, tab_data, tab_note, tab_sched = st.tabs(["Config", "Your data", "Data", "Notifications", "Schedule"])
 
 # ======================================================================================================
 with tab_cfg:
@@ -120,10 +122,127 @@ with tab_cfg:
         with st.popover("Reset to defaults", icon=":material/restart_alt:"):
             st.markdown("Removes all your changes (a backup is kept as `config.local.yaml.bak`).")
             if st.button("Yes, reset all settings", type="primary"):
+                userdata.auto_backup(cfg, "before-reset")
                 LOCAL_CONFIG_PATH.with_name(LOCAL_CONFIG_PATH.name + ".bak").write_bytes(LOCAL_CONFIG_PATH.read_bytes())
                 LOCAL_CONFIG_PATH.unlink()
                 ss["cfg_saved"] = "All settings are back to the defaults."
                 st.rerun()
+
+# ======================================================================================================
+with tab_mine:
+    def _open(path: Path) -> None:
+        path.mkdir(parents=True, exist_ok=True)
+        os.startfile(str(path))  # type: ignore[attr-defined]  # Windows only (button hidden elsewhere)
+
+    stt = userdata.status(cfg)
+    if ss.get("ud_msg"):
+        kind, msg = ss.pop("ud_msg")
+        (st.success if kind == "ok" else st.error)(msg)
+    common.callout("Everything GridSim can't download again — locked-in predictions, the Kalshi record and price "
+                   "history, your lineup changes, tuning and check-ups, your settings — lives in <b>your data "
+                   "folder</b>, outside the GridSim program folder. Updating, re-installing or deleting the program "
+                   "folder never touches it, and it is backed up automatically after <b>Lock in</b>, <b>Grade</b>, "
+                   "the weekly run and once a day.", tone="good")
+    newest = stt["backups"][0] if stt["backups"] else None
+    st.html(common.kv_html([
+        ("Data folder", hr.esc(str(stt["data_dir"])), ", ".join(f"{v} {k}" for k, v in stt["counts"].items())),
+        ("Backups", hr.esc(str(stt["backup_dir"])),
+         (f"{len(stt['backups'])} backups, newest {common.mtime_text(newest)}" if newest else "none yet")
+         + (" · OneDrive keeps a copy off this PC" if "onedrive" in str(stt["backup_dir"]).lower() else "")),
+    ]))
+    b1, b2, b3 = st.columns(3)
+    if b1.button("Back up now", type="primary", icon=":material/backup:", width="stretch"):
+        try:
+            pth = userdata.backup(cfg, "manual")
+            ss["ud_msg"] = ("ok", f"Backed up to {pth}")
+        except Exception as e:
+            ss["ud_msg"] = ("err", f"Backup failed — {type(e).__name__}: {e}")
+        st.rerun()
+    if sys.platform == "win32":
+        if b2.button("Open data folder", icon=":material/folder_open:", width="stretch"):
+            _open(stt["data_dir"])
+        if b3.button("Open backups folder", icon=":material/folder_open:", width="stretch"):
+            _open(stt["backup_dir"])
+
+    st.markdown("##### Bring in data from an old GridSim folder")
+    st.caption("For an older GridSim folder (or a copy of one) that still has your predictions and records. In "
+               "Explorer, hold **Shift**, right-click the folder → **Copy as path**, and paste it here. GridSim "
+               "<b>adds</b> what's missing — nothing you have now is overwritten or lost — and backs up first.",
+               unsafe_allow_html=True)
+    old_dir = st.text_input("Old GridSim folder", key="ud_old", placeholder=r"C:\Users\you\Desktop\GameSim-claude-friendly-turing-wk7xhb")
+    if st.button("Bring it in", icon=":material/move_to_inbox:", disabled=not old_dir.strip()):
+        try:
+            rep = userdata.import_folder(old_dir, cfg)
+            ss["ud_msg"] = ("ok", "Done — " + userdata.format_report(rep).replace("\n", "  \n"))
+        except Exception as e:
+            ss["ud_msg"] = ("err", f"Nothing was changed — {e}")
+        st.rerun()
+
+    st.markdown("##### Restore a backup")
+    if stt["backups"]:
+        pick = st.selectbox("Backup", stt["backups"], format_func=lambda p: (
+            f"{common.mtime_text(p)} · {p.stem.split('-', 4)[-1] if p.stem.count('-') >= 4 else ''} · "
+            f"{p.stat().st_size / 1e6:.1f} MB"), key="ud_pick")
+        st.caption("Restoring brings back everything in that backup that's missing now. Nothing current is deleted "
+                   "or overwritten (your current version is backed up first).")
+        if st.button("Restore this backup", icon=":material/settings_backup_restore:"):
+            try:
+                rep = userdata.restore(pick, cfg)
+                ss["ud_msg"] = ("ok", "Restored — " + userdata.format_report(rep).replace("\n", "  \n"))
+            except Exception as e:
+                ss["ud_msg"] = ("err", f"Restore failed — {e}")
+            st.rerun()
+    else:
+        st.caption("No backups yet — the first one is made after your next Lock in, Grade or **Back up now**.")
+
+    with st.expander("Where backups go"):
+        cur_dir = (cfg.raw.get("backup") or {}).get("dir") or ""
+        nd = st.text_input("Backup folder (empty = automatic)", value=cur_dir, key="ud_bdir",
+                           help="Automatic = your OneDrive folder\\GridSim Backups when OneDrive is set up (a copy off "
+                                "this PC), else your user folder\\GridSim Backups. A USB drive works too, e.g. "
+                                "E:\\GridSim Backups.")
+        if st.button("Save backup folder") and nd.strip() != cur_dir:
+            from gridsim.config import load_local, save_local
+            loc = load_local()
+            loc.setdefault("backup", {})["dir"] = nd.strip().strip('"')
+            if not loc["backup"]["dir"]:
+                loc["backup"].pop("dir")
+            save_local(loc)
+            ss["ud_msg"] = ("ok", f"Backups now go to {userdata.backup_dir(load_config())}")
+            st.rerun()
+
+    with st.expander("Recover a lost week (after a data loss)"):
+        st.caption("Only for weeks whose data is gone and not in any backup. **Kalshi closing prices** come back from "
+                   "Kalshi's public price history (marked *backfilled*). **Predictions** are re-simulated using only "
+                   "data from before that week and marked *reconstructed*: they show up separately on the "
+                   "Scorecard but never count toward your record or the Signals trust — only predictions locked in "
+                   "before kickoff do.")
+        rc1, rc2 = st.columns(2)
+        r_season = rc1.number_input("Season", 2021, 2100, int(s["season"]), key="ud_rs")
+        r_week = rc2.number_input("Week", 1, 22, max(1, int(s["week"] or 2) - 1), key="ud_rw")
+        x1, x2 = st.columns(2)
+        if x1.button("Fill in missing Kalshi closing prices", width="stretch"):
+            with st.spinner("Reading Kalshi's price history …"):
+                try:
+                    from gridsim.scanner import backfill_closing_prices
+                    rep = backfill_closing_prices(cfg, int(r_season), int(r_week), verbose=False)
+                    ss["ud_msg"] = ("ok", f"Filled {rep['filled']} of {rep['needed']} missing closing prices"
+                                    + (f" ({rep['no_history']} had no history on Kalshi)." if rep["no_history"] else "."))
+                except Exception as e:
+                    ss["ud_msg"] = ("err", f"{type(e).__name__}: {e}")
+            st.rerun()
+        if x2.button("Re-create that week's predictions", width="stretch"):
+            with st.status(f"Re-simulating week {int(r_week)} with data from before it …", expanded=True) as stbox:
+                log = st.empty()
+                try:
+                    from gridsim.live import reconstruct_week
+                    with common.capture_output(log, keep_lines=6):
+                        paths = reconstruct_week(cfg, int(r_season), int(r_week), sims=int(s["sims"]),
+                                                 seed=int(s["seed"]), use_players=bool(s.get("players", True)))
+                    stbox.update(label=f"{len(paths)} reconstructed predictions", state="complete", expanded=False)
+                except Exception as e:
+                    stbox.update(label="Failed", state="error")
+                    st.error(f"{type(e).__name__}: {e}")
 
 # ======================================================================================================
 with tab_data:
@@ -194,10 +313,11 @@ with tab_note:
         if sent:
             st.success("Reached: " + ", ".join(sent))
         elif sent is not None:
-            st.warning("No channel reached — none is configured (or all failed, see above). Create a `.env` file next to "
-                       f"config.yaml with `{nc['ntfy_topic_env']}=your-private-topic` (free ntfy app on your phone) "
+            st.warning("No channel reached — none is configured (or all failed, see above). Create a `.env` file in "
+                       f"your data folder ({data_dir()}) with `{nc['ntfy_topic_env']}=your-private-topic` (free ntfy app on your phone) "
                        f"and/or `{nc['discord_webhook_env']}=https://discord.com/api/webhooks/…`.")
-    st.caption(f"`.env` lives at `{REPO_ROOT / '.env'}` and is git-ignored; values are never shown here.")
+    st.caption(f"`.env` lives in your data folder: `{data_dir() / '.env'}` (an older one in the GridSim program folder "
+               "is still read). Values are never shown here.")
 
 # ======================================================================================================
 with tab_sched:
@@ -208,7 +328,7 @@ with tab_sched:
     common.callout("<b>Easiest:</b> double-click <b>Schedule GridSim</b> in the GridSim folder and press <b>A</b>. "
                    "It creates three background tasks (Tuesday 9:00 weekly routine, Friday 19:00 lock-in, Kalshi "
                    "price check every 30 minutes on game days). Run it again and press <b>R</b> to remove them. "
-                   f"What they did is written to <code>{hr.esc(str(REPO_ROOT / 'logs' / 'scheduled.log'))}</code>.",
+                   f"What they did is written to <code>{hr.esc(str(data_dir() / 'logs' / 'scheduled.log'))}</code>.",
                    tone="good")
     with st.expander("Details for console users (README)"):
         st.markdown(sec or helpers.DEFAULT_SCHEDULE)

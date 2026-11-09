@@ -122,21 +122,42 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _log_when_windowless() -> None:
     """Started by pythonw.exe (Windows scheduled tasks): there is no console, so write output to
-    logs/scheduled.log next to config.yaml instead of losing it."""
+    logs/scheduled.log in the data folder instead of losing it."""
     if sys.stdout is not None and sys.stderr is not None:
         return
     import datetime as dt
 
-    from .config import REPO_ROOT
-    (REPO_ROOT / "logs").mkdir(exist_ok=True)
-    fh = open(REPO_ROOT / "logs" / "scheduled.log", "a", encoding="utf-8", buffering=1)
+    from .config import data_dir
+    (data_dir() / "logs").mkdir(parents=True, exist_ok=True)
+    fh = open(data_dir() / "logs" / "scheduled.log", "a", encoding="utf-8", buffering=1)
     sys.stdout = sys.stderr = fh
     print(f"\n=== {dt.datetime.now():%Y-%m-%d %H:%M} gridsim {' '.join(sys.argv[1:])}")
+
+
+def _startup_checks() -> None:
+    """Move data from the code folder into the data folder (older versions kept it there) and warn loudly if the data
+    folder is empty while backups exist (a fresh install that should be restored, not started fresh)."""
+    try:
+        from .config import load_config
+        from .userdata import ensure, format_report, status
+        rep = ensure()
+        if rep.get("added") or rep.get("records added"):
+            print("moved your data into the data folder: " + format_report(rep), file=sys.stderr)
+        st = status(load_config())
+        if st["warn_empty"]:
+            bar = "!" * 78
+            print(f"{bar}\n  Your GridSim data folder ({st['data_dir']}) is EMPTY, but backups exist in\n"
+                  f"  {st['backup_dir']} (newest: {st['backups'][0].name}).\n"
+                  "  To get your predictions and records back:  gridsim restore --latest   (or Settings -> Your data)\n"
+                  f"{bar}", file=sys.stderr)
+    except Exception as e:  # never block a command
+        print(f"(data folder check skipped: {e})", file=sys.stderr)
 
 
 def main(argv: list[str] | None = None) -> int:
     _log_when_windowless()
     args = build_parser().parse_args(argv)
+    _startup_checks()
     try:
         return int(args.func(args) or 0)
     except Exception:

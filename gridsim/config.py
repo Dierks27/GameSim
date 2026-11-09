@@ -8,6 +8,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -15,9 +16,32 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = REPO_ROOT / "config.yaml"
-# Your own changes (Settings page, promoted tuning) live here, merged over config.yaml. It is git-ignored and not in
-# the download, so updating GridSim (new ZIP / git pull) never wipes them.
-LOCAL_CONFIG_PATH = REPO_ROOT / "config.local.yaml"
+
+# Everything that cannot be downloaded again (frozen predictions, the signal ledger, Kalshi price snapshots, lineup
+# overrides, tuning/backtest history, your settings, .env) lives in ONE data folder outside the code folder, so a new
+# ZIP, a fresh install or deleting the code folder never touches it. Default: <user folder>/GridSim Data
+# (e.g. C:\Users\you\GridSim Data, not synced by OneDrive). The environment variable GRIDSIM_DATA moves it.
+# Re-downloadable things (data/cache, out/cache sims) stay in the code folder.
+USERDATA_NAMES = {"predictions", "signals", "overrides", "tuning", "backtests", "diagnose", "logs",
+                  "config.local.yaml", "config.local.yaml.bak", "config.tuned.yaml", "regime_changes.yaml",
+                  ".env", ".env.txt"}
+
+
+def data_dir() -> Path:
+    env = os.environ.get("GRIDSIM_DATA", "").strip().strip('"')
+    return Path(env).expanduser() if env else Path.home() / "GridSim Data"
+
+
+def local_config_path() -> Path:
+    """Your own changes (Settings page, promoted tuning), merged over config.yaml. Lives in the data folder, so
+    updating GridSim never wipes them."""
+    return data_dir() / "config.local.yaml"
+
+
+def __getattr__(name: str):            # LOCAL_CONFIG_PATH follows data_dir() (which can change in tests)
+    if name == "LOCAL_CONFIG_PATH":
+        return local_config_path()
+    raise AttributeError(name)
 
 
 class Config:
@@ -50,8 +74,14 @@ class Config:
         return config_hash(self.raw)
 
     def resolve_path(self, p: str | Path) -> Path:
+        """Relative paths: your data (predictions, signals, overrides, tuning, ...) -> the data folder; everything
+        else (data/cache, out/...) -> the code folder."""
         p = Path(p)
-        return p if p.is_absolute() else REPO_ROOT / p
+        if p.is_absolute():
+            return p
+        if p.parts and p.parts[0] in USERDATA_NAMES:
+            return data_dir() / p
+        return REPO_ROOT / p
 
 
 # Config keys read only at simulation time (not when building pools/tables). Models can be reused across configs
@@ -84,7 +114,14 @@ def build_hash(raw: dict[str, Any]) -> str:
     return config_hash(r)
 
 
+# Sections that never change a number GridSim produces (where backups go, how many CPU cores / how much memory
+# long jobs may use) are left out of the config hash, so
+# changing them doesn't split the Scorecard into a new config version or invalidate cached sims.
+HASH_EXCLUDE = {"backup", "resources"}
+
+
 def config_hash(raw: dict[str, Any]) -> str:
+    raw = {k: v for k, v in raw.items() if k not in HASH_EXCLUDE}
     blob = json.dumps(raw, sort_keys=True, default=str).encode()
     return hashlib.sha1(blob).hexdigest()[:10]
 
@@ -114,21 +151,24 @@ def deep_diff(new: dict, base: dict) -> dict:
 
 
 def load_local() -> dict:
-    if LOCAL_CONFIG_PATH.exists():
-        with open(LOCAL_CONFIG_PATH, "r", encoding="utf-8-sig") as fh:
+    p = local_config_path()
+    if p.exists():
+        with open(p, "r", encoding="utf-8-sig") as fh:
             return yaml.safe_load(fh) or {}
     return {}
 
 
 def save_local(local: dict) -> Path:
     """Write config.local.yaml (backing up the previous one to config.local.yaml.bak)."""
-    if LOCAL_CONFIG_PATH.exists():
-        LOCAL_CONFIG_PATH.with_name(LOCAL_CONFIG_PATH.name + ".bak").write_bytes(LOCAL_CONFIG_PATH.read_bytes())
-    with open(LOCAL_CONFIG_PATH, "w", encoding="utf-8") as fh:
+    p = local_config_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    if p.exists():
+        p.with_name(p.name + ".bak").write_bytes(p.read_bytes())
+    with open(p, "w", encoding="utf-8") as fh:
         fh.write("# Your GridSim settings: only the values you changed. Merged over config.yaml at load time.\n"
                  "# Delete this file (or use Settings -> Reset to defaults) to go back to the shipped defaults.\n")
         yaml.safe_dump(local, fh, sort_keys=True)
-    return LOCAL_CONFIG_PATH
+    return p
 
 
 def load_config(path: str | Path | None = None, overrides: dict[str, Any] | None = None,

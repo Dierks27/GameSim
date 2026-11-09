@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import os
 import time
 import zlib
 from concurrent.futures import ProcessPoolExecutor
@@ -282,7 +281,9 @@ def run_backtest(cfg: Config, season: int, weeks: list[int], sims: int = 1000, s
         by_week.setdefault(gm["week"], []).append(gm)
     jobs = [{"cfg_raw": cfg.raw, "season": season, "week": w, "games": gs, "sims": sims, "seed": seed}
             for w, gs in sorted(by_week.items())]
-    workers = workers or max(1, min(len(jobs), (os.cpu_count() or 2)))
+    if not workers:
+        from .resources import worker_count
+        workers = worker_count(cfg, jobs=len(jobs))
     rows: list[dict] = []
     if pool is not None:
         for j, res in zip(jobs, pool.map(sim_week, jobs)):

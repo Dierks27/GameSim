@@ -74,15 +74,21 @@ class Kalshi:
         self._series = found
         return found
 
-    def events(self, series: str) -> list[dict]:
+    def events(self, series: str, status: str = "open") -> list[dict]:
         out, cursor = [], None
         for _ in range(10):
-            d = self.get("/events", series_ticker=series, status="open", limit=200, with_nested_markets="true", cursor=cursor)
+            d = self.get("/events", series_ticker=series, status=status, limit=200, with_nested_markets="true", cursor=cursor)
             out += d.get("events", [])
             cursor = d.get("cursor")
             if not cursor or not d.get("events"):
                 break
         return out
+
+    def candlesticks(self, series: str, ticker: str, start_ts: int, end_ts: int, period_minutes: int = 60) -> list[dict]:
+        """Historical prices of one market (public, works for settled markets too)."""
+        d = self.get(f"/series/{series}/markets/{ticker}/candlesticks", start_ts=int(start_ts), end_ts=int(end_ts),
+                     period_interval=int(period_minutes))
+        return d.get("candlesticks") or []
 
     def orderbook(self, ticker: str) -> dict:
         return self.get(f"/markets/{ticker}/orderbook")

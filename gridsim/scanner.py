@@ -201,6 +201,8 @@ def scan(cfg: Config, season: int | None = None, week: int | None = None, notify
         alerts.append({"gone": k_})
         state.pop(k_)
     state_p.write_text(json.dumps(state, indent=1))
+    from .userdata import auto_backup
+    auto_backup(cfg, "daily", min_interval_h=20)        # scans run every 30 min: back up at most once a day
     if progress:
         progress(1.0, "done")
     if notify_on and alerts:
@@ -229,6 +231,80 @@ def snapshot_markets(cfg: Config, season: int | None = None, week: int | None = 
     p = d / f"{season}_wk{week:02d}_{dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json"
     p.write_text(json.dumps(snap))
     return p
+
+
+def backfill_closing_prices(cfg: Config, season: int | None = None, week: int | None = None,
+                            verbose: bool = True, progress=None) -> dict:
+    """After a data loss: rebuild missing pre-kickoff Kalshi prices from Kalshi's public price history.
+
+    Only for signals in the ledger whose closing price is missing (that is what grading needs). For each, the last
+    hourly candle that ended at or before kickoff gives the bid/ask; it is saved as a snapshot marked
+    "backfilled": true, signals/snapshots/<season>_wk<NN>_<time>_backfilled_<game>.json. Kalshi's history is the real
+    exchange record, so the closing-line value it yields is honest; the file is still marked so you can tell."""
+    led = _dir(cfg) / "ledger.csv"
+    rep = {"needed": 0, "filled": 0, "no_history": 0}
+    if not led.exists():
+        return rep
+    df = pl.read_csv(led, infer_schema_length=None)
+    if season:
+        df = df.filter(pl.col("season") == season)
+    if week:
+        df = df.filter(pl.col("week") == week)
+    need: dict[tuple, set] = {}
+    for r in df.iter_rows(named=True):
+        ko = r.get("kickoff_utc")
+        if not ko or not r.get("ticker") or dt.datetime.fromisoformat(str(ko)) > dt.datetime.now(dt.timezone.utc):
+            continue
+        if _closing_price(cfg, r["game_id"], r["ticker"], r["side"], ko) is None:
+            need.setdefault((r["game_id"], str(ko), int(r["season"]), int(r["week"])), set()).add(r["ticker"])
+    rep["needed"] = sum(len(v) for v in need.values())
+    if not need:
+        return rep
+    k = Kalshi(cfg)
+    kinds = {v: kd for kd, v in k.nfl_series().items()}
+    sd = _dir(cfg) / "snapshots"
+    sd.mkdir(exist_ok=True)
+    for gi, ((gid, ko, s_, w_), tickers) in enumerate(sorted(need.items())):
+        if progress:
+            progress(gi / len(need), gid)
+        ko_ts = int(dt.datetime.fromisoformat(ko).timestamp())
+        game = {"moneyline": {}, "spread": [], "total": []}
+        last_end = None
+        for t in sorted(tickers):
+            series = t.split("-")[0]
+            try:
+                candles = k.candlesticks(series, t, ko_ts - 12 * 3600, ko_ts)
+            except Exception as e:
+                if verbose:
+                    print(f"  {t}: no price history ({e})")
+                rep["no_history"] += 1
+                continue
+            c = [x for x in candles if int(x.get("end_period_ts", 0)) <= ko_ts
+                 and (x.get("yes_bid") or {}).get("close_dollars") is not None
+                 and (x.get("yes_ask") or {}).get("close_dollars") is not None]
+            if not c:
+                rep["no_history"] += 1
+                continue
+            last = c[-1]
+            row = {"ticker": t, "yes_bid": float(last["yes_bid"]["close_dollars"]),
+                   "yes_ask": float(last["yes_ask"]["close_dollars"]), "backfilled": True,
+                   "candle_end_utc": dt.datetime.fromtimestamp(int(last["end_period_ts"]), dt.timezone.utc).isoformat()}
+            kind = kinds.get(series, "total")
+            if kind == "moneyline":
+                game["moneyline"][t] = row
+            else:
+                game[kind].append(row)
+            last_end = max(last_end or 0, int(last["end_period_ts"]))
+            rep["filled"] += 1
+        if last_end:
+            ts = dt.datetime.fromtimestamp(last_end, dt.timezone.utc)
+            (sd / f"{s_}_wk{w_:02d}_{ts.strftime('%Y%m%dT%H%M%SZ')}_backfilled_{gid}.json").write_text(json.dumps(
+                {"ts_utc": ts.isoformat(), "season": s_, "week": w_, "backfilled": True,
+                 "source": "Kalshi candlesticks (hourly, last close at or before kickoff)", "games": {gid: game}}))
+    if verbose:
+        print(f"backfilled {rep['filled']} of {rep['needed']} missing closing prices"
+              + (f" ({rep['no_history']} had no history)" if rep["no_history"] else ""))
+    return rep
 
 
 def _closing_price(cfg: Config, game_id: str, ticker: str, side: str, kickoff: str | None) -> float | None:

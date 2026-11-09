@@ -8,15 +8,17 @@ import subprocess
 import sys
 import urllib.request
 
-from .config import REPO_ROOT
+from .config import REPO_ROOT, data_dir
 
 
 def load_env() -> dict:
     env = {}
-    p = REPO_ROOT / ".env"
-    if not p.exists() and (REPO_ROOT / ".env.txt").exists():   # Notepad / Explorer often add ".txt"
-        p = REPO_ROOT / ".env.txt"
-    if p.exists():
+    p = None
+    for root in (data_dir(), REPO_ROOT):          # your data folder first; the code folder for older installs
+        for name in (".env", ".env.txt"):          # Notepad / Explorer often add ".txt"
+            if p is None and (root / name).is_file():
+                p = root / name
+    if p is not None:
         for line in p.read_text(encoding="utf-8-sig").splitlines():
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:

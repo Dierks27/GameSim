@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from dataclasses import dataclass, field
 
 import polars as pl
@@ -80,12 +81,23 @@ def _with_weights(df: pl.DataFrame, weights: dict[int, float]) -> pl.DataFrame:
 def load_regime_changes(cfg: Config) -> list[dict]:
     """regime_changes.yaml: list of {team, date (YYYY-MM-DD), note}. Coaching / play-caller changes."""
     import yaml
-    p = cfg.resolve_path(cfg.regime.get("file", "regime_changes.yaml"))
-    if not p.exists():
-        return []
-    with open(p, encoding="utf-8") as fh:
-        data = yaml.safe_load(fh) or []
-    return [d for d in data if d.get("team") and d.get("date")]
+
+    from .config import REPO_ROOT
+    name = cfg.regime.get("file", "regime_changes.yaml")
+    out, seen = [], set()
+    # the file shipped with the code plus yours in the data folder (same team + date counted once)
+    for p in dict.fromkeys([REPO_ROOT / name if not Path(name).is_absolute() else Path(name), cfg.resolve_path(name)]):
+        if not p.exists():
+            continue
+        with open(p, encoding="utf-8-sig") as fh:
+            data = yaml.safe_load(fh) or []
+        for d in data:
+            if isinstance(d, dict) and d.get("team") and d.get("date"):
+                k = (str(d["team"]).upper(), str(d["date"]))
+                if k not in seen:
+                    seen.add(k)
+                    out.append(d)
+    return out
 
 
 def apply_regime_changes(df: pl.DataFrame, cfg: Config) -> pl.DataFrame:

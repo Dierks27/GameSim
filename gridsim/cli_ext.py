@@ -93,6 +93,67 @@ def cmd_grade(args) -> int:
     return 0
 
 
+def cmd_where(args) -> int:
+    from .config import load_config
+    from .resources import memory_gb, worker_count
+    from .userdata import status
+    cfg = load_config(args.config)
+    st = status(cfg)
+    print(f"data folder:    {st['data_dir']}")
+    print(f"backups folder: {st['backup_dir']}  ({len(st['backups'])} backups"
+          + (f", newest {st['backups'][0].name}" if st["backups"] else "") + ")")
+    print("contents:       " + ", ".join(f"{v} {k}" for k, v in st["counts"].items()))
+    total, avail = memory_gb()
+    if total:
+        print(f"memory:         {total:.0f} GB total, {avail or 0:.0f} GB free -> tuning would use "
+              f"{worker_count(cfg)} worker(s)")
+    return 0
+
+
+def cmd_backup(args) -> int:
+    from .config import load_config
+    from .userdata import backup
+    print(f"backed up to {backup(load_config(args.config), 'manual')}")
+    return 0
+
+
+def cmd_restore(args) -> int:
+    from .config import load_config
+    from .userdata import format_report, list_backups, restore
+    cfg = load_config(args.config)
+    src = args.zip
+    if args.latest or not src:
+        b = list_backups(cfg)
+        if not b:
+            print("no backups found")
+            return 1
+        src = b[0]
+    print(format_report(restore(src, cfg)))
+    return 0
+
+
+def cmd_import(args) -> int:
+    from .config import load_config
+    from .userdata import format_report, import_folder
+    print(format_report(import_folder(args.folder, load_config(args.config))))
+    return 0
+
+
+def cmd_reconstruct(args) -> int:
+    from .config import load_config
+    from .live import reconstruct_week
+    paths = reconstruct_week(load_config(args.config), args.season, args.week, sims=args.sims)
+    print(f"{len(paths)} reconstructed predictions written (marked reconstructed; not counted in the live scorecard)")
+    return 0
+
+
+def cmd_backfill(args) -> int:
+    from .config import load_config
+    from .scanner import backfill_closing_prices
+    backfill_closing_prices(load_config(args.config), args.season, args.week)
+    return 0
+
+
 def cmd_scorecard(args) -> int:
     from .config import load_config
     from .live import format_scorecard, scorecard
@@ -269,3 +330,26 @@ def register(sub) -> None:
     w = sub.add_parser("weekly", help="refresh, grade, diagnose, (tune), predict")
     w.add_argument("--tune", action="store_true")
     w.set_defaults(func=cmd_weekly)
+
+    wh = sub.add_parser("where", help="where your data and backups are, and what they hold")
+    wh.set_defaults(func=cmd_where)
+    bk = sub.add_parser("backup", help="zip your data folder to the backup folder now")
+    bk.set_defaults(func=cmd_backup)
+    rs = sub.add_parser("restore", help="put a backup back (merges: nothing current is lost)")
+    rs.add_argument("zip", nargs="?", default=None, help="backup ZIP (default with --latest: the newest)")
+    rs.add_argument("--latest", action="store_true")
+    rs.set_defaults(func=cmd_restore)
+    ip = sub.add_parser("import", help="bring in data from an old GridSim folder (merges, never overwrites)")
+    ip.add_argument("folder")
+    ip.set_defaults(func=cmd_import)
+    rc = sub.add_parser("reconstruct", help="after a data loss: re-create a past week's predictions (marked "
+                                            "reconstructed; never counted in the live scorecard)")
+    rc.add_argument("--season", type=int, required=True)
+    rc.add_argument("--week", type=int, required=True)
+    rc.add_argument("--sims", type=int, default=None)
+    rc.set_defaults(func=cmd_reconstruct)
+    bf = sub.add_parser("backfill-prices", help="after a data loss: fill missing Kalshi closing prices from Kalshi's "
+                                                "price history (marked backfilled)")
+    bf.add_argument("--season", type=int, default=None)
+    bf.add_argument("--week", type=int, default=None)
+    bf.set_defaults(func=cmd_backfill)

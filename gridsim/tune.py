@@ -101,6 +101,23 @@ def is_sampling_key(key: str) -> bool:
     return rest.split(".")[0] in keys
 
 
+def _be_nice() -> None:
+    """Run tuning (and its worker processes, which inherit this) at low priority: anything you do on the PC goes
+    first."""
+    import os
+    import sys
+    try:
+        if sys.platform == "win32":
+            import ctypes
+            BELOW_NORMAL = 0x00004000
+            k32 = ctypes.windll.kernel32
+            k32.SetPriorityClass(k32.GetCurrentProcess(), BELOW_NORMAL)
+        else:
+            os.nice(10)
+    except Exception:
+        pass
+
+
 def run_tune(cfg: Config, train: list[int], validate: int, trials: int, sims: int | None = None,
              workers: int | None = None, verbose: bool = True, sampling_only: bool = False) -> Path:
     import optuna
@@ -122,10 +139,13 @@ def run_tune(cfg: Config, train: list[int], validate: int, trials: int, sims: in
             raise ValueError("do not tune on seasons before 2021 (17-game schedule); got %d" % s)
 
     t0 = time.time()
-    import os
 
     from .backtest import PinnedPool
-    pool = PinnedPool(workers or (os.cpu_count() or 2))
+    _be_nice()
+    # leave cores and memory free so the PC stays usable while tuning runs for hours (config `resources`)
+    from .resources import worker_count
+    workers = workers or worker_count(cfg, verbose=verbose)
+    pool = PinnedPool(workers)
     base_train, _ = score_config(cfg, train, weeks, sims, seed, every, workers, pool=pool)
     base_obj = objective_value(base_train, weights)
     if verbose:
@@ -214,10 +234,13 @@ def apply_tuned(cfg: Config) -> Path:
     """Promote config.tuned.yaml: the tuned values are written to config.local.yaml (your settings layer), so
     config.yaml stays as shipped and updates never undo a promoted tuning. Returns the backup of the previous
     settings."""
-    from .config import DEFAULT_CONFIG_PATH, LOCAL_CONFIG_PATH, deep_diff, save_local
+    from .config import DEFAULT_CONFIG_PATH, deep_diff, local_config_path, save_local
+    from .userdata import auto_backup
+    LOCAL_CONFIG_PATH = local_config_path()
     src = cfg.resolve_path("config.tuned.yaml")
     if not src.exists():
         raise FileNotFoundError("no config.tuned.yaml — run `gridsim tune` first")
+    auto_backup(cfg, "before-tuned-settings")
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     backup = cfg.resolve_path("tuning") / f"config.local.backup.{stamp}.yaml"
     backup.parent.mkdir(parents=True, exist_ok=True)

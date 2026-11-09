@@ -99,7 +99,7 @@ positive live record (≥ 50 graded signals with positive closing-line value); u
 
 Easiest: double-click **`Schedule GridSim.bat`** and press **A** (press **R** to remove). It creates three tasks
 that run windowless with `.venv\Scripts\pythonw.exe` while you are signed in, catch up a run missed while the PC
-was off or asleep, and append their output to `logs\scheduled.log`:
+was off or asleep, and append their output to `logs\scheduled.log` in the data folder:
 
 | Task | When | Arguments | What it does |
 |---|---|---|---|
@@ -118,6 +118,30 @@ Optional extras you can add by hand (Task Scheduler → *Create Basic Task* → 
 `scan` re-sims only when inputs changed (the cache key includes the config, the two teams' lineup overrides and the
 version of the downloaded data) or the
 sim is older than `scanner.max_sim_age_hours`; otherwise it re-prices against the cached sim.
+
+## Your data, backups and recovery
+
+Irreplaceable data (frozen `predictions/`, `signals/` ledger + graded + Kalshi price snapshots, `overrides/`,
+`tuning/`, `backtests/`, `diagnose/`, `logs/`, `config.local.yaml`, `config.tuned.yaml`, your `regime_changes.yaml`,
+`.env`) lives in the **data folder**, `%USERPROFILE%\GridSim Data` (set `GRIDSIM_DATA` to move it). Relative paths
+for those names resolve there (`Config.resolve_path`); re-downloadable caches stay in the code folder. Older versions
+kept it in the code folder: every start merges anything found there into the data folder.
+
+```powershell
+gridsim where                       # data folder, backup folder, what they hold, how many tuning workers fit
+gridsim backup                      # zip the data folder now (also automatic: after predict-week, grade, weekly, daily)
+gridsim restore --latest            # or: gridsim restore <zip>   (merges: nothing current is lost)
+gridsim import "C:\old\GameSim-claude-friendly-turing-wk7xhb"   # bring in an old install (merges, never overwrites)
+gridsim backfill-prices --season 2026 --week 9   # missing Kalshi closing prices from Kalshi's history (marked backfilled)
+gridsim reconstruct --season 2026 --week 9       # re-sim a lost week with data before it (marked reconstructed;
+                                                 # never counted in the scorecard or the signal trust gate)
+```
+
+Backups go to `backup.dir` (default `%OneDrive%\GridSim Backups`, else `%USERPROFILE%\GridSim Backups`), newest
+`backup.keep` kept. If the data folder is empty while backups exist, every CLI command and every GUI page says so.
+Long jobs (tune / backtest / slate) start only as many workers as fit `resources.max_ram_fraction` (whole PC ≤ 80% of
+RAM, ~3 GB per worker) and `resources.free_cores`, at low priority. `backup` and `resources` are not part of the config
+hash.
 
 ## Tests
 

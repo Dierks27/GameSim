@@ -72,10 +72,9 @@ always safe.
 - **Stopping GridSim:** close the black window. Closing the browser tab alone does not stop it — and double-clicking
   the icon again while it's still running just opens the browser to it.
 - **After a few days away:** first open **Weekly routine** and press **Refresh data**.
-- **Where things are saved:** reports you download go to your browser's *Downloads* folder. Everything else stays in
-  the GridSim folder: `predictions` (locked-in predictions, the Scorecard), `overrides` (your lineup changes),
-  `signals` (Kalshi records), `diagnose` (check-ups), `tuning`, `data\cache` (NFL data), `logs` (what scheduled tasks
-  did) and `config.local.yaml` (your setting changes).
+- **Where things are saved:** everything GridSim can't download again lives in **your data folder**,
+  `C:\Users\<you>\GridSim Data` — *not* in the GridSim program folder — and is backed up automatically. See
+  *Your data and backups* below. Reports you download go to your browser's *Downloads* folder.
 
 ---
 
@@ -139,10 +138,11 @@ past seasons, for comparison.)
 A plain-English check-up of where GridSim is most likely wrong (for example "totals too high"), with details.
 
 ### Settings
-Four tabs: **Config** (change a model setting — each shows its description; press **Save changes**; settings you
-changed are marked *(yours)*, and **Reset to defaults** undoes them all), **Data** (**Refresh data now**, and when
-each file was downloaded), **Notifications** (test phone alerts) and **Schedule** (when things last ran). Your
-changes are kept in `config.local.yaml`, so updating GridSim never wipes them.
+Five tabs: **Config** (change a model setting — each shows its description; press **Save changes**; settings you
+changed are marked *(yours)*, and **Reset to defaults** undoes them all), **Your data** (backups, restore, bringing in
+an old GridSim folder — see *Your data and backups* below), **Data** (**Refresh data now**, and when each file was
+downloaded), **Notifications** (test phone alerts) and **Schedule** (when things last ran). Your changes are kept in
+your data folder, so updating GridSim never wipes them.
 
 ---
 
@@ -158,7 +158,7 @@ on these days:
 | Tuesday | box 4 → **Run check-up** | lists the top 3 things GridSim is getting wrong lately (a few minutes) |
 | Wednesday, and again Friday evening | box 1 → **Refresh data**, then box 2 → **Lock in predictions** | saves time-stamped predictions for every game that hasn't started (the injury reports come out Wednesday–Friday) |
 | Sunday morning (optional) | Game → **Lineup** tab for late scratches, then box 2 → **Lock in predictions** | locking in again makes the Scorecard use the updated lineups (games already started are skipped) |
-| Every few weeks, in the evening | box 5 → **Start tuning in the background** | GridSim tests better settings on past seasons. At 150 trials this takes about **8–15 hours** and keeps the PC busy; leave it on. Come back later and press **Refresh status**. Only if the tuned settings did better do you get a **Use the tuned settings** button — you decide. |
+| Every few weeks, in the evening | box 5 → **Start tuning in the background** | GridSim tests better settings on past seasons. At 150 trials this takes about **8–15 hours**. It runs at low priority and leaves two processor cores free, so the PC stays usable (Task Manager shows many *Python* entries — normal). To stop it early, restart the PC (nothing is harmed; that run's progress is lost). Come back later and press **Refresh status**. Only if the tuned settings did better do you get a **Use the tuned settings** button — you decide. |
 
 **Want it automatic?** Double-click **Schedule GridSim** in the GridSim folder and press **A**. Windows will then,
 in the background (no windows pop up):
@@ -168,8 +168,8 @@ in the background (no windows pop up):
   grading).
 
 They run while you are signed in to Windows (a locked screen is fine). If the PC was off or asleep at that time, the
-Tuesday/Friday job runs as soon as it's back on. What each job did is written to `logs\scheduled.log` in the GridSim
-folder. Run **Schedule GridSim** again and press **R** to remove the schedule.
+Tuesday/Friday job runs as soon as it's back on. What each job did is written to `logs\scheduled.log` in your data
+folder (`C:\Users\<you>\GridSim Data`). Run **Schedule GridSim** again and press **R** to remove the schedule.
 
 ---
 
@@ -186,8 +186,9 @@ table below.
 ## Phone alerts for Kalshi signals (optional)
 
 1. Install the free **ntfy** app on your phone and subscribe to a topic name only you know (e.g. `gridsim-jeff-83k2`).
-2. Open **Notepad**, type one line: `NTFY_TOPIC=gridsim-jeff-83k2` → *File → Save as* → go to your **GridSim folder**
-   → *Save as type:* **All files** → *File name:* **`.env`** → **Save**.
+2. Open **Notepad**, type one line: `NTFY_TOPIC=gridsim-jeff-83k2` → *File → Save as* → go to your **data folder**
+   (`C:\Users\<you>\GridSim Data`; *Settings → Your data → Open data folder* opens it) → *Save as type:*
+   **All files** → *File name:* **`.env`** → **Save**. (An older `.env` in the GridSim program folder still works.)
 3. In GridSim open the **Settings** page → **Notifications** tab: *ntfy push* should say **configured** (reload the
    page if not). Press **Send test notification**: it should say *Reached: ntfy…* and your phone should buzz.
    *Reached: toast* alone means only this PC was notified, not your phone.
@@ -203,8 +204,47 @@ watchlist in GridSim but no phone alerts.
   **Extract All…** → type exactly the same place as the first time (**`C:\GridSim`** — not the GameSim-… folder
   inside it) → **Extract** → choose **Replace the files in the destination**. Then double-click **Setup GridSim** once.
 
-Your data, locked-in predictions, lineup changes, Kalshi records and your setting changes (`config.local.yaml`) are
-all kept.
+Your locked-in predictions, lineup changes, Kalshi records, tuning history and setting changes live in your data
+folder, so an update never touches them — even a completely fresh install in a new place finds them again
+automatically.
+
+## Your data and backups
+
+GridSim keeps two kinds of files apart:
+
+- **Re-downloadable** (NFL data, cached sims) stays in the GridSim program folder. Losing it costs nothing —
+  **Refresh data** gets it back.
+- **Irreplaceable** — locked-in predictions, the Kalshi signal record and saved prices, your lineup changes, tuning
+  and check-up history, your settings and `.env` — lives in **your data folder**: `C:\Users\<you>\GridSim Data`.
+  It is outside the program folder and outside OneDrive, so updating, re-installing or deleting the program folder
+  never touches it.
+
+**Automatic backups.** After every **Lock in predictions**, **Grade**, the Tuesday weekly run, lineup changes and
+once a day, GridSim zips your data folder into **GridSim Backups** — in your **OneDrive** folder if you have one (so
+there's always a copy off the PC), otherwise in your user folder. The newest 40 are kept. You can choose another
+place (a USB drive, for example) in *Settings → Your data → Where backups go*.
+
+**Settings → Your data** has:
+- **Back up now**, **Open data folder** and **Open backups folder**.
+- **Restore a backup** — pick one and press **Restore this backup**. It *adds back* anything that's missing;
+  nothing you have now is deleted or overwritten.
+- **Bring in data from an old GridSim folder** — for an old install that still has your predictions and records.
+  In Explorer, hold **Shift**, right-click the old folder → **Copy as path**, paste it into the box and press **Bring
+  it in**. It merges: new records are added, nothing is overwritten (where both have a setting, your current one
+  stays), and a backup is made first. Running it twice is harmless.
+- **Recover a lost week** — only if a week's data is gone and isn't in any backup: **Fill in missing Kalshi closing
+  prices** (from Kalshi's own price history, marked *backfilled*) and **Re-create that week's predictions**
+  (re-simulated with only the data from before that week, marked *reconstructed*). Reconstructed predictions are
+  shown separately on the Scorecard and **never count** toward your record or toward Signals trust — only predictions
+  locked in before kickoff do.
+
+**If GridSim ever starts with an empty data folder while backups exist** (for example on a new PC with your OneDrive
+signed in), every page shows a red banner with a **Restore the latest backup** button. Press it before doing anything
+else.
+
+The first time you start this version, GridSim moves the data from the old place (inside the program folder) into
+your data folder by itself — and does so again at every start, so anything an older copy of GridSim wrote there is
+picked up too. The old files are left where they were.
 
 ## If something goes wrong
 
@@ -213,12 +253,13 @@ all kept.
 | Setup says Python wasn't found | Install Python (step 1) and make sure "Add python.exe to PATH" was ticked. If you forgot, run the Python installer again → *Modify* → *Next* → tick *Add Python to environment variables*. |
 | Setup says it can't find the GridSim files | You opened it from inside the ZIP. Extract the ZIP first (step 2.4) and run Setup from the extracted folder. |
 | "Windows protected your PC" | *More info → Run anyway* (or Unblock the ZIP before extracting, step 2.3). |
+| GridSim shows a red "data folder is empty" banner | Press **Restore the latest backup**. If your data is in an old GridSim folder instead, use *Settings → Your data → Bring in data from an old GridSim folder*. |
 | An error says a file was blocked by antivirus or an *Application Control policy* | Windows Security → *Virus & threat protection* → *Protection history* → allow / restore the file (or check your antivirus quarantine), then run Setup again. |
 | Black window says *"Port 8501 is not available"* | GridSim is already open (or still starting) in another black window. Close this one, wait a few seconds, then use the open browser tab or <http://localhost:8501>. |
 | Browser didn't open | Open it yourself and go to <http://localhost:8501>. |
 | A page says the schedule / data is missing | Weekly routine → box 1 → **Refresh data** (or run Setup again). |
 | Phone can't connect | 1) Windows *Settings → Network & internet → Wi-Fi* (or *Ethernet* if the PC is plugged in by cable) *→* your network → set *Network profile type* to **Private** (Windows often sets new networks to Public, which blocks the phone). 2) Start menu → type **Allow an app through Windows Firewall** → *Change settings* → tick **Private** on every **Python** row → OK. 3) Phone on the same Wi-Fi, GridSim's black window still open. |
-| The scheduled jobs don't seem to run | Open `logs\scheduled.log` in the GridSim folder (Notepad) to see what happened; run **Schedule GridSim** again and press **A**. |
+| The scheduled jobs don't seem to run | Open `logs\scheduled.log` in your data folder (*Settings → Your data → Open data folder*) to see what happened; run **Schedule GridSim** again and press **A**. |
 | Anything else | Close the black window and start GridSim again. If an error stays, take a screenshot of the black window. |
 
 ## How much should you trust it?
