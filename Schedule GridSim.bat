@@ -8,6 +8,9 @@ rem    GridSim Predict   Friday 19:00    fresh locked-in predictions after the f
 rem    GridSim Scan      every day, every 30 min, 8:00-24:00
 rem                      compare Kalshi prices with the sims, save prices for grading
 rem                      (phone alerts only if you set up NTFY_TOPIC, see GETTING_STARTED)
+rem    GridSim Watch     every day, every 10 min, 8:05-24:00
+rem                      only does something if you entered positions in the app: in the last 3 hours
+rem                      before their kickoff it re-checks prices and injuries (read-only, never trades)
 rem  They run while you are signed in to Windows (a locked screen is fine). A run
 rem  missed because the PC was off or asleep happens as soon as it is back on.
 rem  Run this file again any time to replace the tasks, or answer R to remove them.
@@ -33,12 +36,13 @@ if errorlevel 2 goto :remove
 schtasks /Create /F /TN "GridSim Weekly" /SC WEEKLY /D TUE /ST 09:00 /TR "\"!PYW!\" -m gridsim weekly" || goto :schedfail
 schtasks /Create /F /TN "GridSim Predict" /SC WEEKLY /D FRI /ST 19:00 /TR "\"!PYW!\" -m gridsim predict-week" || goto :schedfail
 schtasks /Create /F /TN "GridSim Scan" /SC WEEKLY /D MON,TUE,WED,THU,FRI,SAT,SUN /ST 08:00 /RI 30 /DU 16:00 /TR "\"!PYW!\" -m gridsim scan --notify" || goto :schedfail
+schtasks /Create /F /TN "GridSim Watch" /SC WEEKLY /D MON,TUE,WED,THU,FRI,SAT,SUN /ST 08:05 /RI 10 /DU 15:55 /TR "\"!PYW!\" -m gridsim watch --near --notify" || goto :schedfail
 rem Laptop-friendly settings: run on battery, and catch up a run missed while the PC was off or asleep.
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$a = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries; $b = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew; Set-ScheduledTask -TaskName 'GridSim Weekly' -Settings $a | Out-Null; Set-ScheduledTask -TaskName 'GridSim Predict' -Settings $a | Out-Null; Set-ScheduledTask -TaskName 'GridSim Scan' -Settings $b | Out-Null"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$a = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries; $b = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew; Set-ScheduledTask -TaskName 'GridSim Weekly' -Settings $a | Out-Null; Set-ScheduledTask -TaskName 'GridSim Predict' -Settings $a | Out-Null; Set-ScheduledTask -TaskName 'GridSim Scan' -Settings $b | Out-Null; Set-ScheduledTask -TaskName 'GridSim Watch' -Settings $b | Out-Null"
 if errorlevel 1 echo  Note: the tasks were added, but their laptop settings could not be changed - they still work.
 echo.
 echo  Done. In the Windows "Task Scheduler" app they are listed as
-echo  GridSim Weekly, GridSim Predict and GridSim Scan.
+echo  GridSim Weekly, GridSim Predict, GridSim Scan and GridSim Watch.
 echo  What they did is written to logs\scheduled.log in your GridSim Data folder.
 pause
 exit /b 0
@@ -51,7 +55,7 @@ pause
 exit /b 1
 
 :remove
-for %%T in ("GridSim Weekly" "GridSim Predict" "GridSim Scan") do schtasks /Delete /F /TN %%T >nul 2>nul
+for %%T in ("GridSim Weekly" "GridSim Predict" "GridSim Scan" "GridSim Watch") do schtasks /Delete /F /TN %%T >nul 2>nul
 echo  Removed the GridSim scheduled tasks.
 pause
 exit /b 0

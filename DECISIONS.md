@@ -329,3 +329,18 @@ gaps as hypotheses to grade live (`grade`, `scorecard`, signal CLV), not as edge
 - The scheduled Kalshi price check runs every day (was Mon + Thu–Sun), so early-week prices are recorded for
   closing-line value. `scanner.schedule_note` in config.yaml is left as is (changing it would change the config hash).
 
+## Trust gate counting and the position watch
+
+- The trust gate counted graded ledger ROWS, but the ledger logs every signal again at every 30-minute price check
+  and a game has ~25 spread lines: one contract could reach "50 graded signals" in two days. It now counts graded
+  GAMES per market type (first sighting of each contract, averaged within a game). `trust_min_graded` stays 50.
+- Position watch: user-entered positions only (no exchange account, no keys, no orders — the read-only rule stands;
+  automatic trading was asked about and deliberately not built while the model trails the market). Alerts compare
+  with the value at the last alert (not the previous check), so slow drifts are caught and nothing repeats. An
+  injury alert already carries the re-simulated numbers, so no separate "GridSim's number" alert is sent with it.
+  Positions stop being watched at kickoff (the pre-game sim says nothing about a game in play) and are settled once
+  the schedule has the final score. Thresholds live in the `watch` config section (excluded from the config hash).
+- The sim cache key now uses the CONTENT of the data files instead of their modification time, so the watch can
+  re-download the injury report every 45 minutes without forcing every game to re-simulate when nothing changed.
+- Kalshi events are fetched once per price check instead of once per game (3 requests instead of ~42).
+

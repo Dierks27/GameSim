@@ -363,8 +363,9 @@ with tab_sched:
     except OSError:
         sec = None
     common.callout("<b>Easiest:</b> double-click <b>Schedule GridSim</b> in the GridSim folder and press <b>A</b>. "
-                   "It creates three background tasks (Tuesday 9:00 weekly routine, Friday 19:00 lock-in, Kalshi "
-                   "price check every 30 minutes, every day). Run it again and press <b>R</b> to remove them. "
+                   "It creates four background tasks (Tuesday 9:00 weekly routine, Friday 19:00 lock-in, Kalshi "
+                   "price check every 30 minutes every day, and the position watch every 10 minutes for contracts "
+                   "you entered under My positions). Run it again and press <b>R</b> to remove them. "
                    f"What they did is written to <code>{hr.esc(str(data_dir() / 'logs' / 'scheduled.log'))}</code>.",
                    tone="good")
     with st.expander("Details for console users (README)"):

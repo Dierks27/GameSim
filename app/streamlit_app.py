@@ -37,6 +37,8 @@ def landing() -> None:
          "With vs without a player (or a QB swap), and sims that start from a live game situation."),
         (common.SIGNALS_PAGE, "Signals", ":material/radar:",
          "Kalshi scanner (read-only): current edges, watchlist and the graded signal record."),
+        (common.POSITIONS_PAGE, "My positions", ":material/visibility:",
+         "Position watch (read-only): enter what you hold on Kalshi; get alerts on price jumps and lineup news."),
         (common.SCORECARD_PAGE, "Scorecard", ":material/scoreboard:",
          "The live record of frozen predictions, calibration, backtests and tuning history."),
         (common.DIAGNOSE_PAGE, "Diagnose", ":material/troubleshoot:",
@@ -114,6 +116,7 @@ pages = {
     ],
     "Markets & grading": [
         st.Page(common.SIGNALS_PAGE, title="Signals", icon=":material/radar:"),
+        st.Page(common.POSITIONS_PAGE, title="My positions", icon=":material/visibility:"),
         st.Page(common.SCORECARD_PAGE, title="Scorecard", icon=":material/scoreboard:"),
         st.Page(common.DIAGNOSE_PAGE, title="Diagnose", icon=":material/troubleshoot:"),
     ],

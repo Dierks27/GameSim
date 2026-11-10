@@ -6,8 +6,9 @@ A signal fires only when ALL pass (thresholds in config `scanner`):
   2. liquidity: size at the quoted price >= min_depth_dollars, bid/ask spread <= max_spread, volume >= min_volume
   3. fresh inputs: the sim is younger than max_sim_age_hours (else re-sim)
   4. no unresolved key Questionable player: the edge must hold with him playing AND sitting
-  5. earned trust: the market type (moneyline / spread / total) has >= trust_min_graded graded signals with
-     positive average CLV; until then it is listed as "watchlist, not trusted yet"
+  5. earned trust: the market type (moneyline / spread / total) has >= trust_min_graded graded GAMES (a game counts
+     once per market type, however many lines or price checks) with positive average CLV; until then it is listed
+     as "watchlist, not trusted yet"
 Confidence: strong (edge >= strong_edge and trusted), moderate (passes all), watchlist.
 Re-alerts only when the edge grows by realert_edge_growth, flips side, or disappears.
 """
@@ -35,20 +36,35 @@ def _dir(cfg: Config) -> Path:
     return d
 
 
+def first_sightings(df: pl.DataFrame) -> pl.DataFrame:
+    """Graded rows -> one row per contract and side: its FIRST sighting. The ledger logs every signal again at every
+    price check (every 30 minutes), so counting raw rows would count one contract dozens of times."""
+    if not df.height:
+        return df
+    return df.sort("ts_utc").unique(subset=["ticker", "side"], keep="first", maintain_order=True)
+
+
 def trust_table(cfg: Config) -> dict:
-    """Per market type: graded count, average CLV, flat-unit P&L -> trusted?"""
+    """Per market type: graded GAMES, average CLV, flat-unit P&L -> trusted?
+
+    One game counts once per market type: the many spread (or total) lines of a game are nearly the same bet, and a
+    contract seen in many price checks is one signal, so n is the number of distinct games, CLV the average of the
+    per-game averages and P&L the sum of the per-game averages (first sighting of each contract)."""
     p = _dir(cfg) / "graded.csv"
     out = {}
     if not p.exists():
         return out
     df = pl.read_csv(p, infer_schema_length=None)
     for mt in df["market"].unique().to_list():
-        x = df.filter((pl.col("market") == mt) & pl.col("clv").is_not_null())
-        n = x.height
-        clv = float(x["clv"].mean()) if n else 0.0
-        pnl = float(x["pnl"].sum()) if n else 0.0
+        x = first_sightings(df.filter((pl.col("market") == mt) & pl.col("clv").is_not_null()))
+        g = x.group_by("game_id").agg(pl.col("clv").cast(pl.Float64).mean(), pl.col("pnl").cast(pl.Float64).mean(),
+                                      pl.len().alias("contracts"))
+        n = g.height
+        clv = float(g["clv"].mean()) if n else 0.0
+        pnl = float(g["pnl"].sum()) if n else 0.0
         trusted = n >= int(cfg.scanner["trust_min_graded"]) and clv > 0 and pnl >= 0
-        out[mt] = {"n": n, "avg_clv": clv, "pnl": pnl, "trusted": trusted}
+        out[mt] = {"n": n, "contracts": int(g["contracts"].sum()) if n else 0, "avg_clv": clv, "pnl": pnl,
+                   "trusted": trusted}
     return out
 
 
@@ -85,7 +101,7 @@ def evaluate(cfg: Config, summ: dict, rows: list[dict], trust: dict, sim_age_h: 
                 fails.append(f"edge only {100 * alt:.1f} if the questionable player flips")
         tr = trust.get(r["market"], {"n": 0, "avg_clv": 0.0, "trusted": False})
         if not tr["trusted"]:
-            fails.append(f"{r['market']} not trusted yet ({tr['n']} graded, CLV {tr['avg_clv']:+.3f})")
+            fails.append(f"{r['market']} not trusted yet ({tr['n']} graded games, CLV {tr['avg_clv']:+.3f})")
         hard = [f for f in fails if "not trusted" not in f]
         if hard:
             conf = "watchlist"
@@ -98,7 +114,7 @@ def evaluate(cfg: Config, summ: dict, rows: list[dict], trust: dict, sim_age_h: 
                        f"-> edge {100 * e:+.1f} pts, EV ${e / cost:+.2f}/$1")
         if depth is not None:
             reasons.append(f"${depth:,.0f} at the ask")
-        reasons.append(f"{r['market']} record: {tr['n']} graded, CLV {tr['avg_clv']:+.3f}")
+        reasons.append(f"{r['market']} record: {tr['n']} graded games, CLV {tr['avg_clv']:+.3f}")
         out.append({**r, "depth_dollars": depth, "confidence": conf, "reason": "; ".join(reasons + fails)})
     out.sort(key=lambda s: -s["edge"])
     return out
@@ -115,6 +131,11 @@ def scan(cfg: Config, season: int | None = None, week: int | None = None, notify
     now = dt.datetime.now(dt.timezone.utc)
     all_sigs = []
     snap_games: dict = {}
+    watch_data: dict = {}
+    from . import positions as _pos
+    watching = bool(_pos.open_positions(cfg))
+    if watching:                         # positions you hold: make sure the sims below use the latest injury report
+        _pos.refresh_injuries_if_due(cfg, season)
     for gi, g in enumerate(games):
         if progress:
             progress(gi / max(len(games), 1), f"{g['away_team']} @ {g['home_team']}")
@@ -140,6 +161,7 @@ def scan(cfg: Config, season: int | None = None, week: int | None = None, notify
                 print(f"  {g['game_id']}: Kalshi unavailable ({e})")
             continue
         snap_games[g["game_id"]] = mk
+        watch_data[g["game_id"]] = (summ, mk)
         rows = edges(sim_probs(summ, mk), cfg)
         # MOE test: re-sim with more sims if an edge is big enough but within the noise
         need = [r for r in rows if r.get("edge") is not None and r["edge"] >= float(cfg.scanner["min_edge"])
@@ -202,6 +224,11 @@ def scan(cfg: Config, season: int | None = None, week: int | None = None, notify
         alerts.append({"gone": k_})
         state.pop(k_)
     state_p.write_text(json.dumps(state, indent=1))
+    if watching:
+        try:
+            _pos.watch(cfg, notify_on=notify_on, game_data=watch_data, verbose=verbose)
+        except Exception as e:           # the position watch must never break the price check
+            print(f"  position watch failed: {type(e).__name__}: {e}")
     from .userdata import auto_backup
     auto_backup(cfg, "daily", min_interval_h=20)        # scans run every 30 min: back up at most once a day
     if progress:
@@ -423,12 +450,13 @@ def signals_report(cfg: Config, season: int | None = None) -> str:
     df = pl.read_csv(gp, infer_schema_length=None)
     if season:
         df = df.filter(pl.col("season") == season)
+    df = first_sightings(df)                 # each contract once (not once per 30-minute price check)
     L = [f"{'market':<10}{'confidence':<11}{'n':>5}{'hit%':>7}{'avg CLV':>9}{'P&L (units)':>13}"]
     for (mt, conf), x in sorted(df.group_by(["market", "confidence"]), key=lambda kv: kv[0]):
         clv = x["clv"].drop_nulls()
         L.append(f"{mt:<10}{conf:<11}{x.height:>5}{100 * x['won'].cast(pl.Float64).mean():>7.1f}"
                  f"{(clv.mean() if clv.len() else float('nan')):>9.3f}{x['pnl'].sum():>13.2f}")
     tr = trust_table(cfg)
-    L.append("trust: " + ", ".join(f"{k}: {'trusted' if v['trusted'] else 'watchlist'} (n={v['n']}, CLV {v['avg_clv']:+.3f})"
+    L.append("trust: " + ", ".join(f"{k}: {'trusted' if v['trusted'] else 'watchlist'} ({v['n']} games, CLV {v['avg_clv']:+.3f})"
                                    for k, v in tr.items()))
     return "\n".join(L)

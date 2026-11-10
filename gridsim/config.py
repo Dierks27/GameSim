@@ -22,7 +22,7 @@ DEFAULT_CONFIG_PATH = REPO_ROOT / "config.yaml"
 # ZIP, a fresh install or deleting the code folder never touches it. Default: <user folder>/GridSim Data
 # (e.g. C:\Users\you\GridSim Data, not synced by OneDrive). The environment variable GRIDSIM_DATA moves it.
 # Re-downloadable things (data/cache, out/cache sims) stay in the code folder.
-USERDATA_NAMES = {"predictions", "signals", "overrides", "tuning", "backtests", "diagnose", "logs",
+USERDATA_NAMES = {"predictions", "signals", "positions", "overrides", "tuning", "backtests", "diagnose", "logs",
                   "config.local.yaml", "config.local.yaml.bak", "config.tuned.yaml", "regime_changes.yaml",
                   ".env", ".env.txt"}
 
@@ -117,7 +117,7 @@ def build_hash(raw: dict[str, Any]) -> str:
 # Sections that never change a number GridSim produces (where backups go, how many CPU cores / how much memory
 # long jobs may use) are left out of the config hash, so
 # changing them doesn't split the Scorecard into a new config version or invalidate cached sims.
-HASH_EXCLUDE = {"backup", "resources"}
+HASH_EXCLUDE = {"backup", "resources", "watch"}
 
 
 def config_hash(raw: dict[str, Any]) -> str:

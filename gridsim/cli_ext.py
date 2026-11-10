@@ -204,6 +204,17 @@ def cmd_scan(args) -> int:
     return 0
 
 
+def cmd_watch(args) -> int:
+    import datetime as dt
+
+    from .config import load_config
+    from .positions import watch
+    alerts = watch(load_config(args.config), notify_on=args.notify, near_only=args.near, verbose=False)
+    for a in alerts:
+        print(f"{dt.datetime.now():%Y-%m-%d %H:%M} watch [{a['kind']}] {a['title']} — {a['message']}")
+    return 0
+
+
 def cmd_signals(args) -> int:
     from .config import load_config
     from .scanner import grade_signals, signals_report
@@ -269,6 +280,12 @@ def register(sub) -> None:
     sc.add_argument("--sims", type=int, default=None)
     sc.add_argument("--notify", action="store_true", help="push alerts (ntfy / Discord / Windows toast)")
     sc.set_defaults(func=cmd_scan)
+    wa = sub.add_parser("watch", help="check the positions you entered (price jumps, injury changes, sim changes); "
+                                      "read-only, never trades")
+    wa.add_argument("--notify", action="store_true", help="push alerts (ntfy / Discord / Windows toast)")
+    wa.add_argument("--near", action="store_true",
+                    help="only games kicking off within watch.near_kickoff_hours (for the 10-minute scheduled task)")
+    wa.set_defaults(func=cmd_watch)
     sg = sub.add_parser("signals", help="signal ledger record by market type and confidence")
     sg.add_argument("--season", type=int, default=None)
     sg.set_defaults(func=cmd_signals)

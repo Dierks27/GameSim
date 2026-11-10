@@ -125,10 +125,27 @@ simulated games, next to the "multiply the legs" number — the difference shows
 Press **Scan now** (takes several minutes) to compare GridSim's numbers with **Kalshi** prediction-market prices after
 Kalshi's fees. GridSim **never places orders and never touches any account** — it only reads public prices.
 A market type (moneyline, spread or total) only becomes an **alert** after it has earned trust: at least 50 graded
-signals whose price beat Kalshi's closing price on average, without losing money. Until then everything shows as
+games whose signals beat Kalshi's closing price on average, without losing money (a game counts once per market
+type, however many of its lines showed up or how often). Until then everything shows as
 **watchlist**. Every scan also records the prices, which is what grading needs — so with **Schedule GridSim** set up
 (below), that record builds by itself over the season. **By the day the signal appeared** shows how signals first
 seen on each weekday (Tuesday vs Friday, …) held up against Kalshi's closing price.
+
+### My positions (read-only)
+If you buy a contract on Kalshi, tell GridSim: open **Add a position**, pick the game, the contract, **Yes** or **No**,
+the price you paid and how many. From then on GridSim keeps watch and alerts you (on this page, and on your phone if
+you set up ntfy) when:
+- **Kalshi's price for your side moves 6¢ or more** — a sudden move usually means news;
+- **a listed player's status or the expected starting QB changes** for either team — GridSim re-simulates and tells
+  you its new number for your contract;
+- **GridSim's own chance moves 5 points or more**;
+- **the game is final** — won or lost, and the profit or loss after Kalshi's fees.
+
+Each alert gives the facts: what you paid, Kalshi's price now, what selling now would bring after fees, and GridSim's
+chance. **GridSim never trades and never sees your Kalshi account** — a position is just a note you enter, and what to
+do is always your decision. **I sold it** records a sale; **Remove** deletes an entry made by mistake; **Check now**
+checks immediately. With **Schedule GridSim** set up, positions are checked every 30 minutes, and every 10 minutes in
+the last 3 hours before kickoff. (Once a game has kicked off the watch stops until it is final.)
 
 ### Scorecard
 GridSim's honest record: the predictions you locked in before kickoff, graded after the games, compared with the
@@ -168,6 +185,8 @@ on these days:
 in the background (no windows pop up):
 - every **Tuesday at 9:00 am**: refresh the data, grade last week, run the check-up and lock in the new week;
 - every **Friday at 7:00 pm**: lock in fresh predictions after the final injury reports;
+- **Every day, every 10 minutes**: the position watch — it only does something if you entered positions under
+  **My positions** and their game kicks off within 3 hours;
 - **Every day, every 30 minutes from 8 am to midnight**: check Kalshi prices (and record them for
   grading).
 

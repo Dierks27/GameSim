@@ -218,5 +218,5 @@ with st.container(border=True):
 st.caption("Prefer it automatic? Double-click \"Schedule GridSim\" in the GridSim folder once and press A: every "
            "Tuesday 9:00 it refreshes the data, grades last week, runs the check-up and locks in the next week; every "
            "Friday 19:00 it locks in fresh predictions after the final injury reports; and every day it checks "
-           "Kalshi prices every 30 minutes (8 am to midnight) and records them. It runs in the background while you "
+           "Kalshi prices every 30 minutes (8 am to midnight), records them and watches the positions you entered. It runs in the background while you "
            "are signed in to Windows.")

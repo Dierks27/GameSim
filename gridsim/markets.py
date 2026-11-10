@@ -38,6 +38,7 @@ class Kalshi:
         self.timeout = float(k.get("timeout", 15))
         self.cfg = k
         self._series = None
+        self._events: dict = {}
 
     def get(self, path: str, **params) -> dict:
         q = urllib.parse.urlencode({k: v for k, v in params.items() if v is not None})
@@ -75,6 +76,8 @@ class Kalshi:
         return found
 
     def events(self, series: str, status: str = "open") -> list[dict]:
+        if (series, status) in self._events:          # one price check asks for the same series for every game
+            return self._events[(series, status)]
         out, cursor = [], None
         for _ in range(10):
             d = self.get("/events", series_ticker=series, status=status, limit=200, with_nested_markets="true", cursor=cursor)
@@ -82,6 +85,7 @@ class Kalshi:
             cursor = d.get("cursor")
             if not cursor or not d.get("events"):
                 break
+        self._events[(series, status)] = out
         return out
 
     def candlesticks(self, series: str, ticker: str, start_ts: int, end_ts: int, period_minutes: int = 60) -> list[dict]:

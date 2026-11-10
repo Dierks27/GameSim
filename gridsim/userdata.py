@@ -48,7 +48,7 @@ SHIPPED_RUNS = {
 # The developer's own week-9 test predictions shipped in an early download: not the user's record.
 DEV_PREDICTION_MARK = "__20261105T080054Z__9ce081a6ac.json"
 RUN_DIRS = ("tuning", "backtests", "diagnose")
-DATA_ITEMS = ("predictions", "signals", "overrides", "tuning", "backtests", "diagnose", "logs",
+DATA_ITEMS = ("predictions", "signals", "positions", "overrides", "tuning", "backtests", "diagnose", "logs",
               "config.local.yaml", "config.tuned.yaml", "regime_changes.yaml", ".env", ".env.txt")
 # CSV records merged row by row: file -> key columns (None = the whole row)
 CSV_KEYS = {
@@ -58,6 +58,7 @@ CSV_KEYS = {
     "predictions/scorecard_reconstructed.csv": ("game_id",),
     "predictions/scorecard_by_lockin.csv": ("game_id", "pred_file"),   # every lock-in, by day
     "tuning/history.csv": None,
+    "positions/alerts.csv": None,
 }
 SKIP_NAMES = {"gui_tune.pid", ".DS_Store", "Thumbs.db", "desktop.ini"}
 SKIP_SUFFIXES = (".partial", ".lock")
@@ -311,7 +312,7 @@ def counts(d: Path | None = None) -> dict:
 INVENTORY_DIRS = ("predictions", "signals/snapshots", "tuning", "backtests", "diagnose")
 ROW_FILES = {"signals/ledger.csv": "ts_utc", "signals/graded.csv": "ts_utc", "predictions/scorecard.csv": "game_id",
              "predictions/scorecard_reconstructed.csv": "game_id", "predictions/scorecard_by_lockin.csv": "pred_file",
-             "tuning/history.csv": "promoted_at"}
+             "tuning/history.csv": "promoted_at", "positions/alerts.csv": "ts_utc"}
 _INV_SKIP = {"gui_tune.log", "gui_tune.pid"}
 
 
@@ -402,7 +403,7 @@ def missing_from(info: dict, cur: dict, cur_counts: dict) -> list[str]:
     names = {"signals/ledger.csv": "signal records", "signals/graded.csv": "graded signals",
              "predictions/scorecard.csv": "graded games", "predictions/scorecard_reconstructed.csv":
              "graded reconstructed games", "predictions/scorecard_by_lockin.csv": "graded lock-ins",
-             "tuning/history.csv": "tuning history rows"}
+             "tuning/history.csv": "tuning history rows", "positions/alerts.csv": "position alerts"}
     for rel, st in (inv.get("rows") or {}).items():
         have = cur["rows"].get(rel, {})
         if "games" in st:
@@ -853,7 +854,7 @@ def import_folder(src: str | Path, cfg=None, backup_first: bool = True, verbose:
             rep["failed"].append(f"{key}: could not be read ({type(e).__name__}: {e}) — skipped")
 
     rep["_guard"] = guarded
-    for name in ("predictions", "signals", "overrides", "logs", *RUN_DIRS):
+    for name in ("predictions", "signals", "positions", "overrides", "logs", *RUN_DIRS):
         s = src_p / name
         if s.is_dir():
             _merge_tree(s, dest / name, name, rep)
@@ -928,8 +929,10 @@ def _merge_tree(s: Path, d: Path, top: str, rep: dict) -> None:
         key = f"{top}/{rel.as_posix()}"
         if key in CSV_KEYS:
             rep["_guard"](_merge_csv, key, f, d / rel, CSV_KEYS[key], rep)
-        elif key == "signals/alert_state.json":
+        elif key in ("signals/alert_state.json", "positions/watch_state.json"):
             rep["_guard"](_merge_alert_state, key, f, d / rel, rep)
+        elif key == "positions/positions.json":
+            rep["_guard"](_merge_positions, key, f, d / rel, rep)
         else:
             rep["_guard"](_copy_file, key, f, d / rel, key, rep)
 
@@ -1019,6 +1022,25 @@ def _merge_alert_state(f: Path, t: Path, rep: dict) -> None:
     json.loads(f.read_text(encoding="utf-8"))          # must be valid
     t.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(f, t)
+
+
+def _merge_positions(f: Path, t: Path, rep: dict) -> None:
+    """Positions you entered: the ones you don't have yet are added; yours are never changed."""
+    src = json.loads(f.read_text(encoding="utf-8")).get("positions", [])
+    if not t.exists():
+        t.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(f, t)
+        rep["added"] += 1
+        return
+    with file_lock(t):
+        cur = json.loads(t.read_text(encoding="utf-8")).get("positions", [])
+        have = {p.get("id") for p in cur}
+        new = [p for p in src if p.get("id") not in have]
+        if not new:
+            rep["already there"] += 1
+            return
+        _atomic_write(t, json.dumps({"positions": sorted(cur + new, key=lambda p: str(p.get("created_utc")))}, indent=1))
+    rep["records added"] += len(new)
 
 
 def _merge_settings(f: Path, t: Path, rep: dict) -> None:

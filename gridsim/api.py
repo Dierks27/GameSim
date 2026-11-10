@@ -87,6 +87,27 @@ def week_slate(cfg: Config, season: int | None = None, week: int | None = None) 
     return season, week, list(g.iter_rows(named=True))
 
 
+_STAMPS: dict = {}
+
+
+def _content_stamp(f: Path) -> str:
+    """Fingerprint of a data file's CONTENT (memoised on size + time). Re-downloading a file that has nothing new —
+    the position watch re-checks the injury report often — then leaves every cached sim valid."""
+    try:
+        st = f.stat()
+    except OSError:
+        return "-"
+    key = (str(f), st.st_size, st.st_mtime_ns)
+    if key not in _STAMPS:
+        h = hashlib.sha1()
+        with open(f, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        _STAMPS.clear() if len(_STAMPS) > 64 else None
+        _STAMPS[key] = h.hexdigest()[:10]
+    return _STAMPS[key]
+
+
 def cache_path(req: RunRequest, cfg: Config) -> Path:
     """Disk cache location for a request. The key includes the config hash and the overrides of THIS game's two
     teams, so editing a lineup (or the config) never returns a stale result, and editing one game's lineup does
@@ -113,8 +134,7 @@ def cache_path(req: RunRequest, cfg: Config) -> Path:
     stamps = []
     for name in (f"pbp_{season}.parquet", "schedules.parquet", f"injuries_{season}.parquet",
                  f"rosters_weekly_{season}.parquet", f"depth_charts_{season}.parquet"):
-        f = cache_dir / name
-        stamps.append(f"{name}:{int(f.stat().st_mtime)}" if f.exists() else f"{name}:-")
+        stamps.append(f"{name}:{_content_stamp(cache_dir / name)}")
     data_v = hashlib.sha1("|".join(stamps).encode()).hexdigest()[:8]
     return cfg.resolve_path("out/cache") / f"{req.key(cfg.hash + digest + data_v)}.json"
 

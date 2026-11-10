@@ -108,7 +108,7 @@ else:
         st.caption("Nothing passes every rule right now (edge, MOE, depth, spread, volume, freshness, trust).")
     st.markdown(f"##### Watchlist ({len(watch)})")
     st.caption("Clears the edge threshold but fails at least one rule (shown in the reason) — including market types "
-               f"without a positive record yet (≥ {cfg.scanner['trust_min_graded']} graded signals with positive CLV).")
+               f"without a positive record yet (≥ {cfg.scanner['trust_min_graded']} graded games with positive CLV).")
     if watch:
         st.dataframe(_rows(watch), hide_index=True, width="stretch", column_config=COLS, height=min(420, 38 + 35 * len(watch)))
 
@@ -144,13 +144,16 @@ if by_day:
                "way). Watchlist items are included, so this builds up even before any market type is trusted.")
 if trust:
     st.markdown("##### Trust by market type")
-    st.dataframe([{"market": k, "graded": v["n"], "avg CLV": v["avg_clv"], "P&L (units)": v["pnl"],
+    st.dataframe([{"market": k, "graded games": v["n"], "contracts": v.get("contracts"), "avg CLV": v["avg_clv"],
+                   "P&L (units)": v["pnl"],
                    "status": "trusted" if v["trusted"] else "watchlist"} for k, v in trust.items()],
                  hide_index=True, width="stretch",
                  column_config={"avg CLV": st.column_config.NumberColumn(format="%+.3f"),
                                 "P&L (units)": st.column_config.NumberColumn(format="%+.2f")})
-st.caption(f"A market type may alert only after {cfg.scanner['trust_min_graded']} graded signals with positive average "
-           "closing-line value and non-negative P&L. Signals are graded when you press **Grade** on the Weekly routine page after the games.")
+st.caption(f"A market type may alert only after {cfg.scanner['trust_min_graded']} graded games with positive average "
+           "closing-line value and non-negative P&L. A game counts once per market type — its many spread or total "
+           "lines are nearly the same bet, and a contract seen at every 30-minute price check is still one signal. "
+           "Signals are graded when you press **Grade** on the Weekly routine page after the games.")
 
 if graded_p.exists():
     try:

@@ -131,7 +131,8 @@ def _log_when_windowless() -> None:
     (data_dir() / "logs").mkdir(parents=True, exist_ok=True)
     fh = open(data_dir() / "logs" / "scheduled.log", "a", encoding="utf-8", buffering=1)
     sys.stdout = sys.stderr = fh
-    print(f"\n=== {dt.datetime.now():%Y-%m-%d %H:%M} gridsim {' '.join(sys.argv[1:])}")
+    if "watch" not in sys.argv[1:2]:      # (the 10-minute position watch only writes when something happened)
+        print(f"\n=== {dt.datetime.now():%Y-%m-%d %H:%M} gridsim {' '.join(sys.argv[1:])}")
 
 
 def _startup_checks(quiet: bool = False) -> None:
@@ -160,7 +161,7 @@ def _startup_checks(quiet: bool = False) -> None:
 def main(argv: list[str] | None = None) -> int:
     _log_when_windowless()
     args = build_parser().parse_args(argv)
-    _startup_checks(quiet=args.cmd in ("restore", "import"))
+    _startup_checks(quiet=args.cmd in ("restore", "import", "watch"))
     try:
         return int(args.func(args) or 0)
     except Exception:

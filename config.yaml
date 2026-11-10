@@ -179,7 +179,7 @@ scanner:
   max_spread: 0.04             # bid/ask spread
   min_volume: 1000             # contracts traded
   max_sim_age_hours: 6
-  trust_min_graded: 50         # graded signals needed before a market type may alert
+  trust_min_graded: 50         # graded games (one per market type per game) needed before a market type may alert
   realert_edge_growth: 0.03    # re-alert only if the edge grows this much, or flips/disappears
   strong_edge: 0.08
   key_questionable_positions: [QB]
@@ -201,3 +201,11 @@ resources:
   # Keeps the PC usable while tuning / backtests run in the background (they also run at low priority).
   max_ram_fraction: 0.8        # start only as many workers as keep the whole PC at or below this share of memory
   free_cores: 2                # processor cores always left free for you
+
+watch:
+  # Position watch (read-only): GridSim keeps an eye on contracts YOU say you hold and alerts you. It never trades.
+  price_jump: 0.06             # alert when the Kalshi price has moved this much (6 cents) since the last alert
+  sim_move: 0.05               # alert when GridSim's chance for your side has moved this much (5 points)
+  near_kickoff_hours: 3        # in the last hours before kickoff the watch checks every 10 minutes
+  injury_refresh_minutes: 45   # re-download the injury report this often while you hold open positions
+  positions: [QB, RB, WR, TE, K]   # injury changes at these positions are reported

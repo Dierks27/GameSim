@@ -93,7 +93,7 @@ gridsim season                   # playoff / division / seed odds from the remai
 Push alerts: create a `.env` file in the data folder (`%USERPROFILE%\GridSim Data`, never committed) with
 `NTFY_TOPIC=your-private-topic-name` and install the free ntfy app on your phone, subscribed to that topic.
 Optional: `DISCORD_WEBHOOK_URL=...`. A market type (moneyline, spread, total) only sends alerts after it has a
-positive live record (≥ 50 graded signals with positive closing-line value); until then it shows as "watchlist".
+positive live record (≥ 50 graded games — one per market type per game — with positive closing-line value); until then it shows as "watchlist".
 
 ## Scheduling on Windows (Task Scheduler)
 
@@ -105,7 +105,8 @@ was off or asleep, and append their output to `logs\scheduled.log` in the data f
 |---|---|---|---|
 | GridSim Weekly | Tuesday 9:00 | `-m gridsim weekly` | refresh data, grade last week, diagnose, predict the next week |
 | GridSim Predict | Friday 19:00 (after final injury reports) | `-m gridsim predict-week` | fresh frozen predictions with Friday statuses |
-| GridSim Scan | every day, every 30 min, 8:00–24:00 | `-m gridsim scan --notify` | re-price Kalshi markets, save price snapshots (closing-line value), push alerts |
+| GridSim Scan | every day, every 30 min, 8:00–24:00 | `-m gridsim scan --notify` | re-price Kalshi markets, save price snapshots (closing-line value), push alerts, check your positions |
+| GridSim Watch | every day, every 10 min, 8:05–24:00 | `-m gridsim watch --near --notify` | position watch for games kicking off within 3 hours (does nothing without open positions) |
 
 Optional extras you can add by hand (Task Scheduler → *Create Basic Task* → *Start a program*, program
 `C:\path\to\GameSim\.venv\Scripts\gridsim.exe`, *Start in* the GridSim folder):
@@ -119,9 +120,24 @@ Optional extras you can add by hand (Task Scheduler → *Create Basic Task* → 
 version of the downloaded data) or the
 sim is older than `scanner.max_sim_age_hours`; otherwise it re-prices against the cached sim.
 
+## Position watch (read-only)
+
+`positions/positions.json` in the data folder holds contracts YOU say you hold (entered on the **My positions** page:
+contract, side, price paid, how many). GridSim never trades and never touches an exchange account. At every price
+check (`scan`, `watch`, or *Check now*) each open position is compared with the last look and an alert is raised —
+logged to `positions/alerts.csv`, pushed via ntfy / Discord / toast — when Kalshi's price for your side moved
+≥ `watch.price_jump` (6¢), a listed QB/RB/WR/TE/K changed status or the expected starting QB changed (the injury
+report is re-downloaded every `watch.injury_refresh_minutes` while positions are open), GridSim's chance moved
+≥ `watch.sim_move` (5 pts), or the game is final (won/lost, P&L after fees). Alerts state facts only.
+
+```powershell
+gridsim watch --notify          # check all open positions now
+gridsim watch --near --notify   # only games kicking off within watch.near_kickoff_hours (the 10-minute task)
+```
+
 ## Your data, backups and recovery
 
-Irreplaceable data (frozen `predictions/`, `signals/` ledger + graded + Kalshi price snapshots, `overrides/`,
+Irreplaceable data (frozen `predictions/`, `signals/` ledger + graded + Kalshi price snapshots, `positions/`, `overrides/`,
 `tuning/`, `backtests/`, `diagnose/`, `logs/`, `config.local.yaml`, `config.tuned.yaml`, your `regime_changes.yaml`,
 `.env`) lives in the **data folder**, `%USERPROFILE%\GridSim Data` (set `GRIDSIM_DATA` to move it). Relative paths
 for those names resolve there (`Config.resolve_path`); re-downloadable caches stay in the code folder. Older versions
