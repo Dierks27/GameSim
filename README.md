@@ -105,7 +105,7 @@ was off or asleep, and append their output to `logs\scheduled.log` in the data f
 |---|---|---|---|
 | GridSim Weekly | Tuesday 9:00 | `-m gridsim weekly` | refresh data, grade last week, diagnose, predict the next week |
 | GridSim Predict | Friday 19:00 (after final injury reports) | `-m gridsim predict-week` | fresh frozen predictions with Friday statuses |
-| GridSim Scan | Mon + Thu–Sun every 30 min, 8:00–24:00 | `-m gridsim scan --notify` | re-price Kalshi markets, save price snapshots (closing-line value), push alerts |
+| GridSim Scan | every day, every 30 min, 8:00–24:00 | `-m gridsim scan --notify` | re-price Kalshi markets, save price snapshots (closing-line value), push alerts |
 
 Optional extras you can add by hand (Task Scheduler → *Create Basic Task* → *Start a program*, program
 `C:\path\to\GameSim\.venv\Scripts\gridsim.exe`, *Start in* the GridSim folder):

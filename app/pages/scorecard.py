@@ -89,6 +89,34 @@ if rdf is not None:
     except Exception as e:
         st.warning(f"Could not read reconstructed predictions ({e}).")
 
+# ---- by lock-in day ------------------------------------------------------------------------------------
+by_day = live.scorecard_by_lockin(cfg, None if all_seasons else s["season"])
+st.markdown("#### By lock-in day")
+if by_day:
+    rows_d = []
+    for b in by_day:
+        fin = b.get("final_same_games") or {}
+        rows_d.append({"locked in on": b["day"], "games": b["games"],
+                       "hours before kickoff (median)": b.get("hours_before"),
+                       "Brier": b.get("brier"), "Brier — final lock-in, same games": fin.get("brier"),
+                       "MAE margin": b.get("mae_margin"), "MAE margin — final, same games": fin.get("mae_margin"),
+                       "MAE total": b.get("mae_total"), "MAE total — final, same games": fin.get("mae_total"),
+                       "Brier (closing line)": b.get("market_brier")})
+    f4 = st.column_config.NumberColumn(format="%.4f")
+    f2 = st.column_config.NumberColumn(format="%.2f")
+    st.dataframe(rows_d, hide_index=True, width="stretch",
+                 column_config={"Brier": f4, "Brier — final lock-in, same games": f4, "Brier (closing line)": f4,
+                                "MAE margin": f2, "MAE margin — final, same games": f2, "MAE total": f2,
+                                "MAE total — final, same games": f2, "hours before kickoff (median)":
+                                st.column_config.NumberColumn(format="%.0f")})
+    st.caption("Every lock-in you made before kickoff, graded and grouped by the day you made it. Lower is better. "
+               "Each day is compared with your final lock-in on the very same games, so you can see how much the "
+               "extra days of news (injury reports, lineups) improve the numbers — or whether Tuesday's are just as "
+               "good. With only a few weeks of games these differences are mostly noise.")
+else:
+    st.caption("Appears after the first Grade of a week you locked in (Weekly routine → Grade). Lock in on more than "
+               "one day (e.g. Tuesday and Friday) to compare them.")
+
 # ---- backtests -----------------------------------------------------------------------------------------
 st.markdown("#### Saved backtests")
 bt_rows = []

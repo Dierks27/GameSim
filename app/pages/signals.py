@@ -128,6 +128,20 @@ if rows:
                                 "P&L (units)": st.column_config.NumberColumn(format="%+.2f")})
 else:
     st.caption(text or "no graded signals yet")
+try:
+    by_day = scanner.signals_by_day(cfg, s["season"])
+except Exception as e:
+    by_day = []
+    st.caption(f"(by-day record unavailable: {e})")
+if by_day:
+    st.markdown("##### By the day the signal appeared")
+    st.dataframe(by_day, hide_index=True, width="stretch",
+                 column_config={"hit %": st.column_config.NumberColumn(format="%.0f"),
+                                "avg CLV": st.column_config.NumberColumn(format="%+.3f"),
+                                "P&L (units)": st.column_config.NumberColumn(format="%+.2f")})
+    st.caption("Is it better to act on Tuesday or wait for Friday? Each signal counts once per day it was seen. Avg "
+               "CLV = how far Kalshi's price moved toward GridSim's side by kickoff (positive = the market came your "
+               "way). Watchlist items are included, so this builds up even before any market type is trusted.")
 if trust:
     st.markdown("##### Trust by market type")
     st.dataframe([{"market": k, "graded": v["n"], "avg CLV": v["avg_clv"], "P&L (units)": v["pnl"],

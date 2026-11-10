@@ -380,6 +380,42 @@ def _resolve(r: dict, g: dict, margin: float, total: float) -> bool | None:
     return None
 
 
+def signals_by_day(cfg: Config, season: int | None = None) -> list[dict]:
+    """Graded signals grouped by the weekday they were seen (US Eastern), e.g. Tuesday vs Friday. A signal seen in
+    many scans on one day counts once for that day (its first sighting that day)."""
+    from .live import ET, WEEKDAYS
+    gp = _dir(cfg) / "graded.csv"
+    if not gp.exists():
+        return []
+    df = pl.read_csv(gp, infer_schema_length=None)
+    if season:
+        df = df.filter(pl.col("season") == season)
+    if not df.height:
+        return []
+    rows = []
+    for r in df.iter_rows(named=True):
+        try:
+            t = dt.datetime.fromisoformat(str(r["ts_utc"])).astimezone(ET)
+        except ValueError:
+            continue
+        rows.append({**r, "_day": WEEKDAYS[t.weekday()], "_date": t.date().isoformat()})
+    first = {}
+    for r in sorted(rows, key=lambda r: str(r["ts_utc"])):
+        first.setdefault((r["ticker"], r["side"], r["_date"]), r)
+    out = []
+    for day in WEEKDAYS:
+        for mt in sorted({r["market"] for r in first.values()}):
+            x = [r for r in first.values() if r["_day"] == day and r["market"] == mt]
+            if not x:
+                continue
+            clv = [float(r["clv"]) for r in x if r.get("clv") not in (None, "")]
+            out.append({"day": day, "market": mt, "signals": len(x),
+                        "hit %": 100 * sum(str(r["won"]).lower() in ("true", "1") for r in x) / len(x),
+                        "avg CLV": sum(clv) / len(clv) if clv else None,
+                        "P&L (units)": sum(float(r["pnl"]) for r in x if r.get("pnl") not in (None, ""))})
+    return out
+
+
 def signals_report(cfg: Config, season: int | None = None) -> str:
     gp = _dir(cfg) / "graded.csv"
     if not gp.exists():

@@ -5,7 +5,7 @@ rem  routine runs by itself, in the background (no windows pop up; output goes
 rem  to logs\scheduled.log in your data folder, %USERPROFILE%\GridSim Data).
 rem    GridSim Weekly    Tuesday 9:00    refresh data, grade last week, check-up, lock in next week
 rem    GridSim Predict   Friday 19:00    fresh locked-in predictions after the final injury reports
-rem    GridSim Scan      Mon + Thu-Sun every 30 min, 8:00-24:00
+rem    GridSim Scan      every day, every 30 min, 8:00-24:00
 rem                      compare Kalshi prices with the sims, save prices for grading
 rem                      (phone alerts only if you set up NTFY_TOPIC, see GETTING_STARTED)
 rem  They run while you are signed in to Windows (a locked screen is fine). A run
@@ -32,7 +32,7 @@ if errorlevel 2 goto :remove
 
 schtasks /Create /F /TN "GridSim Weekly" /SC WEEKLY /D TUE /ST 09:00 /TR "\"!PYW!\" -m gridsim weekly" || goto :schedfail
 schtasks /Create /F /TN "GridSim Predict" /SC WEEKLY /D FRI /ST 19:00 /TR "\"!PYW!\" -m gridsim predict-week" || goto :schedfail
-schtasks /Create /F /TN "GridSim Scan" /SC WEEKLY /D MON,THU,FRI,SAT,SUN /ST 08:00 /RI 30 /DU 16:00 /TR "\"!PYW!\" -m gridsim scan --notify" || goto :schedfail
+schtasks /Create /F /TN "GridSim Scan" /SC WEEKLY /D MON,TUE,WED,THU,FRI,SAT,SUN /ST 08:00 /RI 30 /DU 16:00 /TR "\"!PYW!\" -m gridsim scan --notify" || goto :schedfail
 rem Laptop-friendly settings: run on battery, and catch up a run missed while the PC was off or asleep.
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$a = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries; $b = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew; Set-ScheduledTask -TaskName 'GridSim Weekly' -Settings $a | Out-Null; Set-ScheduledTask -TaskName 'GridSim Predict' -Settings $a | Out-Null; Set-ScheduledTask -TaskName 'GridSim Scan' -Settings $b | Out-Null"
 if errorlevel 1 echo  Note: the tasks were added, but their laptop settings could not be changed - they still work.

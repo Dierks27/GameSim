@@ -99,10 +99,13 @@ def grade(cfg: Config, season: int, week: int, verbose: bool = True) -> list[dic
     if card.exists():
         with open(card, encoding="utf-8") as fh:
             done = {r["game_id"] for r in csv.DictReader(fh)}      # one graded row per game
-    rows = []
+    by_card = cfg.resolve_path("predictions") / "scorecard_by_lockin.csv"
+    by_done = set()
+    if by_card.exists():
+        with open(by_card, encoding="utf-8") as fh:
+            by_done = {(r["game_id"], r["pred_file"]) for r in csv.DictReader(fh)}
+    rows, by_rows = [], []
     for gm in g.iter_rows(named=True):
-        if gm["game_id"] in done:
-            continue
         ko = kickoff_utc(gm)
         cands = []
         for f in sorted(d.glob(f"{gm['game_id']}__*.json")):
@@ -110,13 +113,20 @@ def grade(cfg: Config, season: int, week: int, verbose: bool = True) -> list[dic
             created = dt.datetime.fromisoformat(p["frozen"]["created_utc"])
             if ko is None or created < ko:
                 cands.append((created, f, p))
+        # every pre-kickoff lock-in, tagged with its day: "do Tuesday's numbers hold up as well as Friday's?"
+        for created, f, p in cands:
+            if (gm["game_id"], f.name) not in by_done:
+                by_rows.append({**_score_row(season, week, gm, f, p), **_lockin_tags(created, ko)})
+        if gm["game_id"] in done:
+            continue
         if not cands:
             if verbose:
                 print(f"  {gm['game_id']}: no pre-kickoff prediction")
             continue
         created, f, p = max(cands, key=lambda x: x[0])
-        rows.append(_score_row(season, week, gm, f, p))
+        rows.append(_score_row(season, week, gm, f, p))     # the record: the LAST lock-in before kickoff
     _append_card(card, rows)
+    _append_card(by_card, by_rows, BY_LOCKIN_FIELDS)
     if verbose:
         print(f"graded {len(rows)} games for {season} week {week}")
     try:
@@ -153,14 +163,23 @@ def _score_row(season: int, week: int, gm: dict, f: Path, p: dict) -> dict:
     return row
 
 
-def _append_card(card: Path, rows: list[dict]) -> None:
+WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+BY_LOCKIN_FIELDS = SCORE_FIELDS + ["lockin_day", "hours_before"]
+
+
+def _lockin_tags(created: dt.datetime, ko: dt.datetime | None) -> dict:
+    return {"lockin_day": WEEKDAYS[created.astimezone(ET).weekday()],
+            "hours_before": round((ko - created).total_seconds() / 3600, 1) if ko else None}
+
+
+def _append_card(card: Path, rows: list[dict], fields: list[str] | None = None) -> None:
     if not rows:
         return
     card.parent.mkdir(parents=True, exist_ok=True)
     from .userdata import file_lock, healed as _healed
     with file_lock(card), _healed(card), open(card, "a", newline="", encoding="utf-8") as fh:
         new = fh.tell() == 0
-        w = csv.DictWriter(fh, fieldnames=SCORE_FIELDS)
+        w = csv.DictWriter(fh, fieldnames=fields or SCORE_FIELDS)
         if new:
             w.writeheader()
         w.writerows(rows)
@@ -253,24 +272,51 @@ def scorecard(cfg: Config, season: int | None = None) -> dict:
         return {"games": 0}
     if season:
         df = df.filter(pl.col("season") == season)
-
-    def block(x: pl.DataFrame) -> dict:
-        if x.height == 0:
-            return {"games": 0}
-        y = x["home_win"].to_numpy().astype(float)
-        p = (x["p_home"] + 0.5 * x["p_tie"]).to_numpy()
-        out = {"games": x.height, "brier": brier(p, y), "log_loss": log_loss(p, y),
-               "mae_margin": float(np.mean(np.abs((x["pred_margin"] - (x["home_score"] - x["away_score"])).to_numpy()))),
-               "mae_total": float(np.mean(np.abs((x["pred_total"] - (x["home_score"] + x["away_score"])).to_numpy()))),
-               "crps_margin": float(x["crps_margin"].mean()), "crps_total": float(x["crps_total"].mean())}
-        mk = x.filter(pl.col("mkt_p_home").is_not_null())
-        if mk.height:
-            out["market_brier"] = brier(mk["mkt_p_home"].to_numpy(), mk["home_win"].to_numpy().astype(float))
-            out["market_mae_margin"] = float(np.mean(np.abs((mk["mkt_margin"] - (mk["home_score"] - mk["away_score"])).to_numpy())))
-        return out
+    block = _block
     return {"overall": block(df), "by_config": {h: block(df.filter(pl.col("config_hash") == h))
                                                  for h in df["config_hash"].unique().to_list()},
             "by_week": {int(w): block(df.filter(pl.col("week") == w)) for w in sorted(df["week"].unique().to_list())}}
+
+
+def scorecard_by_lockin(cfg: Config, season: int | None = None) -> list[dict]:
+    """Every pre-kickoff lock-in graded, grouped by the day it was made. Each day is also compared with the FINAL
+    lock-in on the very same games ("same games, final"), so a day isn't flattered or hurt by which games it covers."""
+    p = cfg.resolve_path("predictions") / "scorecard_by_lockin.csv"
+    if not p.exists():
+        return []
+    df = pl.read_csv(p, infer_schema_length=None)
+    if season:
+        df = df.filter(pl.col("season") == season)
+    if not df.height:
+        return []
+    # one row per game and day (a day with two lock-ins counts its later one)
+    df = df.sort("created_utc").unique(subset=["game_id", "lockin_day"], keep="last", maintain_order=True)
+    final = df.sort("created_utc").unique(subset=["game_id"], keep="last", maintain_order=True)
+    out = []
+    for day in WEEKDAYS:
+        x = df.filter(pl.col("lockin_day") == day)
+        if not x.height:
+            continue
+        same_final = final.filter(pl.col("game_id").is_in(x["game_id"].to_list()))
+        out.append({"day": day, "hours_before": float(x["hours_before"].median()) if x["hours_before"].null_count() < x.height else None,
+                    **_block(x), "final_same_games": _block(same_final)})
+    return out
+
+
+def _block(x: pl.DataFrame) -> dict:
+    if x.height == 0:
+        return {"games": 0}
+    y = x["home_win"].to_numpy().astype(float)
+    p = (x["p_home"] + 0.5 * x["p_tie"]).to_numpy()
+    out = {"games": x.height, "brier": brier(p, y), "log_loss": log_loss(p, y),
+           "mae_margin": float(np.mean(np.abs((x["pred_margin"] - (x["home_score"] - x["away_score"])).to_numpy()))),
+           "mae_total": float(np.mean(np.abs((x["pred_total"] - (x["home_score"] + x["away_score"])).to_numpy()))),
+           "crps_margin": float(x["crps_margin"].mean()), "crps_total": float(x["crps_total"].mean())}
+    mk = x.filter(pl.col("mkt_p_home").is_not_null())
+    if mk.height:
+        out["market_brier"] = brier(mk["mkt_p_home"].to_numpy(), mk["home_win"].to_numpy().astype(float))
+        out["market_mae_margin"] = float(np.mean(np.abs((mk["mkt_margin"] - (mk["home_score"] - mk["away_score"])).to_numpy())))
+    return out
 
 
 def format_scorecard(sc: dict) -> str:

@@ -320,3 +320,12 @@ gaps as hypotheses to grade live (`grade`, `scorecard`, signal CLV), not as edge
   one season (when workers >= seasons), budgeting 1.5 + 0.55 GB per season held — about twice as many workers fit.
   These sections are excluded from the config hash.
 
+## Lock-in days and daily price checks
+
+- Every pre-kickoff lock-in is graded into `predictions/scorecard_by_lockin.csv` (tagged with its US-Eastern weekday
+  and hours before kickoff); the live record (`scorecard.csv`) still uses only the last pre-kickoff lock-in per game.
+  Each day is shown next to the final lock-in on the same games, so a day isn't flattered by its game mix.
+- Signals are also summarised by the weekday they were first seen (each signal once per day).
+- The scheduled Kalshi price check runs every day (was Mon + Thu–Sun), so early-week prices are recorded for
+  closing-line value. `scanner.schedule_note` in config.yaml is left as is (changing it would change the config hash).
+

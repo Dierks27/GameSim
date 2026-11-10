@@ -56,6 +56,7 @@ CSV_KEYS = {
     "signals/graded.csv": ("ts_utc", "ticker", "side"),
     "predictions/scorecard.csv": ("game_id",),           # one graded row per game: the latest pre-kickoff one
     "predictions/scorecard_reconstructed.csv": ("game_id",),
+    "predictions/scorecard_by_lockin.csv": ("game_id", "pred_file"),   # every lock-in, by day
     "tuning/history.csv": None,
 }
 SKIP_NAMES = {"gui_tune.pid", ".DS_Store", "Thumbs.db", "desktop.ini"}
@@ -309,7 +310,8 @@ def counts(d: Path | None = None) -> dict:
 # rows of the append-only record files. Lineup files, settings and .env can be changed or removed on purpose.
 INVENTORY_DIRS = ("predictions", "signals/snapshots", "tuning", "backtests", "diagnose")
 ROW_FILES = {"signals/ledger.csv": "ts_utc", "signals/graded.csv": "ts_utc", "predictions/scorecard.csv": "game_id",
-             "predictions/scorecard_reconstructed.csv": "game_id", "tuning/history.csv": None}
+             "predictions/scorecard_reconstructed.csv": "game_id", "predictions/scorecard_by_lockin.csv": "pred_file",
+             "tuning/history.csv": "promoted_at"}
 _INV_SKIP = {"gui_tune.log", "gui_tune.pid"}
 
 
@@ -341,7 +343,7 @@ def _row_stats(rel: str, data: bytes) -> dict:
             return {"games": sorted(set(_col_values(lines, "game_id")) - {""})}
         if col == "ts_utc":
             return {"by_ts": dict(Counter(_col_values(lines, "ts_utc")))}
-        return {"keys": sorted(set(_col_values(lines, "promoted_at")))}
+        return {"keys": sorted(set(_col_values(lines, col)) - {""})}
     except csv.Error:
         return {}
 
@@ -399,7 +401,8 @@ def missing_from(info: dict, cur: dict, cur_counts: dict) -> list[str]:
         out += [f"{n} {k}" for k, n in by.items()]
     names = {"signals/ledger.csv": "signal records", "signals/graded.csv": "graded signals",
              "predictions/scorecard.csv": "graded games", "predictions/scorecard_reconstructed.csv":
-             "graded reconstructed games", "tuning/history.csv": "tuning history rows"}
+             "graded reconstructed games", "predictions/scorecard_by_lockin.csv": "graded lock-ins",
+             "tuning/history.csv": "tuning history rows"}
     for rel, st in (inv.get("rows") or {}).items():
         have = cur["rows"].get(rel, {})
         if "games" in st:

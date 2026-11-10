@@ -127,12 +127,15 @@ Kalshi's fees. GridSim **never places orders and never touches any account** —
 A market type (moneyline, spread or total) only becomes an **alert** after it has earned trust: at least 50 graded
 signals whose price beat Kalshi's closing price on average, without losing money. Until then everything shows as
 **watchlist**. Every scan also records the prices, which is what grading needs — so with **Schedule GridSim** set up
-(below), that record builds by itself over the season.
+(below), that record builds by itself over the season. **By the day the signal appeared** shows how signals first
+seen on each weekday (Tuesday vs Friday, …) held up against Kalshi's closing price.
 
 ### Scorecard
 GridSim's honest record: the predictions you locked in before kickoff, graded after the games, compared with the
-betting market. **This is the number to trust**, more than any backtest. (It also lists the developer's test runs on
-past seasons, for comparison.)
+betting market. **This is the number to trust**, more than any backtest. You can lock in as often as you like: the
+record uses your **last** lock-in before each kickoff. **By lock-in day** grades every lock-in by the day you made
+it and compares it with your final one on the same games — so you can see whether Tuesday's numbers hold up as well
+as Friday's. (It also lists the developer's test runs on past seasons, for comparison.)
 
 ### Diagnose
 A plain-English check-up of where GridSim is most likely wrong (for example "totals too high"), with details.
@@ -157,6 +160,7 @@ on these days:
 | Tuesday | box 3 → check *Week to grade* shows the week that just ended → **Grade** | scores that week's locked-in predictions (see Scorecard). The very first time it will say *nothing new to grade* — that's normal: only weeks you locked in (box 2) can be graded. |
 | Tuesday | box 4 → **Run check-up** | lists the top 3 things GridSim is getting wrong lately (a few minutes) |
 | Wednesday, and again Friday evening | box 1 → **Refresh data**, then box 2 → **Lock in predictions** | saves time-stamped predictions for every game that hasn't started (the injury reports come out Wednesday–Friday) |
+| Tuesday, if you like to act early (optional) | box 1 → **Refresh data**, then box 2 → **Lock in predictions** | saves Tuesday's numbers so the Scorecard can grade them separately (*By lock-in day*). Injury reports aren't out yet on Tuesday — mark anyone you already know is out on the Game → **Lineup** tab first |
 | Sunday morning (optional) | Game → **Lineup** tab for late scratches, then box 2 → **Lock in predictions** | locking in again makes the Scorecard use the updated lineups (games already started are skipped) |
 | Once a season (e.g. now, and again after the season ends), in the evening | box 5 → **Start tuning in the background** | GridSim tests better settings on the last few completed seasons (not this season's games — so running it again mid-season mostly repeats the same search). At 150 trials this takes many hours (overnight, or longer on a PC with less memory). It runs at low priority, leaves two processor cores free and keeps the whole PC under 80% memory, so the PC stays usable (Task Manager shows several *Python* entries — normal; both limits can be changed under *Settings → Config → resources*). To stop it early, restart the PC (nothing is harmed; that run's progress is lost). Come back later and press **Refresh status**. Only if the tuned settings did better do you get a **Use the tuned settings** button — you decide. |
 
@@ -164,7 +168,7 @@ on these days:
 in the background (no windows pop up):
 - every **Tuesday at 9:00 am**: refresh the data, grade last week, run the check-up and lock in the new week;
 - every **Friday at 7:00 pm**: lock in fresh predictions after the final injury reports;
-- **Monday and Thursday–Sunday, every 30 minutes from 8 am to midnight**: check Kalshi prices (and record them for
+- **Every day, every 30 minutes from 8 am to midnight**: check Kalshi prices (and record them for
   grading).
 
 They run while you are signed in to Windows (a locked screen is fine). If the PC was off or asleep at that time, the

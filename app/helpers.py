@@ -221,7 +221,7 @@ DEFAULT_SCHEDULE = """| When | Arguments | What it does |
 |---|---|---|
 | Tuesday 9:00 | `weekly` | refresh, grade last week, diagnose, predict the next week |
 | Friday 19:00 | `predict-week` | fresh frozen predictions with Friday statuses |
-| Thu–Sun every 30 min (game weeks) | `scan --notify` | re-price Kalshi markets, push alerts |"""
+| Every day, every 30 min 8:00–24:00 | `scan --notify` | re-price Kalshi markets, save prices, push alerts |"""
 
 
 def readme_section(text: str, heading_prefix: str = "## Scheduling") -> str | None:

@@ -783,3 +783,59 @@ def test_first_start_after_an_update_makes_a_full_baseline_backup(env):
     z = userdata.auto_backup(None, "daily", min_interval_h=24)
     assert z is not None and "inventory" in userdata.backup_info(z)
 
+
+
+# ---- lock-in days ---------------------------------------------------------------------------------------------------
+
+def _fake_pred(path: Path, created: str, p_home: float):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    vals = list(range(-30, 31))
+    path.write_text(json.dumps({
+        "frozen": {"created_utc": created, "config_hash": "h", "game_id": path.name.split("__")[0]},
+        "win": {"home": {"p": p_home}, "tie": {"p": 0.0}},
+        "scores": {"margin": {"mean": 3.0}, "total": {"mean": 44.0}},
+        "hist": {"margin": {"values": vals, "counts": [1] * len(vals)},
+                 "total": {"values": list(range(20, 70)), "counts": [1] * 50}}}))
+
+
+def test_every_lock_in_is_graded_by_day_but_the_record_uses_the_last(env):
+    from gridsim import live
+    cfg = load_config()
+    season, week, games = live.week_slate(cfg, 2026, 9)
+    g = next(x for x in games if x.get("home_score") is not None)
+    ko = live.kickoff_utc(g)
+    import datetime as dt
+    d = live.pred_dir(cfg, 2026, 9)
+    tue = (ko - dt.timedelta(days=5)).replace(hour=15)
+    fri = ko - dt.timedelta(days=2)
+    _fake_pred(d / f"{g['game_id']}__tue__h.json", tue.isoformat(), 0.40)
+    _fake_pred(d / f"{g['game_id']}__fri__h.json", fri.isoformat(), 0.70)
+    _fake_pred(d / f"{g['game_id']}__late__h.json", (ko + dt.timedelta(hours=1)).isoformat(), 0.99)   # after kickoff
+    live.grade(cfg, 2026, 9, verbose=False)
+    main = read_rows(env["data"] / "predictions" / "scorecard.csv")
+    assert [r["pred_file"] for r in main if r["game_id"] == g["game_id"]] == [f"{g['game_id']}__fri__h.json"]
+    by = read_rows(env["data"] / "predictions" / "scorecard_by_lockin.csv")
+    mine = {r["pred_file"].split("__")[1]: r for r in by if r["game_id"] == g["game_id"]}
+    assert set(mine) == {"tue", "fri"}                               # never the one made after kickoff
+    days = {r["day"]: r for r in live.scorecard_by_lockin(cfg, 2026)}
+    assert days and all(v["final_same_games"]["games"] == v["games"] for v in days.values())
+    live.grade(cfg, 2026, 9, verbose=False)                          # grading again adds nothing
+    assert len(read_rows(env["data"] / "predictions" / "scorecard_by_lockin.csv")) == len(by)
+
+
+def test_signals_by_day_counts_each_signal_once_per_day(env):
+    from gridsim import scanner
+    gp = env["data"] / "signals" / "graded.csv"
+    fields = LEDGER_FIELDS + ["won", "pnl", "closing", "clv"]
+    rows = []
+    for ts, clv in (("2026-11-10T15:00:00+00:00", 0.03), ("2026-11-10T15:30:00+00:00", 0.02),   # Tue (ET), twice
+                    ("2026-11-13T20:00:00+00:00", -0.01)):                                    # Fri
+        rows.append({**ledger_row(ts), "won": True, "pnl": 0.9, "closing": 0.55, "clv": clv})
+    gp.parent.mkdir(parents=True, exist_ok=True)
+    with open(gp, "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(rows)
+    out = {r["day"]: r for r in scanner.signals_by_day(load_config(), 2026)}
+    assert out["Tue"]["signals"] == 1 and out["Tue"]["avg CLV"] == pytest.approx(0.03)
+    assert out["Fri"]["signals"] == 1

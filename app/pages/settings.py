@@ -364,13 +364,11 @@ with tab_sched:
         sec = None
     common.callout("<b>Easiest:</b> double-click <b>Schedule GridSim</b> in the GridSim folder and press <b>A</b>. "
                    "It creates three background tasks (Tuesday 9:00 weekly routine, Friday 19:00 lock-in, Kalshi "
-                   "price check every 30 minutes on game days). Run it again and press <b>R</b> to remove them. "
+                   "price check every 30 minutes, every day). Run it again and press <b>R</b> to remove them. "
                    f"What they did is written to <code>{hr.esc(str(data_dir() / 'logs' / 'scheduled.log'))}</code>.",
                    tone="good")
     with st.expander("Details for console users (README)"):
         st.markdown(sec or helpers.DEFAULT_SCHEDULE)
-    if cfg.scanner.get("schedule_note"):
-        st.caption(f"config scanner.schedule_note: {cfg.scanner['schedule_note']}")
     st.markdown("##### Last activity")
     rows = []
     for name, what in (("predictions", "frozen predictions / scorecard"), ("signals", "scanner ledger / snapshots"),
