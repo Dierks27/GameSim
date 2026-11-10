@@ -136,6 +136,13 @@ def cache_path(req: RunRequest, cfg: Config) -> Path:
                  f"rosters_weekly_{season}.parquet", f"depth_charts_{season}.parquet"):
         stamps.append(f"{name}:{_content_stamp(cache_dir / name)}")
     data_v = hashlib.sha1("|".join(stamps).encode()).hexdigest()[:8]
+    # the default sim count / seed spelled out is the same request (the app passes its sidebar values, the scheduled
+    # tasks pass nothing): one cached sim for both, not two files
+    from dataclasses import replace
+    if req.sims is not None and int(req.sims) == int(cfg.sim["n_sims"]):
+        req = replace(req, sims=None)
+    if req.seed is not None and int(req.seed) == int(cfg.sim["seed"]):
+        req = replace(req, seed=None)
     return cfg.resolve_path("out/cache") / f"{req.key(cfg.hash + digest + data_v)}.json"
 
 
@@ -226,7 +233,7 @@ def run_game(req: RunRequest, cfg: Config | None = None, progress=None, verbose:
         elif game.get("home_score") is not None:
             wx = from_recorded(game)
         else:
-            wx = forecast(game)
+            wx = forecast(game, cache_dir=cfg.resolve_path(cfg.data["cache_dir"]))
         if wx and wx.get("error"):
             banners.append(f"weather forecast unavailable ({wx['error']}); no weather adjustment")
         elif wx and wx.get("source") == "indoor":

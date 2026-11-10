@@ -92,13 +92,28 @@ with tabs[0]:
 with tabs[1]:
     res = d.get("residuals") or []
     if res:
+        def _vs(r):
+            if r.get("sim_vs_market") is None:
+                return "–", "–"
+            return f"{r['market_error']:+.2f}", f"{r['sim_vs_market']:+.2f} ± {r.get('se_vs_market', 0):.2f}"
         rows = [[hr.esc(r["group"]), hr.esc(r["metric"]), str(r["n"]), f"{r['mean_error']:+.2f}", f"{r['se']:.2f}",
-                 f"{r['t']:+.1f}"] for r in res]
+                 f"{r['t']:+.1f}", *_vs(r)] for r in res]
         st.html('<div class="gs card"><h2>Residual breakdown</h2><p class="muted" style="font-size:12px;margin:-6px 0 8px">'
-                "error = predicted − actual (points); highlighted = more than 2 SE from zero</p>"
-                + '<div class="tall">' + hr.table_html(["Group", "Metric", "n", "Mean error", "SE", "t"], rows,
-                                                         hl={i for i, r in enumerate(res) if helpers.is_flag(r.get("flag"))})
+                "error = predicted − actual (points); highlighted = more than 2 SE from zero. “Closing line” is "
+                "the betting market's own error on the same games: the part it missed too is bad luck for any "
+                "forecast, so “GridSim vs line” is the part that is GridSim's own. Groups named after the "
+                "favorite or the spread are picked by the market, where a forecast that knows less than the market "
+                "always looks like it under-rates favorites; the “sim: …” groups are the fair test.</p>"
+                + '<div class="tall">' + hr.table_html(["Group", "Metric", "n", "Mean error", "SE", "t", "Closing line",
+                                                         "GridSim vs line"], rows,
+                                                        hl={i for i, r in enumerate(res) if helpers.is_flag(r.get("flag"))})
                 + "</div></div>")
+        mc = d.get("margin_calibration") or {}
+        if mc.get("slope_market") is not None:
+            st.caption(f"Are predicted margins spread out the right amount? Closing line vs GridSim's margin: slope "
+                       f"**{mc['slope_market']:.2f} ± {mc['se_market']:.2f}**; actual result vs GridSim's margin: "
+                       f"**{mc['slope_actual']:.2f} ± {mc['se_actual']:.2f}** (1 = right; above 1 = GridSim's margins "
+                       "are too timid, below 1 = too bold). The closing-line slope is the steadier of the two.")
     else:
         st.caption("No residual groups with enough games.")
 with tabs[2]:

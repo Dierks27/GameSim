@@ -36,13 +36,18 @@ STATS = [
     "punts", "fga", "fgm", "xpa", "xpm", "two_att", "two_conv", "tds", "def_st_td",
     "penalties", "pen_yds", "kneels", "spikes", "timeouts_used", "drives",
     "rz_trips", "rz_tds", "ko_starts", "ko_start_yl", "punt_starts", "punt_start_yl", "fourth_go",
+    "scr_att", "scr_yds",
 ]
 S = {name: i for i, name in enumerate(STATS)}
 NS = len(STATS)
 (PTS, Q1, Q2, Q3, Q4, QOT, PATT, COMP, PYDS, SACKS, SACKY, PTD, INTS, RATT, RYDS, RTD, FUML, PLAYS, TOP,
  TATT, TCONV, FATT, FCONV, FD, PUNTS, FGA, FGM, XPA, XPM, TWOA, TWOC, TDS, DSTTD, PENS, PENY, KNEELS,
- SPIKES, TOUSED, DRIVES, RZT, RZTD, KOS, KOSYL, PUS, PUSYL, FGO) = range(NS)
+ SPIKES, TOUSED, DRIVES, RZT, RZTD, KOS, KOSYL, PUS, PUSYL, FGO, SCRA, SCRY) = range(NS)
 QIDX = {1: Q1, 2: Q2, 3: Q3, 4: Q4}
+
+
+TILT_CHUNK = 64             # tilt reference passes measured per random buffer
+TILT_SIMS_PER_DRAW = 32     # one extra tilt draw per this many sims (see simulate)
 
 
 class GameSim:
@@ -72,6 +77,7 @@ class GameSim:
         self.k_qb = float(self.cfg.qb["k_qb"])
         self.m_strength = float(self.cfg.sim.get("matchup_strength", 0.0))
         self.k_epa = float(self.cfg.sim.get("k_team_epa", 300))
+        self.tilt_draws = max(1, int(self.cfg.sim.get("tilt_ref_draws", 16)))
         self.lam_cache: dict = {}
         self.lam_slope: dict = {}
         self.score_fx = model.score_effects if float(self.cfg.sim.get("score_effect_strength", 0.0)) > 0 else {}
@@ -693,13 +699,22 @@ class GameSim:
         target = self.pools.league_epa[call] + self.m_strength * (off_eff + def_eff) + wx_shift
         # measure the untilted mixture over league-mix situations (separate RNG: game stream untouched)
         saved = (self.down, self.togo, self.yl, self.pos, self._buf, self._bi)
-        self._buf, self._bi = self.aux_gen.random(1 << 16).tolist(), 0
         self.pos = off
         E = self.rows["epa_c"]
         es = []
-        for down, togo, yl, tb in self.pools.ref_sits[call]:
-            self.down, self.togo, self.yl = down, togo, yl
-            es.append(E[self._draw(call, tb, 0)])
+        # several draws per reference situation: the measured mixture mean is fixed for the whole game (all sims),
+        # so its sampling error is a per-game margin error that more sims never average out
+        ref = self.pools.ref_sits[call]
+        left = self.tilt_draws
+        while left > 0:
+            passes = min(left, TILT_CHUNK)      # (big sim counts use hundreds of draws: bounded memory per chunk)
+            left -= passes
+            # each _draw uses at most 5 uniforms; size the aux buffer so u() never refills from the game stream
+            self._buf, self._bi = self.aux_gen.random(max(1 << 16, 5 * passes * len(ref))).tolist(), 0
+            for _ in range(passes):
+                for down, togo, yl, tb in ref:
+                    self.down, self.togo, self.yl = down, togo, yl
+                    es.append(E[self._draw(call, tb, 0)])
         self.down, self.togo, self.yl, self.pos, self._buf, self._bi = saved
         es = np.asarray(es)
         lo, hi = -0.6, 0.6
@@ -838,6 +853,9 @@ class GameSim:
                 st[PYDS] += R["pass_yds"][rid]
             elif kind in (K_RUN, K_SCR):
                 st[RYDS] += R["rush_yds"][rid]
+                if kind == K_SCR:
+                    st[SCRA] += 1
+                    st[SCRY] += R["rush_yds"][rid]
             if self.players is not None:
                 self.players.record(self, rid, R["yards"][rid] if kind in (K_COMP, K_RUN, K_SCR) else 0, False, off)
             if R["td_def"][rid]:
@@ -879,6 +897,9 @@ class GameSim:
             st[SACKY] += -gain
         elif kind in (K_RUN, K_SCR):
             st[RYDS] += R["rush_yds"][rid] + adj
+            if kind == K_SCR:
+                st[SCRA] += 1
+                st[SCRY] += R["rush_yds"][rid] + adj
         if self.players is not None:
             self.players.record(self, rid, gain, td, off)
 
@@ -978,6 +999,10 @@ def simulate(model: SimModel, home: str, away: str, n_sims: int, seed: int, neut
     g = GameSim(model, home, away, neutral=neutral, playoff=playoff, seed=seed, players=players,
                 availability=availability, starters=starters, start_state=start_state, weather=weather, edge=edge,
                 onoff=onoff)
+    # The tilt is measured once per game from a finite sample, so it leaves an error that is the same in every sim
+    # (at 16 draws about 0.45 pts of margin, 1.3 points of win chance). Let it shrink together with the simulation
+    # noise: 16 draws at backtest/tuning sim counts, 62 at 2,000 sims, 250 at 8,000.
+    g.tilt_draws = max(g.tilt_draws, n_sims // TILT_SIMS_PER_DRAW)
     out = np.zeros((n_sims, 2, NS), dtype=np.float64)
     for i in range(n_sims):
         h, a, _ = g.play_game()

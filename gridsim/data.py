@@ -9,6 +9,7 @@ See SCHEMA_NOTES.md for the columns this relies on.
 from __future__ import annotations
 
 import datetime as dt
+import os
 import time
 from pathlib import Path
 
@@ -56,6 +57,12 @@ def current_season(today: dt.date | None = None) -> int:
     return today.year if today.month >= 9 else today.year - 1
 
 
+def _short(exc: Exception, n: int = 140) -> str:
+    """First line of an error, cut short (a failed download's message is a 300-character URL dump)."""
+    t = (str(exc).splitlines() or [type(exc).__name__])[0]
+    return t if len(t) <= n else t[:n] + " …"
+
+
 def _cache_dir(cfg: Config) -> Path:
     d = cfg.resolve_path(cfg.data["cache_dir"])
     d.mkdir(parents=True, exist_ok=True)
@@ -71,8 +78,60 @@ def _is_stale(path: Path, season: int | None, cfg: Config) -> bool:
     return age_h > float(cfg.data["refresh_hours"])
 
 
-def load_pbp(seasons: list[int], cfg: Config, force: bool = False, verbose: bool = False) -> pl.DataFrame:
+_NFL = None
+
+
+def nfl_client():
+    """nflreadpy with its own in-memory cache switched off. It keeps every download for 24 hours per process, so in
+    an app left open all day a "forced" refresh returned the morning's copy and wrote it over a newer file. GridSim
+    has its own parquet cache (this folder), so the library's is not needed."""
+    global _NFL
     import nflreadpy as nfl
+    if _NFL is None:
+        try:
+            from nflreadpy.config import update_config
+            update_config(cache_mode="off")
+        except Exception:
+            pass
+        _NFL = nfl
+    try:
+        nfl.clear_cache()               # belt and braces (other versions / a cache_mode this one doesn't know)
+    except Exception:
+        pass
+    return nfl
+
+
+def write_parquet_atomic(df: pl.DataFrame, path: Path) -> bool:
+    """Write next to the file, then swap it in: a reader never sees a half-written file. If the content is unchanged
+    only the file's time is updated. Returns True when the content changed."""
+    import hashlib
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.partial")      # (two processes may download the same file)
+    df.write_parquet(tmp)
+    try:
+        if path.exists() and path.stat().st_size == tmp.stat().st_size and \
+                hashlib.sha1(path.read_bytes()).digest() == hashlib.sha1(tmp.read_bytes()).digest():
+            tmp.unlink()
+            os.utime(path)
+            return False
+    except OSError:
+        pass
+    last = None
+    for wait in (0, 0.2, 0.5, 1.0, 2.0):   # Windows: a reader (or antivirus) may hold the old file for a moment
+        time.sleep(wait)
+        try:
+            os.replace(tmp, path)
+            return True
+        except PermissionError as e:
+            last = e
+    try:
+        tmp.unlink()
+    except OSError:
+        pass
+    raise last
+
+
+def load_pbp(seasons: list[int], cfg: Config, force: bool = False, verbose: bool = False) -> pl.DataFrame:
+    nfl = nfl_client() if force else None
 
     frames = []
     for s in sorted(set(seasons)):
@@ -81,15 +140,16 @@ def load_pbp(seasons: list[int], cfg: Config, force: bool = False, verbose: bool
             if verbose:
                 print(f"  downloading play-by-play {s} ...", flush=True)
             try:
+                nfl = nfl or nfl_client()
                 df = nfl.load_pbp([s])
             except Exception as exc:  # network trouble: fall back to stale cache if present
                 if path.exists():
-                    print(f"  warning: refresh of {s} failed ({exc}); using cached copy")
+                    print(f"  warning: refresh of {s} failed ({_short(exc)}); using cached copy")
                     df = pl.read_parquet(path)
                 else:
                     raise
             else:
-                df.write_parquet(path)
+                write_parquet_atomic(df, path)
         else:
             df = pl.read_parquet(path)
         cols = [c for c in PBP_KEEP if c in df.columns]
@@ -100,18 +160,16 @@ def load_pbp(seasons: list[int], cfg: Config, force: bool = False, verbose: bool
 
 
 def load_schedules(cfg: Config, force: bool = False, verbose: bool = False) -> pl.DataFrame:
-    import nflreadpy as nfl
-
     path = _cache_dir(cfg) / "schedules.parquet"
     if force or _is_stale(path, None, cfg):
         if verbose:
             print("  downloading schedules ...", flush=True)
         try:
-            df = nfl.load_schedules(True)
-            df.write_parquet(path)
+            df = nfl_client().load_schedules(True)
+            write_parquet_atomic(df, path)
         except Exception as exc:
             if path.exists():
-                print(f"  warning: schedule refresh failed ({exc}); using cached copy")
+                print(f"  warning: schedule refresh failed ({_short(exc)}); using cached copy")
                 df = pl.read_parquet(path)
             else:
                 raise

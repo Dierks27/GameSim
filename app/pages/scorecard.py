@@ -54,6 +54,10 @@ else:
                             ("MAE total", f"{ov['mae_total']:.2f}", ""),
                             ("CRPS margin / total", f"{ov['crps_margin']:.2f} / {ov['crps_total']:.2f}", "")]))
     st.markdown("##### By config version")
+    st.caption("Each code is one version of GridSim's model and settings, oldest first. A new code appears after an "
+               "update that changes the model, after you use tuned settings, or after you change a setting (other than "
+               "backups, PC resources or the position watch). "
+               "Versions are scored separately here; the other tables on this page count all of them together.")
     st.dataframe([_row({"config": h}, b) for h, b in sc.get("by_config", {}).items()], hide_index=True, width="stretch",
                  column_config=FMT)
     st.markdown("##### By week")

@@ -133,8 +133,12 @@ def scan(cfg: Config, season: int | None = None, week: int | None = None, notify
     snap_games: dict = {}
     watch_data: dict = {}
     from . import positions as _pos
-    watching = bool(_pos.open_positions(cfg))
-    if watching:                         # positions you hold: make sure the sims below use the latest injury report
+    if sims is not None and int(sims) == int(cfg.sim["n_sims"]):
+        sims = None                      # the default, spelled out: same cached sims as the scheduled price check
+    # Positions you hold are checked as part of the SCHEDULED price check (which can reach your phone). A scan
+    # started in the app sends no notifications, so it must not use up an alert: "Check now" on My positions does that.
+    watching = bool(notify_on and _pos.open_positions(cfg))
+    if watching:                         # make sure the sims below use the latest injury report
         _pos.refresh_injuries_if_due(cfg, season)
     for gi, g in enumerate(games):
         if progress:
@@ -151,7 +155,11 @@ def scan(cfg: Config, season: int | None = None, week: int | None = None, notify
             created = summ.get("created_utc")
             age = (now - dt.datetime.fromisoformat(created)).total_seconds() / 3600 if created else None
         if summ is None or age is None or age > float(cfg.scanner["max_sim_age_hours"]):
-            summ = run_game(req, cfg, refresh=True)
+            try:
+                summ = run_game(req, cfg, refresh=True)
+            except Exception as e:       # e.g. a data file being replaced at that moment: skip this game, keep the rest
+                print(f"  {g['game_id']}: could not simulate ({type(e).__name__}: {e}); skipped this time")
+                continue
             summ["created_utc"] = now.isoformat()
             age = 0.0
         try:
@@ -161,15 +169,22 @@ def scan(cfg: Config, season: int | None = None, week: int | None = None, notify
                 print(f"  {g['game_id']}: Kalshi unavailable ({e})")
             continue
         snap_games[g["game_id"]] = mk
-        watch_data[g["game_id"]] = (summ, mk)
+        if sims is None:                 # (a scan with its own sim count is not comparable with the watch's sims)
+            watch_data[g["game_id"]] = (summ, mk)
         rows = edges(sim_probs(summ, mk), cfg)
         # MOE test: re-sim with more sims if an edge is big enough but within the noise
         need = [r for r in rows if r.get("edge") is not None and r["edge"] >= float(cfg.scanner["min_edge"])
                 and r["edge"] <= float(cfg.scanner["moe_multiple"]) * r["moe"]]
         if need and summ["n_sims"] < int(cfg.scanner["max_resim_sims"]):
             req.sims = min(int(cfg.scanner["max_resim_sims"]), summ["n_sims"] * 4)
-            summ = run_game(req, cfg, refresh=True)
-            summ["created_utc"] = now.isoformat()
+            # the bigger sim of an earlier check is as good as a new one while the data has not changed (a data
+            # change gives it a different cache file) and it is not too old: no need to redo it every 30 minutes
+            big = cached_summary(req, cfg)
+            made = (big or {}).get("created_utc")
+            if not made or (now - dt.datetime.fromisoformat(made)).total_seconds() / 3600 > float(cfg.scanner["max_sim_age_hours"]):
+                big = run_game(req, cfg, refresh=True)
+                big["created_utc"] = now.isoformat()
+            summ = big
             rows = edges(sim_probs(summ, mk), cfg)
         # questionable key players: edge must hold in both versions
         q_both = None
@@ -181,7 +196,13 @@ def scan(cfg: Config, season: int | None = None, week: int | None = None, notify
             for p in qs:
                 for flag in ("outs", "ins"):
                     alt_req = RunRequest(**{**req.__dict__, flag: [f"{p['team']}:{p['name']}"]})
-                    alt = run_game(alt_req, cfg, use_cache=False)
+                    # like the bigger sim: kept while the data is unchanged and it is not too old (only the
+                    # prices change between two checks, and those are applied below)
+                    alt = cached_summary(alt_req, cfg)
+                    made = (alt or {}).get("created_utc")
+                    if not made or ((now - dt.datetime.fromisoformat(made)).total_seconds() / 3600
+                                    > float(cfg.scanner["max_sim_age_hours"])):
+                        alt = run_game(alt_req, cfg, refresh=True)
                     for ar in edges(sim_probs(alt, mk), cfg):
                         key = (ar["ticker"], ar["side"])
                         q_both[key] = min(q_both.get(key, 1.0), ar["edge"] if ar.get("edge") is not None else -1.0)
@@ -279,11 +300,14 @@ def backfill_closing_prices(cfg: Config, season: int | None = None, week: int | 
     if week:
         df = df.filter(pl.col("week") == week)
     need: dict[tuple, set] = {}
+    index = None
     for r in df.iter_rows(named=True):
         ko = r.get("kickoff_utc")
         if not ko or not r.get("ticker") or dt.datetime.fromisoformat(str(ko)) > dt.datetime.now(dt.timezone.utc):
             continue
-        if _closing_price(cfg, r["game_id"], r["ticker"], r["side"], ko) is None:
+        if index is None:
+            index = _closing_index(cfg)
+        if _closing_price(cfg, r["game_id"], r["ticker"], r["side"], ko, index) is None:
             need.setdefault((r["game_id"], str(ko), int(r["season"]), int(r["week"])), set()).add(r["ticker"])
     rep["needed"] = sum(len(v) for v in need.values())
     if not need:
@@ -335,17 +359,43 @@ def backfill_closing_prices(cfg: Config, season: int | None = None, week: int | 
     return rep
 
 
-def _closing_price(cfg: Config, game_id: str, ticker: str, side: str, kickoff: str | None) -> float | None:
-    best = None
+def _closing_index(cfg: Config, weeks: set[tuple[int, int]] | None = None) -> dict:
+    """{(game_id, ticker): [(snapshot time, mid price), ...]} in file order, from one pass over the saved price
+    snapshots. weeks: only read the files of these (season, week) pairs (the file name starts with them).
+
+    Every price check saves a snapshot (dozens a day), so the files are read once per grading run, never once per
+    signal; only the two numbers needed are kept, not the parsed files."""
+    idx: dict[tuple, list] = {}
+    prefixes = None if weeks is None else tuple(f"{s}_wk{w:02d}_" for s, w in weeks)
     for p in sorted((_dir(cfg) / "snapshots").glob("*.json")):
-        snap = json.loads(p.read_text())
-        if kickoff and snap["ts_utc"] > kickoff:
+        if prefixes is not None and not p.name.startswith(prefixes):
             continue
-        mk = snap["games"].get(game_id) or {}
-        for row in list((mk.get("moneyline") or {}).values()) + (mk.get("spread") or []) + (mk.get("total") or []):
-            if row.get("ticker") == ticker and row.get("yes_bid") is not None and row.get("yes_ask") is not None:
-                mid = (row["yes_bid"] + row["yes_ask"]) / 2
-                best = mid if side == "YES" else 1 - mid
+        try:
+            snap = json.loads(p.read_text())
+            ts = str(snap["ts_utc"])
+            games = snap["games"]
+        except (OSError, ValueError, KeyError, TypeError):
+            continue                     # a half-written or damaged snapshot must not stop the grading
+        for gid, mk in games.items():
+            if not isinstance(mk, dict):
+                continue
+            for row in list((mk.get("moneyline") or {}).values()) + (mk.get("spread") or []) + (mk.get("total") or []):
+                if row.get("ticker") and row.get("yes_bid") is not None and row.get("yes_ask") is not None:
+                    idx.setdefault((gid, row["ticker"]), []).append((ts, (row["yes_bid"] + row["yes_ask"]) / 2))
+    return idx
+
+
+def _closing_price(cfg: Config, game_id: str, ticker: str, side: str, kickoff: str | None,
+                   index: dict | None = None) -> float | None:
+    """The last saved Kalshi mid price for this side at or before kickoff. index: from _closing_index (pass it when
+    pricing many signals)."""
+    if index is None:
+        index = _closing_index(cfg)
+    best = None
+    for ts, mid in index.get((game_id, ticker), ()):
+        if kickoff and ts > str(kickoff):
+            continue
+        best = mid if side == "YES" else 1 - mid
     return best
 
 
@@ -363,19 +413,30 @@ def grade_signals(cfg: Config) -> int:
     if gp.exists():
         done = {(r["ts_utc"], r["ticker"], r["side"]) for r in pl.read_csv(gp, infer_schema_length=None).iter_rows(named=True)}
     rows = []
-    for r in df.iter_rows(named=True):
-        key = (r["ts_utc"], r["ticker"], r["side"])
-        g = res.get(r["game_id"])
-        if g is None or key in done:
-            continue
+    todo = [r for r in df.iter_rows(named=True)
+            if r["game_id"] in res and (r["ts_utc"], r["ticker"], r["side"]) not in done]
+    index = None            # built on the first signal that needs a closing price: nothing new = no file read
+    for r in todo:
+        g = res[r["game_id"]]
         margin, total = g["home_score"] - g["away_score"], g["home_score"] + g["away_score"]
         yes = _resolve(r, g, margin, total)
         if yes is None:
             continue
-        win = yes if r["side"] == "YES" else (not yes)
         cost = float(r["price"]) + float(r["fee"])
-        pnl = (1.0 / cost - 1.0) if win else -1.0
-        close = _closing_price(cfg, r["game_id"], r["ticker"], r["side"], r.get("kickoff_utc"))
+        if r["market"] == "moneyline" and margin == 0:
+            # a tie: Kalshi pays 50 cents per contract to each side of a "who wins" market
+            pnl = 0.5 / cost - 1.0
+            win = pnl > 0
+        else:
+            win = yes if r["side"] == "YES" else (not yes)
+            pnl = (1.0 / cost - 1.0) if win else -1.0
+        if index is None:
+            try:
+                weeks = {(int(x["season"]), int(x["week"])) for x in todo}
+            except (KeyError, TypeError, ValueError):
+                weeks = None
+            index = _closing_index(cfg, weeks)
+        close = _closing_price(cfg, r["game_id"], r["ticker"], r["side"], r.get("kickoff_utc"), index)
         rows.append({**r, "won": win, "pnl": pnl, "closing": close, "clv": (close - float(r["price"])) if close is not None else None})
     if rows:
         from .userdata import file_lock, healed as _healed

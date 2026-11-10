@@ -19,7 +19,7 @@ kickoff_rules:
   # 2024 = first dynamic kickoff year (touchback to 30); 2025 = touchback to 35;
   # 2026 = onside allowed any time + 5-3-2 return alignment.
   eras: {2023: legacy, 2024: dk2024, 2025: dk2025, 2026: dk2026}
-  default_era: dk2026          # used for seasons not listed (future seasons)
+  default_era: dk2026          # used for seasons after the last one listed (seasons before the first listed one use its era)
   min_era_kickoffs: 400        # if the era has fewer weighted kickoffs than this, add the previous era
   touchback_yardline: {legacy: 25, dk2024: 30, dk2025: 35, dk2026: 35}   # per era: receiving team's yard line after an end-zone touchback
   landing_zone_touchback_yardline: 20
@@ -38,6 +38,7 @@ sim:
   # rows are EPA-tilted until the mixture's mean shift = matchup_strength * (shrunk off effect + def effect).
   matchup_strength: 1.0        # 0 disables the correction (pure spec mixture)
   k_team_epa: 300              # shrinkage of team/QB EPA-per-play effects (plays)
+  tilt_ref_draws: 16           # minimum draws per reference situation when measuring the tilt (fixed for a whole game: 1 adds ~1.8 pts sd of noise to every predicted margin, 16 about 0.45; runs with more sims use sims/32 draws)
   score_effect_strength: 0.0   # game-state EPA effects (no measurable effect at 1-2; off by default, tunable)
   k_score_effect: 2000         # shrinkage of the game-state EPA table (plays per cell)       # Kaplan-Meier extension of TD plays sampled from closer to the goal line
 
@@ -183,7 +184,7 @@ scanner:
   realert_edge_growth: 0.03    # re-alert only if the edge grows this much, or flips/disappears
   strong_edge: 0.08
   key_questionable_positions: [QB]
-  schedule_note: "game weeks: every 30 min Thu-Sun, every 10 min in the last 3 h before kickoff"
+  schedule_note: "every day, every 30 min from 8:00 to midnight; open positions every 10 min in the last 3 h before kickoff"
 
 notify:
   ntfy_topic_env: NTFY_TOPIC             # read from .env / environment, never committed

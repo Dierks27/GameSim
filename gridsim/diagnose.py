@@ -2,8 +2,10 @@
 
 1. Component scorecard: aggregate sim vs actual for every component (ratio of sums), bias, bootstrap SE
    over team-games, flagged when |bias| > 2 SE, with the sub-model each one points to.
-2. Residual breakdown: margin and total errors grouped by favorite side, spread size, roof, divisional,
-   early season, QB change, primetime, short rest; flagged when the group mean error is > 2 SE from 0.
+2. Residual breakdown: margin and total errors grouped by favorite side and spread size (picked by the market and,
+   separately, by the sim's own forecast), roof, divisional, early season, QB change, primetime, short rest; flagged
+   when the group mean error is > 2 SE from 0, shown next to the closing line's error on the same games.
+   Margin calibration: slope of result (and of closing line) on the sim's predicted margin.
 3. Calibration of win % and 80%-interval coverage of points / margin / total.
 4. The 15 worst misses with component detail.
 5. A plain-English "top 3 most likely wrong" summary.
@@ -29,7 +31,9 @@ HINTS = {
     "plays": "clock model: runoff_scale, team pace (k_pace), incompletion/out-of-bounds stop rules",
     "pass_rate": "play-call model: league P(pass) table (smoothing_m) and team PROE shrinkage (k_team_pass)",
     "ypa": "pass outcome pools: matchup blend w_off, team shrinkage k_outcome, QB pool k_qb",
-    "ypc": "run outcome pools: w_off, k_outcome, team back-off levels",
+    "ypc": "all rushes incl. QB scrambles: see ypc_designed (run pools) and scramble_rate (QB dropback pools / pass rate)",
+    "ypc_designed": "designed-run outcome pools: w_off, k_outcome, team back-off levels, season_weights (league run-game drift)",
+    "scramble_rate": "QB dropback pools (k_qb, backup_max_dropbacks): scrambles per dropback",
     "sack_rate": "dropback pools: QB pool (k_qb, backup_max_dropbacks) and defense side weight (w_off)",
     "int_rate": "dropback pools: QB pool (k_qb) and k_outcome",
     "fumbles_lost": "outcome pools (turnover rows) / k_outcome",
@@ -48,15 +52,29 @@ HINTS = {
 }
 
 
+def _available(comp: pl.DataFrame) -> list[tuple[str, tuple]]:
+    """Components whose columns exist (backtests saved before a component was added lack its columns)."""
+    cols = set(comp.columns)
+    return [(name, (num, den)) for name, (num, den) in COMPONENTS.items()
+            if {f"sim_{num}", f"act_{num}"} <= cols and (not den or {f"sim_{den}", f"act_{den}"} <= cols)]
+
+
 def component_scorecard(comp: pl.DataFrame, n_boot: int = 300, seed: int = 0) -> list[dict]:
     rng = np.random.default_rng(seed)
-    n = comp.height
-    idx = [rng.integers(0, n, n) for _ in range(n_boot)] if n else []
+    n_all = comp.height
+    idx_all = [rng.integers(0, n_all, n_all) for _ in range(n_boot)] if n_all else []
     out = []
-    for name, (num, den) in COMPONENTS.items():
-        sn, an = comp[f"sim_{num}"].to_numpy(), comp[f"act_{num}"].to_numpy()
-        sd = comp[f"sim_{den}"].to_numpy() if den else np.ones(n)
-        ad = comp[f"act_{den}"].to_numpy() if den else np.ones(n)
+    for name, (num, den) in _available(comp):
+        cols = [f"sim_{num}", f"act_{num}"] + ([f"sim_{den}", f"act_{den}"] if den else [])
+        part = comp.select(cols).drop_nulls().drop_nans()
+        n = part.height
+        if n == 0:
+            continue
+        # backtests saved before a component existed have no values for it: use the rows that do
+        idx = idx_all if n == n_all else [rng.integers(0, n, n) for _ in range(n_boot)]
+        sn, an = part[f"sim_{num}"].to_numpy(), part[f"act_{num}"].to_numpy()
+        sd = part[f"sim_{den}"].to_numpy() if den else np.ones(n)
+        ad = part[f"act_{den}"].to_numpy() if den else np.ones(n)
 
         def stat(ii):
             s = sn[ii].sum() / max(sd[ii].sum(), 1e-9)
@@ -77,9 +95,15 @@ def _groups(g: pl.DataFrame) -> dict[str, pl.Expr]:
     mkt = pl.col("mkt_margin")
     rest = pl.min_horizontal(pl.col("home_rest").fill_null(7), pl.col("away_rest").fill_null(7))
     prime = (pl.col("weekday").fill_null("Sunday") != "Sunday") | (pl.col("gametime").fill_null("13:00") >= "19:00")
+    sim = pl.col("pred_margin")
+    # Groups picked by the MARKET condition on a better-informed forecast: any less-informed but calibrated forecast
+    # shows a "favorite" bias there (it is less extreme than the market), so their margin errors are reported next to
+    # the closing line's own error on the same games. Groups picked by the SIM's own forecast are the calibration test.
     return {
         "home favorite": mkt > 0, "away favorite": mkt < 0,
         "spread < 3": mkt.abs() < 3, "spread 3-7": (mkt.abs() >= 3) & (mkt.abs() < 7), "spread 7+": mkt.abs() >= 7,
+        "sim: home favored": sim > 0, "sim: away favored": sim < 0,
+        "sim spread 3-7": (sim.abs() >= 3) & (sim.abs() < 7), "sim spread 7+": sim.abs() >= 7,
         "dome/closed": pl.col("roof").is_in(["dome", "closed"]), "outdoors/open": pl.col("roof").is_in(["outdoors", "open"]),
         "divisional": pl.col("div_game") == 1, "non-divisional": pl.col("div_game") == 0,
         "weeks 1-4": pl.col("week") <= 4, "weeks 5+": pl.col("week") >= 5,
@@ -88,9 +112,16 @@ def _groups(g: pl.DataFrame) -> dict[str, pl.Expr]:
     }
 
 
+MARKET_PICKED = {"home favorite", "away favorite", "spread < 3", "spread 3-7", "spread 7+"}
+
+
 def residual_breakdown(g: pl.DataFrame) -> list[dict]:
+    fav = pl.when(pl.col("mkt_margin") >= 0).then(1).otherwise(-1)
     g = g.with_columns(err_margin=pl.col("pred_margin") - pl.col("margin"), err_total=pl.col("pred_total") - pl.col("total"),
-                       err_fav=(pl.col("pred_margin") - pl.col("margin")) * pl.when(pl.col("mkt_margin") >= 0).then(1).otherwise(-1))
+                       err_fav=(pl.col("pred_margin") - pl.col("margin")) * fav,
+                       # the closing line's error on the same games, same sign convention
+                       mkt_err_margin=pl.col("mkt_margin") - pl.col("margin"), mkt_err_total=pl.col("mkt_total") - pl.col("total"),
+                       mkt_err_fav=(pl.col("mkt_margin") - pl.col("margin")) * fav)
     out = []
     for name, cond in _groups(g).items():
         sub = g.filter(cond.fill_null(False))
@@ -100,10 +131,37 @@ def residual_breakdown(g: pl.DataFrame) -> list[dict]:
             x = sub[col].to_numpy()
             se = float(np.std(x, ddof=1) / np.sqrt(len(x)))
             m = float(np.mean(x))
-            out.append({"group": name, "metric": label, "n": len(x), "mean_error": m, "se": se, "t": m / se if se else 0.0,
-                        "flag": abs(m) > 2 * se})
+            row = {"group": name, "metric": label, "n": len(x), "mean_error": m, "se": se, "t": m / se if se else 0.0,
+                   "flag": abs(m) > 2 * se}
+            mk = sub[f"mkt_{col}"].to_numpy().astype(float)
+            ok = ~np.isnan(mk)
+            if ok.sum() >= 8:
+                d = x[ok] - mk[ok]            # sim minus market on the same games (paired)
+                row["market_error"] = float(np.mean(mk[ok]))
+                row["sim_vs_market"] = float(np.mean(d))
+                row["se_vs_market"] = float(np.std(d, ddof=1) / np.sqrt(ok.sum()))
+            out.append(row)
     out.sort(key=lambda r: -abs(r["t"]))
     return out
+
+
+def margin_calibration(g: pl.DataFrame) -> dict:
+    """Is the spread of predicted margins right? Slope of actual margin on predicted margin (1 = calibrated, > 1 =
+    compressed, < 1 = too extreme), and the same slope with the closing line in place of the result: if the market
+    is efficient E[result | sim] = E[market | sim], so this is a far less noisy estimate of the same slope. Comparing
+    sd(sim) with sd(market) is NOT a test: a calibrated forecast that knows less than the market is always less spread out."""
+    def slope(y, x):
+        x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+        ok = ~(np.isnan(x) | np.isnan(y))
+        x, y = x[ok], y[ok]
+        if len(x) < 20 or np.std(x) == 0:
+            return None, None
+        b, a = np.polyfit(x, y, 1)
+        r = y - (a + b * x)
+        return float(b), float(np.std(r, ddof=2) / (np.std(x) * np.sqrt(len(x))))
+    b_act, se_act = slope(g["margin"].to_numpy(), g["pred_margin"].to_numpy())
+    b_mkt, se_mkt = slope(g["mkt_margin"].to_numpy(), g["pred_margin"].to_numpy())
+    return {"slope_actual": b_act, "se_actual": se_act, "slope_market": b_mkt, "se_market": se_mkt, "n": int(g.height)}
 
 
 def worst_misses(g: pl.DataFrame, comp: pl.DataFrame, k: int = 15) -> list[dict]:
@@ -118,7 +176,7 @@ def worst_misses(g: pl.DataFrame, comp: pl.DataFrame, k: int = 15) -> list[dict]
                 c = c.row(0, named=True)
                 detail[r[side]] = {name: {"sim": c[f"sim_{num}"] / (c[f"sim_{den}"] if den else 1) if (not den or c[f"sim_{den}"]) else None,
                                           "actual": c[f"act_{num}"] / (c[f"act_{den}"] if den else 1) if (not den or c[f"act_{den}"]) else None}
-                                   for name, (num, den) in COMPONENTS.items()}
+                                   for name, (num, den) in _available(comp)}
         out.append({"game_id": r["game_id"], "score": f"{r['away']} {r['away_score']} @ {r['home']} {r['home_score']}",
                     "pred": f"{r['away']} {r['pred_away']:.1f} @ {r['home']} {r['pred_home']:.1f}",
                     "p_home": r["p_home"], "market_margin": r["mkt_margin"], "miss": r["miss"], "components": detail})
@@ -140,7 +198,8 @@ def key_numbers(g: pl.DataFrame) -> list[dict]:
     return out
 
 
-def plain_summary(score: list[dict], resid: list[dict], metrics: dict, keys: list[dict] | None = None) -> list[str]:
+def plain_summary(score: list[dict], resid: list[dict], metrics: dict, keys: list[dict] | None = None,
+                  calib: dict | None = None) -> list[str]:
     items = []
     for k in keys or []:
         if k["flag"]:
@@ -152,33 +211,89 @@ def plain_summary(score: list[dict], resid: list[dict], metrics: dict, keys: lis
             items.append((abs(c["t"]), f"{c['component']} is {direction} by {abs(c['bias']):.3g} "
                                        f"({100 * c['rel_bias']:+.1f}%, {abs(c['t']):.1f} SE) — look at {c['points_to']}."))
     for r in resid:
+        if r["group"] in MARKET_PICKED and r["metric"] != "total error":
+            # the sim is always less extreme than the market in groups picked by the market, even when calibrated;
+            # its paired sim-vs-market SE is small, so it would rank high every season. The calibration slope and the
+            # "sim: ..." groups are the test; these rows stay in the table for reference only.
+            continue
         if r["flag"] and r["metric"] != "favorite margin error":
-            items.append((abs(r["t"]) * 0.9, f"{r['metric']} is biased {r['mean_error']:+.2f} pts in '{r['group']}' games "
-                                             f"(n={r['n']}, {abs(r['t']):.1f} SE) — a missing feature or mis-weighted recency for that group."))
-    fav = [r for r in resid if r["metric"] == "favorite margin error" and r["group"] in ("spread 7+", "spread 3-7") and r["flag"]]
-    for r in fav:
-        word = "underrates" if r["mean_error"] < 0 else "overrates"
-        items.append((abs(r["t"]), f"the sim {word} favorites in '{r['group']}' games by {abs(r['mean_error']):.2f} pts "
-                                   f"— team-strength shrinkage (k_outcome, w_off, season weights) is likely {'too strong' if word == 'underrates' else 'too weak'}."))
-    cm, ct = metrics.get("coverage_80_margin"), metrics.get("coverage_80_total")
-    for val, name in ((cm, "margin"), (ct, "total")):
-        if val is not None and abs(val - 0.8) > 0.06:
-            items.append((abs(val - 0.8) * 40, f"80% {name} intervals cover {100 * val:.0f}% of games — the sim's {name} variance is "
-                                               f"{'too narrow' if val < 0.8 else 'too wide'}."))
-    if metrics.get("sd_pred_margin") and metrics.get("sd_mkt_margin") and metrics["sd_pred_margin"] < 0.75 * metrics["sd_mkt_margin"]:
-        items.append((5.0, f"predicted margins are compressed (sd {metrics['sd_pred_margin']:.1f} vs market {metrics['sd_mkt_margin']:.1f}) "
-                           f"— team quality is shrunk too hard toward the league."))
+            msg = (f"{r['metric']} is biased {r['mean_error']:+.2f} pts in '{r['group']}' games "
+                   f"(n={r['n']}, {abs(r['t']):.1f} SE)")
+            if "market_error" in r:
+                # the part the closing line missed too is outcome noise for any forecaster; only the rest is the sim's
+                msg += (f": the closing line was off by {r['market_error']:+.2f} on the same games, so the sim's own part is "
+                        f"{r['sim_vs_market']:+.2f} ± {r['se_vs_market']:.2f}")
+                if abs(r["sim_vs_market"]) <= 2 * r["se_vs_market"]:
+                    continue        # the line missed by as much: nothing here is the sim's own; the table shows it
+                weight = abs(r["sim_vs_market"]) / max(r["se_vs_market"], 1e-9) * 0.5
+            else:
+                msg += " — a missing feature or mis-weighted recency for that group"
+                weight = abs(r["t"]) * 0.9
+            items.append((min(weight, abs(r["t"])), msg + "."))
+    if calib and calib.get("slope_market") is not None:
+        b, se = calib["slope_market"], calib["se_market"]
+        ba, sea = calib.get("slope_actual"), calib.get("se_actual")
+        if abs(b - 1) > 2 * se:
+            word = "compressed (team strength shrunk too hard or scaled too low)" if b > 1 else "too extreme (team strength noise passed through)"
+            items.append((abs(b - 1) / se * 0.5, f"predicted margins are {word}: closing line vs sim margin slope {b:.2f} ± {se:.2f}, "
+                                                  f"result vs sim margin slope {ba:.2f} ± {sea:.2f} (1 = calibrated)."))
+    for name, d in (metrics.get("coverage_detail") or {}).items():
+        if abs(d["z"]) < 2:
+            continue      # within binomial noise of 80% (n ~ 56 games: 72% is only 1.5 SE)
+        msg = f"80% {name} intervals cover {100 * d['cov']:.0f}% of games ({abs(d['z']):.1f} SE) — "
+        narrow = d["cov"] < 0.8
+        vr = d.get("var_ratio")
+        if narrow and d.get("below") is not None and abs(d["below"] - d["above"]) >= (0.8 - d["cov"]):
+            hi = d["below"] > d["above"]
+            msg += (f"misses are lopsided ({100 * d['below']:.0f}% below the 10th percentile, {100 * d['above']:.0f}% above "
+                    f"the 90th): the sim's {name} is centred too {'high' if hi else 'low'} (bias {d['bias']:+.2f}), not too narrow.")
+        elif vr is not None and ((vr > 1.1) if narrow else (vr < 0.9)):
+            msg += (f"the sim's {name} spread is too {'narrow' if narrow else 'wide'} "
+                    f"(squared error / sim variance = {vr:.2f}; 1 = right).")
+        elif vr is not None:
+            msg += (f"but squared error / sim variance is {vr:.2f} (1 = right), so neither the width nor the centre is "
+                    f"clearly off; watch it over more games.")
+        else:
+            msg += f"the sim's {name} variance is {'too narrow' if narrow else 'too wide'}."
+        items.append((abs(d["z"]), msg))
     items.sort(key=lambda x: -x[0])
     return [t for _, t in items[:3]] or ["No component or group is biased beyond simulation/sampling noise."]
 
 
+def coverage_detail(g: pl.DataFrame) -> dict:
+    """80% interval coverage with its binomial SE, and (when the backtest saved them) which tail the misses fall in
+    and the ratio of squared error to sim variance, so a biased centre is not mistaken for too narrow a spread."""
+    out = {}
+    for name, y, pred in (("margin", "margin", "pred_margin"), ("total", "total", "pred_total")):
+        col = f"cov_{name}"
+        if col not in g.columns or g.height == 0:
+            continue
+        n = g.height
+        cov = float(g[col].mean())
+        d = {"n": n, "cov": cov, "z": (cov - 0.8) / float(np.sqrt(0.16 / n)),
+             "bias": float((g[pred] - g[y]).mean()), "below": None, "above": None, "var_ratio": None}
+        # older games.csv files (mixed in by --from-dirs) lack these columns: use only the rows that have them
+        if f"pit_{name}" in g.columns and g[f"pit_{name}"].drop_nulls().len():
+            pit = g[f"pit_{name}"].drop_nulls().to_numpy()
+            d["below"], d["above"] = float(np.mean(pit < 0.1)), float(np.mean(pit > 0.9))
+        if f"sd_{name}" in g.columns:
+            h = g.filter(pl.col(f"sd_{name}").is_not_null())
+            if h.height:
+                err = (h[pred] - h[y]).to_numpy()
+                d["var_ratio"] = float(np.mean(err ** 2) / np.mean(h[f"sd_{name}"].to_numpy() ** 2))
+        out[name] = d
+    return out
+
+
 def diagnose(games: pl.DataFrame, comp: pl.DataFrame) -> dict:
     metrics = summarize_games(games)
+    metrics["coverage_detail"] = coverage_detail(games)
     score = component_scorecard(comp)
     resid = residual_breakdown(games)
     keys = key_numbers(games)
-    return {"metrics": metrics, "summary": plain_summary(score, resid, metrics, keys), "components": score,
-            "key_numbers": keys,
+    calib = margin_calibration(games)
+    return {"metrics": metrics, "summary": plain_summary(score, resid, metrics, keys, calib), "components": score,
+            "key_numbers": keys, "margin_calibration": calib,
             "residuals": resid, "worst_misses": worst_misses(games, comp),
             "coverage": {k: metrics.get(k) for k in ("coverage_80_margin", "coverage_80_total", "coverage_80_points")},
             "calibration": calibration_table((games["p_home"] + 0.5 * games["p_tie"]).to_numpy(), games["home_win"].to_numpy())}
@@ -245,7 +360,9 @@ td,th{{border-bottom:1px solid #2a2f3a;padding:4px 10px;text-align:left}} tr.fla
 <h2>Component scorecard</h2>{pio.to_html(fig2, include_plotlyjs=False, full_html=False)}
 {table(comp, ["component", "sim", "actual", "bias", "se", "t", "rel_bias", "points_to"], f)}
 <h2>Key numbers</h2>{table(diag.get('key_numbers', []), ["key", "sim", "actual", "diff", "se"], f)}
-<h2>Residual breakdown</h2>{table(diag['residuals'], ["group", "metric", "n", "mean_error", "se", "t"], f)}
+<h2>Residual breakdown</h2><p>market_error = the closing line's mean error on the same games; sim_vs_market = the sim's own part (paired). Groups
+named "sim: ..." are picked by the sim's forecast (the calibration test); the others are picked by the market.</p>
+{table(diag['residuals'], ["group", "metric", "n", "mean_error", "se", "t", "market_error", "sim_vs_market", "se_vs_market"], f)}
 <h2>Worst misses</h2><ol>{misses}</ol><p>Full component detail for each miss is in diagnose.json.</p></body></html>"""
     path = out_dir / "diagnose.html"
     path.write_text(html, encoding="utf-8")

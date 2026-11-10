@@ -80,9 +80,10 @@ with tab_cfg:
                     with c1:
                         if e["kind"] == "bool":
                             new_vals[e["path"]] = st.toggle(label, value=bool(val), key=wkey)
-                        elif e["kind"] == "int":
+                        elif e["kind"] == "int" and not (isinstance(val, float) and not val.is_integer()):
+                            shown[e["path"]] = int(val)
                             new_vals[e["path"]] = st.number_input(label, value=int(val), step=1, key=wkey)
-                        elif e["kind"] == "float":
+                        elif e["kind"] in ("int", "float"):     # a whole-number setting holding a tuned 63.67: as it is
                             v = float(val)
                             step = 10.0 ** (math.floor(math.log10(abs(v))) - 1) if v else 0.01
                             new_vals[e["path"]] = st.number_input(label, value=v, step=step, format="%g", key=wkey)

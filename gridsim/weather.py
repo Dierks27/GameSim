@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import re
 import urllib.request
 from dataclasses import dataclass
@@ -120,11 +121,25 @@ def forecast(game: dict, cache_dir=None, timeout: float = 8.0) -> dict | None:
     url = (f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
            "&hourly=temperature_2m,precipitation,snowfall,wind_speed_10m,precipitation_probability"
            f"&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%2FNew_York&start_date={day}&end_date={day}")
+    # the last forecast that arrived is kept on disk: a failed fetch then re-uses it (up to 36 hours old) instead of
+    # silently simulating without weather, which would move the numbers although nothing about the game changed
+    keep = None
+    if cache_dir is not None and game.get("game_id"):
+        from pathlib import Path
+        keep = Path(cache_dir) / "weather" / f"{game['game_id']}.json"
     try:
         with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "gridsim"}), timeout=timeout) as r:
             data = json.loads(r.read())
     except Exception as exc:
-        return {"error": str(exc), "source": "open-meteo"}
+        try:
+            old = json.loads(keep.read_text(encoding="utf-8")) if keep is not None and keep.exists() else None
+            if old and old.get("gameday") == day and old.get("gametime") == game.get("gametime"):
+                age = dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(old["fetched_utc"])
+                if age.total_seconds() < 36 * 3600:
+                    return {**old["wx"], "source": "open-meteo (earlier forecast; the service did not answer just now)"}
+        except Exception:
+            pass
+        return {"error": str(exc).splitlines()[0][:120] if str(exc) else type(exc).__name__, "source": "open-meteo"}
     h = data.get("hourly", {})
     times = h.get("time", [])
     idx = [i for i, t in enumerate(times) if int(t[11:13]) in (hour, hour + 1, hour + 2)]
@@ -136,9 +151,19 @@ def forecast(game: dict, cache_dir=None, timeout: float = 8.0) -> dict | None:
     precip_mm = float(np.sum(pick("precipitation"))) if pick("precipitation") else 0.0
     snow = float(np.sum(pick("snowfall"))) if pick("snowfall") else 0.0
     pprob = float(np.max(pick("precipitation_probability"))) if pick("precipitation_probability") else None
-    return {"source": "open-meteo", "fetched_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="minutes"),
-            "temp_f": temp, "wind_mph": wind, "precip_mm_3h": precip_mm, "snow_cm_3h": snow, "precip_prob": pprob,
-            "precip": 1.0 if (precip_mm >= 0.5 or snow > 0) else 0.0}
+    wx = {"source": "open-meteo", "fetched_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="minutes"),
+          "temp_f": temp, "wind_mph": wind, "precip_mm_3h": precip_mm, "snow_cm_3h": snow, "precip_prob": pprob,
+          "precip": 1.0 if (precip_mm >= 0.5 or snow > 0) else 0.0}
+    if keep is not None and temp is not None and wind is not None:
+        try:
+            keep.parent.mkdir(parents=True, exist_ok=True)
+            tmp = keep.with_name(keep.name + ".partial")
+            tmp.write_text(json.dumps({"fetched_utc": dt.datetime.now(dt.timezone.utc).isoformat(), "gameday": day,
+                                       "gametime": game.get("gametime"), "wx": wx}), encoding="utf-8")
+            os.replace(tmp, keep)
+        except OSError:
+            pass
+    return wx
 
 
 def from_recorded(game: dict) -> dict | None:

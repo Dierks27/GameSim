@@ -28,7 +28,8 @@ ledger_p, graded_p = sig_dir / "ledger.csv", sig_dir / "graded.csv"
 c1, c2 = st.columns([2, 3], vertical_alignment="center")
 go = c1.button("Scan now", type="primary", width="stretch", icon=":material/radar:")
 c2.caption(f"{'Current week' if s['week'] is None else 'Week ' + str(s['week'])} of {s['season']} · re-sims stale games "
-           f"at {s['sims']:,} sims (sidebar) · no notifications are sent from here. Can take several minutes.")
+           f"at {s['sims']:,} sims (sidebar) · no notifications are sent from here, and positions you hold are "
+           "checked on **My positions**, not here. Can take several minutes.")
 if go:
     with st.status("Scanning Kalshi markets …", expanded=True) as status:
         st.write("Pricing every upcoming game of the week against its sim (re-simulating games whose sim is "
@@ -145,14 +146,15 @@ if by_day:
 if trust:
     st.markdown("##### Trust by market type")
     st.dataframe([{"market": k, "graded games": v["n"], "contracts": v.get("contracts"), "avg CLV": v["avg_clv"],
-                   "P&L (units)": v["pnl"],
+                   "P&L (units, per game)": v["pnl"],
                    "status": "trusted" if v["trusted"] else "watchlist"} for k, v in trust.items()],
                  hide_index=True, width="stretch",
                  column_config={"avg CLV": st.column_config.NumberColumn(format="%+.3f"),
-                                "P&L (units)": st.column_config.NumberColumn(format="%+.2f")})
+                                "P&L (units, per game)": st.column_config.NumberColumn(format="%+.2f")})
 st.caption(f"A market type may alert only after {cfg.scanner['trust_min_graded']} graded games with positive average "
            "closing-line value and non-negative P&L. A game counts once per market type — its many spread or total "
-           "lines are nearly the same bet, and a contract seen at every 30-minute price check is still one signal. "
+           "lines are nearly the same bet, and a contract seen at every 30-minute price check is still one signal "
+           "(so this table's P&L averages a game's contracts and is smaller than the Ledger record's total). "
            "Signals are graded when you press **Grade** on the Weekly routine page after the games.")
 
 if graded_p.exists():

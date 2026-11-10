@@ -336,9 +336,13 @@ def _col_values(lines, col: str):
 def _row_stats(rel: str, data: bytes) -> dict:
     """Append-only record file -> what to remember. Ledger / graded rows: how many rows per time stamp (all rows of
     one scan share one), so rows lost at one time can't be "made up" by rows from another. Scorecards: the games."""
+    return _row_stats_lines(rel, io.StringIO(data.decode("utf-8-sig", errors="replace")))
+
+
+def _row_stats_lines(rel: str, lines) -> dict:
+    """`lines`: an open text file or any iterator of CSV lines (read as a stream: the ledger grows by megabytes a day)."""
     from collections import Counter
     col = ROW_FILES[rel]
-    lines = io.StringIO(data.decode("utf-8-sig", errors="replace"))
     try:
         if col == "game_id":
             return {"games": sorted(set(_col_values(lines, "game_id")) - {""})}
@@ -372,9 +376,8 @@ def _current(d: Path) -> dict:
             stt = f.stat()
             hit = _CUR_CACHE.get(str(f))
             if not hit or hit[0] != (stt.st_size, stt.st_mtime_ns):
-                with open(f, "rb") as fh:
-                    data = fh.read()
-                _CUR_CACHE[str(f)] = ((stt.st_size, stt.st_mtime_ns), _row_stats(rel, data))   # newest only
+                with open(f, encoding="utf-8-sig", errors="replace", newline="") as fh:
+                    _CUR_CACHE[str(f)] = ((stt.st_size, stt.st_mtime_ns), _row_stats_lines(rel, fh))   # newest only
             rows[rel] = _CUR_CACHE[str(f)][1]
         except (OSError, csv.Error):
             pass
@@ -1026,20 +1029,25 @@ def _merge_alert_state(f: Path, t: Path, rep: dict) -> None:
 
 def _merge_positions(f: Path, t: Path, rep: dict) -> None:
     """Positions you entered: the ones you don't have yet are added; yours are never changed."""
-    src = json.loads(f.read_text(encoding="utf-8")).get("positions", [])
+    sdoc = json.loads(f.read_text(encoding="utf-8"))
+    src = sdoc.get("positions", [])
     if not t.exists():
         t.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(f, t)
         rep["added"] += 1
         return
     with file_lock(t):
-        cur = json.loads(t.read_text(encoding="utf-8")).get("positions", [])
-        have = {p.get("id") for p in cur}
+        doc = json.loads(t.read_text(encoding="utf-8"))
+        cur = doc.get("positions", [])
+        # a position you removed (entered by mistake) stays removed: its id is remembered on both sides
+        removed = sorted(set(doc.get("removed", [])) | set(sdoc.get("removed", [])))
+        have = {p.get("id") for p in cur} | set(removed)
         new = [p for p in src if p.get("id") not in have]
-        if not new:
+        if not new and removed == sorted(doc.get("removed", [])):
             rep["already there"] += 1
             return
-        _atomic_write(t, json.dumps({"positions": sorted(cur + new, key=lambda p: str(p.get("created_utc")))}, indent=1))
+        _atomic_write(t, json.dumps({"positions": sorted(cur + new, key=lambda p: str(p.get("created_utc"))),
+                                     **({"removed": removed} if removed else {})}, indent=1))
     rep["records added"] += len(new)
 
 

@@ -22,9 +22,11 @@ st.html('<div class="gs"><h1>My positions <span class="readonly">READ-ONLY</span
         "changing its own number — you get an alert with the facts. GridSim <b>never places orders</b> and never "
         "sees your Kalshi account; a position here is only a note you enter. What to do is always your call.</p></div>")
 
+msg_box = st.container()          # always present, so the widgets below keep their place (and stay open)
 if ss.get("pos_msg"):
     kind, msg = ss.pop("pos_msg")
-    (st.success if kind == "ok" else st.error)(msg)
+    with msg_box:
+        (st.success if kind == "ok" else st.error)(msg)
 
 
 def _local(ts: str | None) -> str:
@@ -52,7 +54,8 @@ def _contracts(game_id: str, home: str, away: str, gameday: str) -> dict:
 
 
 # ---- add ---------------------------------------------------------------------------------------------------------------
-with st.expander("Add a position", expanded=not pos.open_positions(cfg), icon=":material/add_circle:"):
+with st.expander("Add a position", expanded=bool(ss.get("pos_adding")) or not pos.open_positions(cfg),
+                 icon=":material/add_circle:"):
     try:
         season, week, games = common.slate(s["season"], s["week"])
         now = dt.datetime.now(dt.timezone.utc)
@@ -93,9 +96,12 @@ with st.expander("Add a position", expanded=not pos.open_positions(cfg), icon=":
             if not opts:
                 st.caption("Kalshi lists no contracts of this type for this game right now.")
             else:
-                ci = st.selectbox("Contract", range(len(opts)), key="pos_contract", format_func=lambda i: opts[i]["label"])
-                c = opts[min(ci, len(opts) - 1)]
-                side = st.radio("You bought", ["Yes", "No"], horizontal=True, key="pos_side",
+                # every widget below is keyed by what it belongs to (game, market, contract, side): with one shared
+                # key the box kept showing the previous game's contract and the first price it ever held
+                labels = [o["label"] for o in opts]
+                pick = st.selectbox("Contract", labels, key=f"pos_contract_{g['game_id']}_{kind}")
+                c = opts[labels.index(pick)] if pick in labels else opts[0]
+                side = st.radio("You bought", ["Yes", "No"], horizontal=True, key=f"pos_side_{c['ticker']}",
                                 help="Yes pays $1 if the contract's statement comes true; No pays $1 if it doesn't.")
                 ask = c.get("yes_ask") if side == "Yes" else c.get("no_ask")
                 what = c["label"] if side == "Yes" else f"NOT “{c['label']}”"
@@ -103,7 +109,10 @@ with st.expander("Add a position", expanded=not pos.open_positions(cfg), icon=":
                            f"right now: **{_cents(ask)}**.")
                 a, b = st.columns(2)
                 price_c = a.number_input("Price you paid per contract (¢)", 1, 99,
-                                         int(round(100 * ask)) if ask and 0 < ask < 1 else 50, key="pos_price")
+                                         min(99, max(1, int(round(100 * ask)))) if ask and 0 < ask < 1 else 50,
+                                         key=f"pos_price_{c['ticker']}_{side}",
+                                         help="Starts at Kalshi's current price for this contract and side; change it "
+                                              "to what you actually paid.")
                 n = b.number_input("How many contracts", 1, 100000, 10, key="pos_n")
                 p_entry = None
                 if rows:
@@ -119,6 +128,7 @@ with st.expander("Add a position", expanded=not pos.open_positions(cfg), icon=":
                         ss["pos_msg"] = ("ok", f"Watching {c['label']} ({side}) ×{int(n)} at {price_c}¢. "
                                                "You'll be alerted about price jumps, lineup news and changes in "
                                                "GridSim's number.")
+                        ss["pos_adding"] = True          # keep the form open: people usually enter several
                         st.rerun()
                     except Exception as e:
                         st.error(f"Not added — {e}")
@@ -133,14 +143,30 @@ if c1.button("Check now", icon=":material/refresh:", width="stretch", disabled=n
     with st.spinner("Checking prices, injuries and GridSim's numbers …"):
         try:
             alerts = pos.watch(cfg, notify_on=False, verbose=False)
-            ss["pos_msg"] = ("ok", "Checked. " + (f"{len(alerts)} new alert(s) — see below." if alerts
-                                                  else "Nothing new since the last check."))
+            probs = dict(pos.LAST_PROBLEMS)
+            bad = [b for k, b in probs.items() if not k.startswith("_")]
+            if "_busy" in probs:
+                ss["pos_msg"] = ("err", "Not checked: the scheduled check is running right now. Press **Check now** "
+                                        "again in a minute.")
+            elif "_alerts" in probs:
+                ss["pos_msg"] = ("err", "Checked — " + probs["_alerts"]["what"])
+            elif bad or "_state" in probs:
+                ss["pos_msg"] = ("err", "Checked, but not everything went through: "
+                                 + "; ".join(f"{b['matchup']}: {b['what']}" for b in probs.values())
+                                 + ". Numbers that could not be read are from the last successful check."
+                                 + (f" {len(alerts)} new alert(s) — see below." if alerts else ""))
+            else:
+                ss["pos_msg"] = ("ok", "Checked. " + (f"{len(alerts)} new alert(s) — see below." if alerts
+                                                      else "Nothing new since the last check."))
         except Exception as e:
             ss["pos_msg"] = ("err", f"Check failed — {type(e).__name__}: {e}")
     st.rerun()
 c2.caption(f"Last check: {_local(last.get('checked_utc'))}. With **Schedule GridSim** set up, positions are checked "
            "every 30 minutes, and every 10 minutes in the last "
            f"{cfg.watch.get('near_kickoff_hours', 3)} hours before kickoff, with alerts to your phone.")
+for pr in (last.get("problems") or {}).values():
+    st.warning(f"At the last check, {pr['matchup']}: {pr['what']}. Numbers for that game are from the last successful "
+               "check.", icon=":material/cloud_off:")
 if not openp:
     st.caption("No open positions. Add one above after you buy a contract on Kalshi.")
 for p in openp:
@@ -154,7 +180,7 @@ for p in openp:
             ("If sold now", _usd(v.get("if_sold_now")), "after Kalshi's fees on both trades"),
             ("GridSim's chance", _pct(v.get("p_side")),
              f"when you added it: {_pct(p.get('p_side_entry'))} · break-even ≈ {_pct(p['price'])}"),
-            ("Kickoff", _local(p.get("kickoff_utc")), f"checked {_local(v.get('ts'))}"),
+            ("Kickoff", _local(p.get("kickoff_utc")), f"prices read {_local(v.get('ts'))}"),
         ]))
         a, b, c = st.columns([2, 2, 3])
         with a.popover("I sold it", icon=":material/sell:"):
@@ -174,27 +200,32 @@ for p in openp:
 st.markdown("#### Recent alerts")
 al = pos.recent_alerts(cfg, 40)
 if al:
-    icons = {"price": "💲 price", "injury": "🩹 lineup news", "sim": "🎲 GridSim's number", "settled": "🏁 final"}
-    st.dataframe([{"when": _local(a["ts_utc"]), "what": icons.get(a["kind"], a["kind"]), "alert": a["title"],
-                   "details": a["message"]} for a in al], hide_index=True, width="stretch",
-                 column_config={"details": st.column_config.TextColumn(width="large")})
+    icons = {"price": "💲 Price", "injury": "🩹 Lineup news", "sim": "🎲 GridSim's number", "settled": "🏁 Final"}
+    for i, a in enumerate(al):
+        title = str(a["title"]).removeprefix("GridSim watch: ")
+        with st.expander(f"{_local(a['ts_utc'])} · {icons.get(a['kind'], a['kind'])} · {title}", expanded=i < 3):
+            st.text(a["message"])          # plain text: "$" and "%" in an alert must not be read as formatting
+            if a.get("url"):
+                st.markdown(f"[open on Kalshi]({a['url']})")
 else:
     st.caption("None yet. An alert appears when Kalshi's price for your side moves "
-               f"{100 * float(cfg.watch.get('price_jump', 0.06)):.0f}¢ or more, when a listed player's status or the "
-               f"expected starting QB changes, when GridSim's chance moves {100 * float(cfg.watch.get('sim_move', 0.05)):.0f} "
-               "points or more, and when the game is final.")
+               f"{100 * float(cfg.watch.get('price_jump', 0.06)):.0f}¢ or more, when the expected starting QB changes "
+               "or a player who matters changes status, when GridSim re-simulates and its chance moves "
+               f"{100 * float(cfg.watch.get('sim_move', 0.05)):.0f} points or more beyond its margin of error, and "
+               "when the game is final.")
 
 # ---- closed ------------------------------------------------------------------------------------------------------------
 closed = [p for p in allp if p.get("status") in ("sold", "settled")]
 if closed:
     st.markdown("#### Closed positions")
     total = sum(float(p.get("pnl") or 0) for p in closed)
+    ended = {"won": "won (paid $1 each)", "lost": "lost (paid $0)", "tie": "tie (paid 50¢ each)"}
     st.dataframe([{"game": p["matchup"], "contract": f"{p['label']} ({p['side'].title()})", "contracts": p["contracts"],
                    "paid": _cents(p["price"]),
-                   "ended": ("sold at " + _cents(p.get("exit_price"))) if p["status"] == "sold" else p.get("result", ""),
-                   "profit / loss": p.get("pnl"), "closed": _local(p.get("closed_utc"))}
+                   "ended": ("sold at " + _cents(p.get("exit_price"))) if p["status"] == "sold"
+                   else ended.get(p.get("result"), p.get("result", "")),
+                   "profit / loss": _usd(p.get("pnl")), "closed": _local(p.get("closed_utc"))}
                   for p in sorted(closed, key=lambda q: str(q.get("closed_utc")), reverse=True)],
-                 hide_index=True, width="stretch",
-                 column_config={"profit / loss": st.column_config.NumberColumn(format="$%+.2f")})
+                 hide_index=True, width="stretch")
     st.caption(f"Total across closed positions: **{_usd(total)}** after fees. These are your own entries — GridSim "
                "doesn't know about anything you didn't add here.")

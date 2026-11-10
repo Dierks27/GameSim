@@ -136,16 +136,21 @@ If you buy a contract on Kalshi, tell GridSim: open **Add a position**, pick the
 the price you paid and how many. From then on GridSim keeps watch and alerts you (on this page, and on your phone if
 you set up ntfy) when:
 - **Kalshi's price for your side moves 6¢ or more** — a sudden move usually means news;
-- **a listed player's status or the expected starting QB changes** for either team — GridSim re-simulates and tells
-  you its new number for your contract;
-- **GridSim's own chance moves 5 points or more**;
-- **the game is final** — won or lost, and the profit or loss after Kalshi's fees.
+- **lineup news that matters** for either team: a different expected starting QB, a player on the injury report
+  changing status, or a player GridSim expected to touch the ball going on a reserve list (or coming back). GridSim
+  re-simulates and tells you its new number for your contract. Practice-squad shuffles are ignored;
+- **GridSim's own chance moves 5 points or more beyond its margin of error** after it re-simulates with new data;
+- **the game is final** — won or lost (a tie pays 50¢ per contract on "who wins"), and the profit or loss after
+  Kalshi's fees.
 
 Each alert gives the facts: what you paid, Kalshi's price now, what selling now would bring after fees, and GridSim's
 chance. **GridSim never trades and never sees your Kalshi account** — a position is just a note you enter, and what to
-do is always your decision. **I sold it** records a sale; **Remove** deletes an entry made by mistake; **Check now**
-checks immediately. With **Schedule GridSim** set up, positions are checked every 30 minutes, and every 10 minutes in
-the last 3 hours before kickoff. (Once a game has kicked off the watch stops until it is final.)
+do is always your decision. The price box starts at Kalshi's current price for the contract and side you picked:
+change it to what you actually paid. **I sold it** records a sale; **Remove** deletes an entry made by mistake;
+**Check now** checks immediately (if Kalshi or the internet doesn't answer, the page says so and keeps the last
+numbers it read). With **Schedule GridSim** set up, positions are checked every 30 minutes, and every 10 minutes in
+the last 3 hours before kickoff, following the schedule if a game is moved. (Once a game has kicked off the watch
+stops until it is final.) *Scan now* on the Signals page does not check positions; *Check now* here does.
 
 ### Scorecard
 GridSim's honest record: the predictions you locked in before kickoff, graded after the games, compared with the
@@ -179,7 +184,7 @@ on these days:
 | Wednesday, and again Friday evening | box 1 → **Refresh data**, then box 2 → **Lock in predictions** | saves time-stamped predictions for every game that hasn't started (the injury reports come out Wednesday–Friday) |
 | Tuesday, if you like to act early (optional) | box 1 → **Refresh data**, then box 2 → **Lock in predictions** | saves Tuesday's numbers so the Scorecard can grade them separately (*By lock-in day*). Injury reports aren't out yet on Tuesday — mark anyone you already know is out on the Game → **Lineup** tab first |
 | Sunday morning (optional) | Game → **Lineup** tab for late scratches, then box 2 → **Lock in predictions** | locking in again makes the Scorecard use the updated lineups (games already started are skipped) |
-| Once a season (e.g. now, and again after the season ends), in the evening | box 5 → **Start tuning in the background** | GridSim tests better settings on the last few completed seasons (not this season's games — so running it again mid-season mostly repeats the same search). At 150 trials this takes many hours (overnight, or longer on a PC with less memory). It runs at low priority, leaves two processor cores free and keeps the whole PC under 80% memory, so the PC stays usable (Task Manager shows several *Python* entries — normal; both limits can be changed under *Settings → Config → resources*). To stop it early, restart the PC (nothing is harmed; that run's progress is lost). Come back later and press **Refresh status**. Only if the tuned settings did better do you get a **Use the tuned settings** button — you decide. |
+| Once a season (e.g. now, and again after the season ends), in the evening | box 5 → **Start tuning in the background** | GridSim tests better settings on the last few completed seasons (not this season's games — so running it again mid-season mostly repeats the same search). At 150 trials this takes many hours (overnight, or longer on a PC with less memory). It runs at low priority, leaves two processor cores free and keeps the whole PC under 80% memory, so the PC stays usable (Task Manager shows several *Python* entries — normal; both limits can be changed under *Settings → Config → resources*). To stop it early, restart the PC (nothing is harmed; that run's progress is lost). Come back later and press **Refresh status**. Only if the tuned settings did clearly better on a season they never saw (by more than the margin of error) do you get a **Use the tuned settings** button — you decide (it changes only the tuned values; anything else you set stays). A result found before a GridSim update that changed the model is not offered: run the tune once more after such an update. |
 
 **Want it automatic?** Double-click **Schedule GridSim** in the GridSim folder and press **A**. Windows will then,
 in the background (no windows pop up):
@@ -230,6 +235,14 @@ watchlist in GridSim but no phone alerts.
 Your locked-in predictions, lineup changes, Kalshi records, tuning history and setting changes live in your data
 folder, so an update never touches them — even a completely fresh install in a new place finds them again
 automatically.
+
+- **If you use Schedule GridSim:** after an update, double-click **Schedule GridSim** again and press **A**. The
+  scheduled jobs live in Windows, not in the GridSim folder, so an update cannot change them; pressing A simply
+  replaces the old jobs with the current ones (the price check on every day of the week, and the 10-minute
+  position watch).
+- **After an update that changes the model** (GridSim says so on the *Weekly routine* page, box 5): a tuning result
+  found before it is not offered, and if you were already using one, the page offers **Go back to the standard
+  settings**. Do that, then run the tune once more. The *Scorecard* lists the new version separately from the old.
 
 ## Your data and backups
 

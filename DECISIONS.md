@@ -49,14 +49,28 @@ fixed, the score adds little to the outcome distribution and would thin every ou
 Sampling a scrimmage outcome:
 1. **Side:** offense's own plays with probability `w_off` (0.5), else plays the defense allowed.
 2. **Team level:** the finest level with ≥ `min_bucket_n` (40) weighted plays, in order:
-   `(down 1/2/3+4, distance 1–2/3–6/7+, red zone y/n)` → `(early/late down, red zone)` → `(red zone)` → `(all plays of that type)`.
+   `(down 1/2/3+4, distance 1–2/3–6/7+, field zone)` → `(early/late down, field zone)` → `(field zone)`, where the team
+   field zone is outside the 20 / red zone 20–6 / goal-to-go 5–1. The last level is used however thin it is (its
+   team weight n/(n + k) is then small); there is no all-field level.
 3. **Team vs league:** with probability `n/(n + k_outcome)` (k = 60) sample the team pool at that level, else the
    league pool.
 4. **League level:** the finest with ≥ `league_min_n` (40) weighted plays:
    `(down, distance, zone, time)` → `(down, distance, zone)` → `(early/late, distance, zone)` → `(distance, zone)` → `(zone)`.
 
-Team pools always keep the red-zone split, because rows sampled from midfield and applied inside the 20 would
-overstate red-zone efficiency.
+Team pools always keep the red-zone **and goal-to-go** split, because rows sampled from farther out and applied
+closer to the goal line overstate red-zone efficiency: a 4-yard run from the 15 applied at the 3 is a TD.
+(Until 2026-11 the team chain was `(…, red zone y/n)` → … → `(all plays)`. The all-field fallback was hit whenever a
+team had < 40 weighted red-zone plays, i.e. most of every early season, and red zone 20–6 and goal-to-go shared one
+cell. Replaying every real 2024–26 snap through the model built before its week: goal-to-go designed-run TD rate
+sim 52–54% vs actual 39–41%; red zone 20–6 8.1–8.3% vs 6.2–6.5%. With the 3-way field zone and no all-field level:
+goal-to-go 44–47%, total backtest points −0.3 to −0.5 per team, 2024–25–26 total bias +0.29/+0.96/+1.05 →
+−0.52/+0.34/+0.05, log loss −0.008/−0.003/−0.016. The remaining goal-line run excess comes from within-zone
+mixing (rows from the 15 applied at the 8); not pursued because aggregate red-zone TD% is on target pooled over
+2023–26 (−0.3%). It is not on target every season: −5% in 2024 (flagged), and field-goal attempts run +3.4% pooled,
++5% in 2024–25, since a goal-line TD that no longer happens is often a field goal instead. Both are on the open list.)
+
+Diagnose splits `ypc` (all rushes incl. QB scrambles, the official definition, same in sim and data) into
+`ypc_designed` (run pools) and `scramble_rate` (scrambles per dropback, QB pools): the aggregate mixes two sub-models.
 
 ### TD censoring (Kaplan-Meier extension)
 
@@ -327,7 +341,7 @@ gaps as hypotheses to grade live (`grade`, `scorecard`, signal CLV), not as edge
   Each day is shown next to the final lock-in on the same games, so a day isn't flattered by its game mix.
 - Signals are also summarised by the weekday they were first seen (each signal once per day).
 - The scheduled Kalshi price check runs every day (was Mon + Thu–Sun), so early-week prices are recorded for
-  closing-line value. `scanner.schedule_note` in config.yaml is left as is (changing it would change the config hash).
+  closing-line value (`scanner.schedule_note` says so since model revision 2, when the hash changed anyway).
 
 ## Trust gate counting and the position watch
 
@@ -344,3 +358,208 @@ gaps as hypotheses to grade live (`grade`, `scorecard`, signal CLV), not as edge
   re-download the injury report every 45 minutes without forcing every game to re-simulate when nothing changed.
 - Kalshi events are fetched once per price check instead of once per game (3 requests instead of ~42).
 
+
+## "Favorites under-rated" is mostly a measurement artifact (2026-11-10)
+
+The check-up flagged margin error +6.69 in 'away favorite' games (2026 wk 6–10, n=25). Of that, the closing line
+missed by +4.52 on the same games; the sim's own part (sim − market) is +2.17 ± 0.65. Grouping games by the
+*market's* favorite conditions on a better-informed forecast, so any calibrated forecast that knows less than the
+market (less spread out: sd 4.7–6.1 vs 5.7–6.4) shows a "favorite" bias there in every season (sim − market toward
+the market favorite −1.3 to −1.9 pts, 2022–2025). The calibration test is the slope of the result, or far less noisy
+of the closing line, on the sim's predicted margin: closing line vs sim 0.90 / 0.90 / 0.97 / 0.90 / 0.87
+(2022 / 23 / 24 / 25 / 26 wk 3–10), result vs sim 0.58 / 0.87 / 1.12 / 1.12 / 1.10. Those closing-line slopes were
+flattened by the per-game tilt noise fixed in the next section; without it they are 0.98–1.08 (calibrated to slightly
+compressed). Diagnose now reports the closing line's error and the sim-vs-market part next to every margin and
+total group, adds groups picked by the sim's own forecast, and replaces "sd(sim) < 0.75 sd(market)" with the slope test.
+Margin rows of the market-picked groups (home/away favorite, spread buckets) stay in the table but are kept out of the
+"top 3": their paired sim-vs-market SE is small, so over a full season they would rank first every time although
+the gap is expected of a calibrated, less-informed forecast.
+
+Decomposition (offline, 2020–2026): the sim's predicted margin = 0.87 × EPA strength index (Σ shrunk off+def
+effects × plays) + a 2.1-pt-sd remainder. The market weights the index part 1.08 and the remainder ~0, so the strength
+signal is ~8% under-scaled while ~2 pts of non-strength variation (not w_off, k_outcome, kicking/pace/play-call
+offsets, rest/travel or weather: all tested) pads the spread. `matchup_strength` 1.1 was A/B-tested (2022–2025,
+300 sims, seed 2024): log loss −0.006 / −0.001 / +0.000 / −0.003, CRPS margin +0.02 / −0.04 / −0.04 / −0.03, all
+within 1–1.3 paired SE, favorite bias −0.3 to −0.4 pts, but the closing-line slope falls to 0.83–0.87 (more over-dispersed).
+Not adopted: the default stays 1.0 and the tuner keeps owning it. w_off and k_outcome change only play shapes,
+not the spread of margins (the additive correction re-targets the mean), so they are not compression levers.
+
+## Matchup tilt measured with 16 draws per reference situation (2026-11-10)
+
+The EPA tilt (`matchup_lambda`) is measured once per game, offense and play type from ONE draw per reference
+situation (1,500), and the result is shared by every sim of the game. Its sampling error is therefore a per-game
+error that more sims never average out: about 1.8 pts sd on the predicted margin and ~1 pt on the total. Seed-to-seed
+sd of a game's predicted margin at 300 sims: 1.95 pts → 0.88 with 16 draws (pure sim noise is 0.76), so 16 draws cut
+the per-game tilt error from 1.8 to about 0.45 pts (1.3 points of win chance); they do not remove it. This is the
+"remainder" that carried no weight with the market or results and made the sim look less compressed than it is.
+`sim.tilt_ref_draws: 16` (seed 7777, 300 sims, weeks 3–18, 2023–2025 + 2026 wk 3–10, n=824): squared distance to the
+closing margin −3.6 ± 0.5 pt², closing total −1.4 ± 0.4; CRPS margin −0.077 ± 0.043, CRPS total −0.072 ± 0.032, log loss
+−0.001 ± 0.005, total 80% coverage +1.5 pts. Closing line vs sim margin slope moves from 0.88–0.91 to 0.96–1.08.
+Runtime +10–25% at 300 sims. It is a numerical-accuracy setting, not tuned.
+
+16 is the minimum. `simulate()` uses `max(16, n_sims // 32)` draws (62 at 2,000 sims, 250 at 8,000), so the
+leftover tilt error shrinks together with the simulation noise instead of becoming the floor: measured at 2,000
+sims, the real seed-to-seed spread of a win chance was 1.6–1.7× the printed ± with 16 draws and 1.1× with 64
+(mean win chance unchanged at 16 / 64 / 256 draws; +12% runtime). Without this the scanner's re-sim with 4× the
+sims shrank the printed ± while the real error stayed put. Backtests and tuning (300 sims) keep 16.
+
+## Total interval coverage (check-up 2026-11-10: "80% total intervals cover 72%")
+
+Not a variance problem. Backtests (300 sims, seed 2024, weeks 3-18; 2026 weeks 1-10): 80% total coverage 0.775 / 0.808
+/ 0.783 / 0.779 (2023 / 24 / 25 / 26), each within 1 SE of 0.80 (SE 0.026 at 240 games, 0.053 at the check-up's ~50).
+Mean sim sd of the total 12.4-13.0 equals the closing market's residual sd (12.7-13.3); team-points coverage is 0.80 in
+every season. The misses are lopsided toward actual totals *below* the 10th percentile (2025 12.5% vs 9.2% above,
+2026 14% vs 8%) because the sim total runs high (+1.0 / +0.3 / +1.0 / +1.7; ypc +6% / +1% / +4% / +7%). With the sim's
+own spread re-centred on the market total, coverage is 0.80-0.82 in every full season. A per-game common EPA shock
+(`sim.day_shock_game`, prototyped) brought coverage to 0.86 / 0.83 in 2024 / 2025 but did not improve CRPS total
+(-0.01 / +0.09) and added +0.7 pts of total bias; ideal post-hoc widening (normal noise added to the samples) changes
+CRPS total by at most ±0.03. Diagnose now flags coverage only beyond 2 binomial SE and says which tail the misses fall in.
+
+
+## Model revision 2 (2026-11-10): what shipped, and how it was checked
+
+Four changes to what the sim predicts, shipped together as `MODEL_REV = 2` (part of the config hash, so the Scorecard
+does not pool them with earlier predictions and older cached sims are not reused):
+1. **Goal-line / red-zone team pools** (field zone 0 / 1 / 2 instead of one red-zone cell with an all-field fallback).
+2. **Matchup tilt with a quarter of the per-game noise at backtest sim counts, less at higher ones**
+   (`sim.tilt_ref_draws: 16` as the minimum, `max(16, n_sims // 32)` draws: more than 16 from 544 sims).
+3. **Kickoff rules for seasons before the first listed era** use that era (2022 and earlier were getting the 2026
+   touchback spot: +3.9 points of total bias in 2022 backtests, which is a tuning season).
+4. **Same seed, same sim**: the player model iterated an unordered `group_by`, so target/carry shares came out in a
+   different order each run and the same request with the same seed moved the home win chance by up to 12 points
+   (on top of 2.). Shares are now sorted. HOU @ CLE, 2000 sims, seed 42: two processes × two runs give the same value four times
+   (0.417 with 16 tilt draws; 0.398 with the 62 draws a 2,000-sim run uses now, weather off).
+
+Combined A/B against the previous code (same games, seed 777, 300 sims, weeks 3–18; 2026 = weeks 3–10):
+
+| | 2022 | 2023 | 2024 | 2025 | 2026 | pooled 2023–26 (paired) |
+|---|---|---|---|---|---|---|
+| RMSE sim − closing margin | 3.80 → 3.21 | 3.34 → 2.80 | 3.58 → 3.12 | 3.60 → 2.94 | 3.56 → 3.04 | sq. distance −3.57 ± 0.48 |
+| RMSE sim − closing total | 4.86 → 2.87 | 3.25 → 3.13 | 3.48 → 2.90 | 3.69 → 3.06 | 4.04 → 3.30 | sq. distance −3.24 ± 0.38 |
+| total bias (sim − actual) | +3.88 → +0.96 | +0.97 → +0.65 | +0.22 → −0.47 | +0.94 → +0.36 | +1.18 → −0.12 | |
+| log loss | 0.6386 → 0.6386 | 0.6475 → 0.6461 | 0.6344 → 0.6232 | 0.6236 → 0.6204 | 0.6381 → 0.6237 | −0.0064 ± 0.0048 |
+| CRPS margin | 6.562 → 6.606 | 7.616 → 7.690 | 7.540 → 7.419 | 7.360 → 7.236 | 6.650 → 6.488 | −0.070 ± 0.044 |
+| CRPS total | 7.954 → 7.488 | 7.726 → 7.622 | 7.173 → 7.219 | 7.450 → 7.513 | 7.514 → 7.463 | −0.005 ± 0.036 |
+| closing line ~ sim margin slope | 0.91 → 1.00 | 0.94 → 1.03 | 0.92 → 1.06 | 0.92 → 1.00 | 0.82 → 0.97 | |
+
+The distance to the closing line is the low-noise measure and it improves by 7 SE; accuracy against results is
+unchanged within noise (two 300-sim runs of one season differ by about 0.01 in log loss on luck). An independent
+replication with another seed (31337, 2024 + 2025) reproduced the closing-line distance (margin −2.9 ± 0.65 pt²,
+total −3.9 ± 0.49), the total bias and the slopes, and gave log loss +0.003 ± 0.006 where seed 777 gave −0.007 ± 0.006. The goal-line fix alone
+(same seed) gave log loss −0.012 ± 0.005; adding the tilt fix to it changed log loss by +0.006 ± 0.005 and the
+squared distance to the closing margin by −3.1 ± 0.5. Removing noise that is independent of the result cannot hurt
+in expectation, so the +0.006 is read as luck, but it is not evidence of a gain on results either. What it does
+change for certain: every win chance used to carry about 5 points of error that no number of sims removed, and
+most "edges" against Kalshi prices of that size were this noise.
+After the fix the result ~ sim margin slope is above 1 in 2024–2026 (1.38 / 1.19 / 1.28): predicted margins are, if
+anything, too timid. That is `matchup_strength` / `k_team_epa` territory and stays with the tuner (1.1 by hand gave
+mixed held-out results).
+
+Still open: designed-run yards per carry run +3–6% high in 2023 / 2025 / 2026 (now reported separately as
+`ypc_designed`, with `scramble_rate`); thin starter-QB red-zone cells shrink toward the backup-QB pool, not the league
+pool; total 80% coverage is fine (0.79–0.83), its misses come from the centre, not the width; red-zone TD% −5% in
+2024 and field-goal attempts +3–5% (see the back-off chain note).
+
+## Tuning: a gain must exceed its margin of error; old results are not offered
+
+`recommended` was `validation gain > 0`. At 300 sims the validation objective moves by about 0.01 between two runs of
+the same config, more than a typical tuning gain, so a coin-flip could promote a config. The gain is now compared
+with its paired per-game standard error on the held-out season (`paired_gain_se`) and must exceed it. A tuning result
+whose `summary.json` carries a different `model_rev` (or none) is "stale": the page explains it and `apply_tuned`
+refuses it — its settings compensate for the 2022 kickoff bias, the tilt noise and the goal-line bias.
+
+The same reasoning applies to an old-model tuning that was already promoted: its values sit in config.local.yaml and
+an update does not touch that file. `stale_tuned_in_use` finds them by value (every `best_params` value of an
+old-`model_rev` run equals the value in use) and the Weekly page says so and offers one button that puts exactly
+those keys back to the shipped values (`drop_stale_tuned`; other settings stay, backup first).
+
+Promoting writes only the tuned parameters on top of the settings in use now (it used to write the whole config as
+it was when the tune started, undoing every setting changed in the many hours since). "Applied" means the tuned
+values are the ones in use, not that the whole config hash matches, so a later unrelated settings change does not
+bring the offer back. Only the newest run can be offered or promoted: an older run's `config.tuned.yaml` is never
+promoted on the strength of a newer, not-recommended run. A tune started before an update and still running is
+flagged on the page (`model_rev` in `gui_tune.pid`).
+
+## Position watch: review round (2026-11-10)
+
+An independent review (logic, end-to-end in a browser, Windows/ops; every finding re-verified) found and this fixes:
+- sim alerts on noise (see 4. above); now also require the move to exceed `sim_move` + the two sims' combined 95%
+  margin of error, and a scan with its own sim count is not handed to the watch. The default sim count spelled out
+  is the same cache key as none.
+- nflreadpy keeps downloads in memory for 24 h per process: in an app left open, a forced refresh wrote the morning's
+  injury report over a newer file and raised a reversed alert. Its cache is switched off (`data.nfl_client`); data
+  files are written to `.partial` and swapped in, and left untouched when the content is identical.
+- a tied moneyline settles at 50¢ (Kalshi's rule), for positions and for graded signals.
+- practice-squad / cut / reserve bookkeeping was pushed as "lineup news" (85% of team-weeks have some): only QB
+  changes, injury-report changes and players the sim had in its plan are reported, in words instead of roster codes.
+- kickoff time comes from the current schedule (week 18 is all placeholders until flexed), not the time stored with
+  the position.
+- an app-initiated scan no longer runs the watch (its alert was logged but never pushed, and the reference moved).
+- the 45-minute injury-refresh stamp was overwritten by the watch's own state write (three downloads every run); it
+  has its own file. An alert is marked reported only after it was logged or pushed.
+- "Add a position": the price and contract boxes kept values from the previous contract / game (shared widget keys).
+- toast text goes through environment variables (PowerShell expanded `$2` and did not decode `\uXXXX`); ntfy is
+  published as JSON so titles keep "¢" and "—".
+- Kalshi unreachable: reported on the page and in the log, last numbers kept. The 10-minute task returns before the
+  data check when no position is open; the lost-data check streams the ledger instead of loading it (0.8 GB at 140 MB).
+- a removed position stays removed after a restore (`removed` ids in positions.json).
+
+
+## Second review round (2026-11-10): what it found in the whole bundle
+
+Model code, upgrade path, end-to-end in a browser and an independent replication (every finding re-verified):
+- **Grading a week of signals took hours.** Every ledger row re-read every saved price snapshot; with a price check
+  every 30 minutes that is ~25,000 rows × hundreds of 300 KB files (measured 0.55 s per row at 224 files). The
+  snapshots are now read once per grading run into `{(game, ticker): [(time, mid)]}` and only the files of the weeks
+  being graded are opened: 160 rows × 224 files 88 s → under 1 s, same closing prices.
+- **The price check re-simulated borderline games at 4× the sims on every run** (a CPU-minute and 1.2 GB every
+  30 minutes). The bigger sim is cached like any other and reused while the data is unchanged and it is younger than
+  `scanner.max_sim_age_hours`. The cache key also treats the default seed spelled out as the default, so the app
+  finds the sims the scheduled check made.
+- **Position watch.** A number made with another model or other settings (after an update, a promoted tuning or a
+  settings change) is not "the latest data": the alert says the settings or model changed, and the new number
+  becomes the reference either way (`ref_hash`). A player on a reserve list who shows up on the injury report (the
+  return window; about five a week league-wide) is "now on the injury report (was off the active roster at the last
+  check)", not "back on the active roster", and roster statuses are stated as statuses ("is on a reserve list"), not
+  as moves. A "could not be read" report from a full check survives the 10-minute task for games that task skips and
+  is shown only for games still held. "Check now" says so when a scheduled check is running or when the alerts could
+  not be saved (alerts.csv open in Excel) instead of "nothing new". Alert text is shown as plain text (two "$" in one
+  alert were rendered as a formula). When Kalshi answers but nobody bids for your side, the selling price is blank,
+  not the last one seen. The state files are written with the same short retry as the data files. A lineup snapshot
+  saved by the first watch version (no roster flags) is compared for the QB only.
+- **Check-up.** A residual group is listed under "most likely wrong" only when the sim's own part (after the closing
+  line's miss on the same games) is beyond 2 SE. Components are scored on the rows that have them, so old and new
+  backtests can be mixed.
+- **Scorecard.** Config versions are listed in the order they were first used.
+- **Update steps.** Scheduled jobs are not changed by an update; GETTING_STARTED now says to run Schedule GridSim
+  again after one.
+Not changed: the trust table still counts graded signals of earlier model versions (few so far; they age out of
+relevance as new ones are graded).
+
+
+## Third review round (2026-11-10): check of the second round's fixes
+
+Four lenses (watch, tuning, grading/scan, tilt), each finding re-verified. Confirmed: 300-sim results are
+bit-identical to before the tilt scaling (16 draws up to 543 sims), the run-to-run spread at 2,000 sims is 1.15× the
+printed ± (was 1.57×), grading old vs new gives byte-identical graded files, the re-sim reuse and the watch fixes do
+what the section above says. Fixed from it:
+- **Tuning by value vs the Settings page.** Four tuned settings ship as whole numbers (`k_outcome`, `k_team_epa`,
+  `k_team_4th`, `k_kicker`); the Settings form showed a tuned 63.67 as 63 and wrote it back as a "change" on every
+  save, so the by-value checks stopped recognising a tuning the first time anything was saved there. The form now
+  shows such a value as it is and leaves it alone, and `_in_use` accepts the whole-number form already written to
+  existing settings files. A tuned key the shipped config no longer has is handled (reset = removed; promote refuses).
+- `gridsim tune --train … --apply` promotes on top of the settings as they are when the run ends.
+- A finished tune whose process number Windows has handed to another program is no longer shown as running (the log's
+  last line and the program name are checked; the pid file is removed once the run is definitely over — a process
+  check that gives no answer changes nothing).
+- **Watch wording.** Your own lineup change on the Game page (out, force in, starting QB) is reported as that, at
+  normal priority, not as injury news. Lineup news in the same check as a settings/model change says that the difference is not only the news. The
+  sim alert after such a change says "settings or model changed … the difference may come from that" (any setting
+  outside backups / PC resources / the watch gives a new code, also ones the sim does not read).
+- **Check-up.** The 2-SE own-part rule now also covers total-error groups (was margin groups only).
+- **Price check.** The questionable-QB variants (QB out / QB in) are cached like the bigger sim.
+- Scorecard caption and two stale numbers in this file corrected.
+Not changed: opening `/positions` directly in a browser tab before the Home page has loaded once after a restart
+shows an unstyled page until Home is opened (Streamlit serves `app/pages` on its own; moving the folder would leave
+the old one behind on an update-in-place install). A settings change the sim does not read still resets the watch's
+reference number.

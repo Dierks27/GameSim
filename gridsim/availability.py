@@ -24,7 +24,7 @@ import polars as pl
 import yaml
 
 from .config import Config
-from .data import _cache_dir, _is_stale, current_season
+from .data import _cache_dir, _is_stale, _short, current_season, nfl_client, write_parquet_atomic
 
 SOURCES = {
     "rosters_weekly": ("load_rosters_weekly", "weekly_rosters"),
@@ -33,22 +33,23 @@ SOURCES = {
 }
 
 
-def _load_source(name: str, season: int, cfg: Config, force: bool = False, verbose: bool = False) -> pl.DataFrame:
-    import nflreadpy as nfl
-
+def _load_source(name: str, season: int, cfg: Config, force: bool = False, verbose: bool = False,
+                 quiet: bool = False) -> pl.DataFrame:
     path = _cache_dir(cfg) / f"{name}_{season}.parquet"
     if force or _is_stale(path, season, cfg):
         if verbose:
             print(f"  downloading {name} {season} ...", flush=True)
         try:
-            df = getattr(nfl, SOURCES[name][0])([season])
-            df.write_parquet(path)
+            df = getattr(nfl_client(), SOURCES[name][0])([season])
+            write_parquet_atomic(df, path)
             return df
         except Exception as exc:
             if path.exists():
-                print(f"  warning: {name} refresh failed ({exc}); using cached copy")
+                if not quiet:
+                    print(f"  warning: {name} refresh failed ({_short(exc)}); using cached copy")
             else:
-                print(f"  warning: {name} unavailable ({exc})")
+                if not quiet:
+                    print(f"  warning: {name} unavailable ({_short(exc)})")
                 return pl.DataFrame()
     return pl.read_parquet(path)
 

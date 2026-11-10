@@ -51,11 +51,22 @@ class SimModel:
     score_effects: dict = field(default_factory=dict)
 
 
-def kickoff_era_seasons(season: int, cfg: Config, available: list[int]) -> list[int]:
+def kickoff_era(season: int, cfg: Config) -> str:
+    """Rules era of a season's kickoffs. Seasons before the first listed one use that first era (the old rules:
+    backtests and tuning on 2022 and earlier must not get the newest touchback spot); seasons after the last listed
+    one use `default_era`."""
     kr = cfg.kickoff_rules
     eras = {int(k): v for k, v in kr["eras"].items()}
-    era = eras.get(season, kr["default_era"])
-    return [s for s in available if eras.get(s, kr["default_era"]) == era and s <= season]
+    if season in eras:
+        return eras[season]
+    if eras and season < min(eras):
+        return eras[min(eras)]
+    return kr["default_era"]
+
+
+def kickoff_era_seasons(season: int, cfg: Config, available: list[int]) -> list[int]:
+    era = kickoff_era(season, cfg)
+    return [s for s in available if kickoff_era(s, cfg) == era and s <= season]
 
 
 def seasons_needed(season: int, cfg: Config) -> list[int]:
@@ -199,8 +210,7 @@ def build_model(cfg: Config, season: int, through_week: int | None = None, plays
         if prev:
             era = era + [max(prev)]
             ko_win = D.window_filter(plays, season, through_week, era).with_columns(w=pl.lit(1.0))
-    eras = {int(k): v for k, v in cfg.kickoff_rules["eras"].items()}
-    kicking = build_kicking(window, fg_win, ko_win, cfg, window, fg_win, era=eras.get(season, cfg.kickoff_rules["default_era"]))
+    kicking = build_kicking(window, fg_win, ko_win, cfg, window, fg_win, era=kickoff_era(season, cfg))
 
     # default starter per team: QB with the most dropbacks in the team's latest game in the window
     last = (window.filter(pl.col("qb_id").is_not_null() & (pl.col("call") == "pass"))

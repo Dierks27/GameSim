@@ -89,6 +89,7 @@ def add_bucket_columns(df: pl.DataFrame) -> pl.DataFrame:
         downgrp2=pl.when(pl.col("down") >= 3).then(1).otherwise(0).cast(pl.Int8),
         distgrp3=pl.when(pl.col("dist_b") >= 2).then(2).otherwise(pl.col("dist_b")).cast(pl.Int8),
         rz=(pl.col("yardline_100") <= 20).cast(pl.Int8),
+        fz=pl.when(pl.col("yardline_100") <= 5).then(2).when(pl.col("yardline_100") <= 20).then(1).otherwise(0).cast(pl.Int8),
     )
 
 
@@ -101,12 +102,20 @@ LEAGUE_LEVELS = [
     ("dist_b", "zone_b"),
     ("zone_b",),
 ]
+# Team pools keep the spec's red-zone / goal-to-go zones at every level and never fall back to all-field rows:
+# a midfield or 20-yard-line row applied at the 3 turns any 3+ yard gain into a TD (see DECISIONS.md,
+# "Team pools keep the goal-to-go split"). A thin team cell is shrunk toward the zone-specific league pool
+# by n/(n + k_outcome) instead.
 TEAM_LEVELS = [
-    ("downgrp3", "distgrp3", "rz"),
-    ("downgrp2", "rz"),
-    ("rz",),
-    (),
+    ("downgrp3", "distgrp3", "fz"),
+    ("downgrp2", "fz"),
+    ("fz",),
 ]
+
+
+def fz_b(yl: int) -> int:
+    """Field zone for team pools: 0 outside the red zone, 1 red zone 20-6, 2 goal-to-go 5-1."""
+    return 2 if yl <= 5 else (1 if yl <= 20 else 0)
 
 
 def situation_values(down: int, togo: int, yl: int, tb: int) -> dict[str, int]:
@@ -114,5 +123,5 @@ def situation_values(down: int, togo: int, yl: int, tb: int) -> dict[str, int]:
     return {
         "down": down, "dist_b": db, "zone_b": zone_b(yl), "time_b": tb,
         "downgrp2": 1 if down >= 3 else 0, "downgrp3": 3 if down >= 3 else down,
-        "distgrp3": 2 if db >= 2 else db, "rz": 1 if yl <= 20 else 0,
+        "distgrp3": 2 if db >= 2 else db, "rz": 1 if yl <= 20 else 0, "fz": fz_b(yl),
     }

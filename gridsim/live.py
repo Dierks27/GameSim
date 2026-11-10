@@ -273,8 +273,11 @@ def scorecard(cfg: Config, season: int | None = None) -> dict:
     if season:
         df = df.filter(pl.col("season") == season)
     block = _block
-    return {"overall": block(df), "by_config": {h: block(df.filter(pl.col("config_hash") == h))
-                                                 for h in df["config_hash"].unique().to_list()},
+    # settings versions in the order they were first used (oldest first), not in a random order
+    order = (df.group_by("config_hash").agg(pl.col("created_utc").cast(pl.Utf8).min().alias("first"))
+             .sort(["first", "config_hash"])["config_hash"].to_list()) if "created_utc" in df.columns \
+        else sorted(df["config_hash"].unique().to_list())
+    return {"overall": block(df), "by_config": {h: block(df.filter(pl.col("config_hash") == h)) for h in order},
             "by_week": {int(w): block(df.filter(pl.col("week") == w)) for w in sorted(df["week"].unique().to_list())}}
 
 

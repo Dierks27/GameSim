@@ -22,11 +22,14 @@ cfg = common.cfg()
 ROOT = common.ROOT
 
 
-def _alive(pid: int) -> bool:
-    """Is the background tuning process still running?"""
+def _alive(pid: int) -> bool | None:
+    """Is the background tuning process still running? None = the check itself gave no answer."""
     if sys.platform == "win32":
-        out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True).stdout
-        return str(pid) in out
+        r = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True)
+        out = r.stdout or ""
+        if r.returncode != 0 or not (out + (r.stderr or "")).strip():
+            return None
+        return str(pid) in out and "python" in out.lower()     # Windows hands a finished process's number on
     import os
     try:
         os.kill(pid, 0)
@@ -171,12 +174,43 @@ with st.container(border=True):
                "changes your settings by itself: you decide below whether to use the result.")
     log_path = cfg.resolve_path("tuning") / "gui_tune.log"
     pid_path = cfg.resolve_path("tuning") / "gui_tune.pid"
-    running = False
+    from gridsim.config import MODEL_REV
+    from gridsim.tune import apply_tuned, drop_stale_tuned, stale_tuned_in_use, tuned_status
+    running, over, run_rev = False, False, MODEL_REV
     if pid_path.exists():
         try:
-            running = _alive(int(json.loads(pid_path.read_text())["pid"]))
+            pid_info = json.loads(pid_path.read_text())
+            # finished when the process is gone or the log has its last line (the number may be in use again)
+            done = log_path.exists() and "tuning output:" in log_path.read_text(encoding="utf-8", errors="ignore")
+            alive = None if done else _alive(int(pid_info["pid"]))
+            running = alive is True
+            over = done or alive is False       # only a definite answer ends the run for good
+            run_rev = int(pid_info.get("model_rev", 1))
         except Exception:
-            running = False
+            running = over = False
+        if over:
+            try:
+                pid_path.unlink()
+            except OSError:
+                pass
+    if st.session_state.get("wk_tune_msg"):
+        st.success(st.session_state.pop("wk_tune_msg"))
+    old_keys = stale_tuned_in_use(cfg)
+    if old_keys:
+        st.warning(f"You are still using tuned settings ({len(old_keys)} values) that were found with an older "
+                   "version of GridSim's model. They were chosen to make up for things that have since been fixed, "
+                   "so they no longer fit. Go back to the standard values for these (your other settings stay) "
+                   "before you tune again.", icon=":material/history:")
+        if st.button("Go back to the standard settings", key="wk_untune", type="primary"):
+            b = drop_stale_tuned(cfg)
+            st.cache_data.clear()
+            st.session_state["wk_tune_msg"] = (f"Done: the standard values are back. Your previous settings were "
+                                               f"backed up to {b.name}.")
+            st.rerun()
+    if running and run_rev != MODEL_REV:
+        st.warning("The tune that is running was started before the last update, so it is searching the old model "
+                   "and its result will not be offered. To stop it, restart the PC (nothing is harmed); then start "
+                   "the tune again.", icon=":material/history:")
     c1, c2 = st.columns(2)
     trials = c1.number_input("Trials", 10, 300, int(cfg.tune["trials"]), step=10, key="wk_trials",
                              help="More trials = better search, longer run (about 3-6 minutes each).")
@@ -193,7 +227,7 @@ with st.container(border=True):
               else {"start_new_session": True})
         p = subprocess.Popen(cmd, cwd=str(ROOT), stdout=fh, stderr=subprocess.STDOUT, **kw)
         pid_path.write_text(json.dumps({"pid": p.pid, "started": dt.datetime.now().isoformat(timespec="minutes"),
-                                        "cmd": " ".join(cmd)}))
+                                        "cmd": " ".join(cmd), "model_rev": MODEL_REV}))
         st.success("Tuning started. You can close this page; come back later and press Refresh status.")
         running = True
     if log_path.exists():
@@ -204,16 +238,29 @@ with st.container(border=True):
         if "Recommended:" in txt:
             tail = txt[txt.find("Train ["):] if "Train [" in txt else txt[-2000:]
             st.code(tail, language=None)
-        tuned = cfg.resolve_path("config.tuned.yaml")
-        if "Recommended: yes" in txt and tuned.exists():
-            common.callout("The tuned settings did better on the held-out season. Use them?", tone="good")
+        state = tuned_status(cfg) if not running else "none"
+        if state == "stale" and not old_keys:
+            st.warning("This tuning result was found with an older version of GridSim's model. Its settings make up "
+                       "for things that have since been fixed, so it is not offered. Start the tune again (once is "
+                       "enough): the new run searches and tests the current model.", icon=":material/history:")
+        elif state == "applied":
+            st.success("You are using these tuned settings.")
+        elif state == "fresh":
+            common.callout("The tuned settings did better on the held-out season, by more than the margin of error. "
+                           "Use them?", tone="good")
             if st.button("Use the tuned settings", type="primary", key="wk_apply"):
-                from gridsim.tune import apply_tuned
-                b = apply_tuned(cfg)
-                st.cache_data.clear()
-                st.success(f"Done. Your previous settings were backed up to {b.name}.")
-        elif "Recommended: no" in txt:
-            st.info("The tuned settings did not beat your current ones on the held-out season, so nothing changes.")
+                try:
+                    b = apply_tuned(cfg)
+                except (RuntimeError, FileNotFoundError) as e:
+                    st.error(f"Not changed — {e}")
+                else:
+                    st.cache_data.clear()
+                    st.session_state["wk_tune_msg"] = (f"Done: you are now using the tuned settings (only the tuned "
+                                                       f"values changed). Your previous settings were backed up to {b.name}.")
+                    st.rerun()
+        elif "Recommended: no" in txt and not running:
+            st.info("The tuned settings did not clearly beat your current ones on the held-out season (a gain smaller "
+                    "than the margin of error doesn't count), so nothing changes.")
 
 st.caption("Prefer it automatic? Double-click \"Schedule GridSim\" in the GridSim folder once and press A: every "
            "Tuesday 9:00 it refreshes the data, grades last week, runs the check-up and locks in the next week; every "

@@ -97,7 +97,7 @@ positive live record (≥ 50 graded games — one per market type per game — w
 
 ## Scheduling on Windows (Task Scheduler)
 
-Easiest: double-click **`Schedule GridSim.bat`** and press **A** (press **R** to remove). It creates three tasks
+Easiest: double-click **`Schedule GridSim.bat`** and press **A** (press **R** to remove). It creates four tasks
 that run windowless with `.venv\Scripts\pythonw.exe` while you are signed in, catch up a run missed while the PC
 was off or asleep, and append their output to `logs\scheduled.log` in the data folder:
 
@@ -124,11 +124,18 @@ sim is older than `scanner.max_sim_age_hours`; otherwise it re-prices against th
 
 `positions/positions.json` in the data folder holds contracts YOU say you hold (entered on the **My positions** page:
 contract, side, price paid, how many). GridSim never trades and never touches an exchange account. At every price
-check (`scan`, `watch`, or *Check now*) each open position is compared with the last look and an alert is raised —
-logged to `positions/alerts.csv`, pushed via ntfy / Discord / toast — when Kalshi's price for your side moved
-≥ `watch.price_jump` (6¢), a listed QB/RB/WR/TE/K changed status or the expected starting QB changed (the injury
-report is re-downloaded every `watch.injury_refresh_minutes` while positions are open), GridSim's chance moved
-≥ `watch.sim_move` (5 pts), or the game is final (won/lost, P&L after fees). Alerts state facts only.
+check (the scheduled `scan --notify`, `watch`, or *Check now*; a scan started in the app does not, so it cannot use
+up an alert without sending it) each open position is compared with the last look and an alert is raised — logged to
+`positions/alerts.csv`, pushed via ntfy / Discord / toast — when:
+- Kalshi's price for your side moved ≥ `watch.price_jump` (6¢) since the last alert;
+- the expected starting QB changed, a QB/RB/WR/TE/K on the injury report changed status, or a player the sim expected
+  to touch the ball (≥ 2 passes + carries + targets a game) went to a reserve list / came back (the injury report is
+  re-downloaded every `watch.injury_refresh_minutes` while positions are open; practice-squad and other roster
+  bookkeeping is ignored);
+- GridSim re-simulated and its chance moved ≥ `watch.sim_move` (5 pts) beyond the two sims' combined margin of error;
+- the game is final (won / lost, a tied moneyline pays 50¢, P&L after fees).
+Alerts state facts only. An alert is marked as reported only once it was written to the log or pushed; kickoff times
+follow the current schedule; when Kalshi cannot be read the last numbers are kept and the problem is shown.
 
 ```powershell
 gridsim watch --notify          # check all open positions now

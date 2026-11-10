@@ -44,13 +44,13 @@ def _usage(plays: pl.DataFrame, team: str, n_games: int) -> tuple[dict, dict, di
     def shares(frame, col):
         per_game = frame.group_by("game_id").agg(pl.len().alias("team_n"))
         pg = frame.group_by([col, "game_id"]).agg(pl.len().alias("n")).join(per_game, on="game_id")
-        agg = pg.group_by(col).agg(pl.col("n").sum(), pl.col("team_n").sum())
+        agg = pg.group_by(col).agg(pl.col("n").sum(), pl.col("team_n").sum()).sort(col)   # fixed order: same seed, same sim
         return {k: n / max(tn, 1) for k, n, tn in agg.iter_rows()}
     tshare = shares(tg, "receiver_player_id")
     cshare = shares(ca, "rusher_player_id")
     gp = {}
     for col, frame in (("receiver_player_id", tg), ("rusher_player_id", ca)):
-        for pid, n in frame.group_by(col).agg(pl.col("game_id").n_unique()).iter_rows():
+        for pid, n in frame.group_by(col).agg(pl.col("game_id").n_unique()).sort(col).iter_rows():
             gp[pid] = max(gp.get(pid, 0), n)
     return tshare, cshare, gp, len(games)
 
@@ -65,7 +65,7 @@ def _efficiency(plays: pl.DataFrame, k: float) -> tuple[dict, dict]:
     out = []
     for frame, col in ((tg, "receiver_player_id"), (ca, "rusher_player_id")):
         lg = float((frame["y"] * frame["w"]).sum() / max(frame["w"].sum(), 1e-9))
-        agg = frame.group_by(col).agg((pl.col("y") * pl.col("w")).sum().alias("s"), pl.col("w").sum().alias("n"))
+        agg = frame.group_by(col).agg((pl.col("y") * pl.col("w")).sum().alias("s"), pl.col("w").sum().alias("n")).sort(col)
         out.append({pid: (s / n / lg * n + k) / (n + k) if n > 0 and lg > 0 else 1.0 for pid, s, n in agg.iter_rows()})
     return out[0], out[1]
 
@@ -84,7 +84,9 @@ class TeamPlayers:
             return hit
         res = []
         for share, eff in ((self.tshare, self.eff_t), (self.cshare, self.eff_c)):
-            items = [(p, s) for p, s in share.items() if p not in out and s > 0]
+            # sorted: the order decides which random number picks which player, so it must not depend on how the
+            # shares were built (an unordered group_by made the same seed give a different sim every run)
+            items = sorted((p, s) for p, s in share.items() if p not in out and s > 0)
             tot = sum(s for _, s in items) or 1.0
             ids = [p for p, _ in items]
             probs = [s / tot for _, s in items]

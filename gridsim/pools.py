@@ -164,7 +164,7 @@ def build_outcome_pools(df: pl.DataFrame, teams: list[str], hfa_tilt: float, bac
 
     for call in ("pass", "run"):
         sub_c = df.filter(pl.col("call") == call).select(
-            ["rid", "posteam", "defteam", "down", "dist_b", "zone_b", "time_b", "downgrp2", "downgrp3", "distgrp3", "rz"])
+            ["rid", "posteam", "defteam", "down", "dist_b", "zone_b", "time_b", "downgrp2", "downgrp3", "distgrp3", "rz", "fz"])
         for li, cols in enumerate(B.LEAGUE_LEVELS):
             add_groups(("L", call, li), sub_c, cols)
         for side, tcol in (("off", "posteam"), ("def", "defteam")):
@@ -177,7 +177,7 @@ def build_outcome_pools(df: pl.DataFrame, teams: list[str], hfa_tilt: float, bac
 
     # QB pools (offense dropbacks by passer) + a league pool of low-sample / backup QBs
     drop = df.filter((pl.col("call") == "pass") & pl.col("qb_id").is_not_null()).select(
-        ["rid", "qb_id", "down", "dist_b", "zone_b", "time_b", "downgrp2", "downgrp3", "distgrp3", "rz", "w"])
+        ["rid", "qb_id", "down", "dist_b", "zone_b", "time_b", "downgrp2", "downgrp3", "distgrp3", "rz", "fz", "w"])
     qb_n = drop.group_by("qb_id").agg(pl.col("w").sum().alias("n"))
     qb_tot = {r["qb_id"]: r["n"] for r in qb_n.iter_rows(named=True)}
     for qb in sorted(qb_tot):
@@ -271,7 +271,7 @@ def resolve(pools: OutcomePools, call: str, side: str, team: str, down: int, tog
     sv = {
         "down": down, "dist_b": togo_b, "zone_b": zone, "time_b": tb,
         "downgrp2": 1 if down >= 3 else 0, "downgrp3": 3 if down >= 3 else down,
-        "distgrp3": 2 if togo_b >= 2 else togo_b, "rz": 1 if zone >= 3 else 0,
+        "distgrp3": 2 if togo_b >= 2 else togo_b, "rz": 1 if zone >= 3 else 0, "fz": max(zone - 2, 0),
     }
     tseg, tw = None, 0.0
     for li, cols in enumerate(B.TEAM_LEVELS):
@@ -305,7 +305,7 @@ def resolve_qb(pools: OutcomePools, qb: str, down: int, togo_b: int, zone: int, 
     if hit is not None:
         return hit
     sv = {"downgrp2": 1 if down >= 3 else 0, "downgrp3": 3 if down >= 3 else down,
-          "distgrp3": 2 if togo_b >= 2 else togo_b, "rz": 1 if zone >= 3 else 0}
+          "distgrp3": 2 if togo_b >= 2 else togo_b, "rz": 1 if zone >= 3 else 0, "fz": max(zone - 2, 0)}
 
     def pick(name):
         for li, cols in enumerate(B.TEAM_LEVELS):

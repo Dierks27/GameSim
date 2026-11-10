@@ -60,7 +60,7 @@ def cmd_tune(args) -> int:
     cfg = load_config(args.config)
     if args.apply and not args.train:
         b = apply_tuned(cfg)
-        print(f"config.tuned.yaml promoted to config.yaml (backup: {b}); logged in tuning/history.csv")
+        print(f"tuned values written to your settings, config.local.yaml (backup: {b}); logged in tuning/history.csv")
         return 0
     out = run_tune(cfg, _seasons(args.train), int(args.validate), args.trials, sims=args.sims, workers=args.workers,
                    sampling_only=args.sampling_only)
@@ -68,7 +68,7 @@ def cmd_tune(args) -> int:
     if args.apply:
         summ = json.loads((out / "summary.json").read_text())
         if summ["recommended"]:
-            b = apply_tuned(cfg)
+            b = apply_tuned(load_config(args.config))       # the settings as they are now, not as at the start
             print(f"promoted (backup: {b})")
         else:
             print("not promoted: validation did not improve")
@@ -209,9 +209,13 @@ def cmd_watch(args) -> int:
 
     from .config import load_config
     from .positions import watch
-    alerts = watch(load_config(args.config), notify_on=args.notify, near_only=args.near, verbose=False)
+    from . import positions as _pos
+    cfg = load_config(args.config)
+    alerts = watch(cfg, notify_on=args.notify, near_only=args.near, verbose=False)
     for a in alerts:
         print(f"{dt.datetime.now():%Y-%m-%d %H:%M} watch [{a['kind']}] {a['title']} — {a['message']}")
+    for pr in _pos.LAST_PROBLEMS.values():              # a watch that could not see must not look healthy
+        print(f"{dt.datetime.now():%Y-%m-%d %H:%M} watch: {pr['matchup']}: {pr['what']}")
     return 0
 
 

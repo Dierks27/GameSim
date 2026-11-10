@@ -120,9 +120,19 @@ def build_hash(raw: dict[str, Any]) -> str:
 HASH_EXCLUDE = {"backup", "resources", "watch"}
 
 
+# Raised whenever the simulation code itself changes what it predicts (a fix to the model, not a setting). It is part
+# of the config hash, so the Scorecard never pools predictions made by different versions of the model, sims cached by
+# older code are not reused, and a tuning result found with an older model is not offered.
+#   2 (Nov 2026): goal-line / red-zone team pools, matchup tilt measured without per-game noise, kickoff rules for
+#                 seasons before 2023, players picked in a fixed order (same seed -> same sim).
+MODEL_REV = 2
+
+
 def config_hash(raw: dict[str, Any]) -> str:
     raw = {k: v for k, v in raw.items() if k not in HASH_EXCLUDE}
     blob = json.dumps(raw, sort_keys=True, default=str).encode()
+    if MODEL_REV > 1:
+        blob += f"|model_rev={MODEL_REV}".encode()
     return hashlib.sha1(blob).hexdigest()[:10]
 
 

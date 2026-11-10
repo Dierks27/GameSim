@@ -130,9 +130,28 @@ def _log_when_windowless() -> None:
     from .config import data_dir
     (data_dir() / "logs").mkdir(parents=True, exist_ok=True)
     fh = open(data_dir() / "logs" / "scheduled.log", "a", encoding="utf-8", buffering=1)
+    head = f"\n=== {dt.datetime.now():%Y-%m-%d %H:%M} gridsim {' '.join(sys.argv[1:])}\n"
+    if "watch" in sys.argv[1:2]:
+        # the 10-minute position watch stays silent unless something happened; the first thing it does write gets
+        # the usual header in front, so every line in the log can be traced to a task and a time
+        fh = _HeaderOnFirstWrite(fh, head)
+    else:
+        fh.write(head)
     sys.stdout = sys.stderr = fh
-    if "watch" not in sys.argv[1:2]:      # (the 10-minute position watch only writes when something happened)
-        print(f"\n=== {dt.datetime.now():%Y-%m-%d %H:%M} gridsim {' '.join(sys.argv[1:])}")
+
+
+class _HeaderOnFirstWrite:
+    def __init__(self, fh, head: str):
+        self._fh, self._head = fh, head
+
+    def write(self, text):
+        if text and self._head:
+            self._fh.write(self._head)
+            self._head = ""
+        return self._fh.write(text)
+
+    def __getattr__(self, name):
+        return getattr(self._fh, name)
 
 
 def _startup_checks(quiet: bool = False) -> None:
@@ -158,9 +177,26 @@ def _startup_checks(quiet: bool = False) -> None:
         print(f"(data folder check skipped: {e})", file=sys.stderr)
 
 
+def _has_open_positions(args) -> bool:
+    try:
+        import json
+
+        from .config import load_config
+        p = load_config(getattr(args, "config", None)).resolve_path("positions") / "positions.json"
+        if not p.exists():
+            # (older versions kept data in the program folder: let the normal start-up move it over first)
+            from .config import REPO_ROOT
+            return (REPO_ROOT / "positions" / "positions.json").exists()
+        return any(x.get("status") == "open" for x in json.loads(p.read_text(encoding="utf-8")).get("positions", []))
+    except Exception:
+        return True         # unsure: take the normal path
+
+
 def main(argv: list[str] | None = None) -> int:
     _log_when_windowless()
     args = build_parser().parse_args(argv)
+    if args.cmd == "watch" and not _has_open_positions(args):
+        return 0            # runs every 10 minutes: nothing to watch means nothing to do (not even the data check)
     _startup_checks(quiet=args.cmd in ("restore", "import", "watch"))
     try:
         return int(args.func(args) or 0)
