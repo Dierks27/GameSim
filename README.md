@@ -113,7 +113,7 @@ Optional extras you can add by hand (Task Scheduler → *Create Basic Task* → 
 | When | Arguments | What it does |
 |---|---|---|
 | ~60 min before each kickoff window (Thu 19:15, Sun 12:00 / 15:05 / 19:20, Mon 19:15) | `snapshot-markets` | extra closing-price snapshots |
-| Every few weeks, overnight | `weekly --tune` | adds a tuning run (hours) |
+| Once a season (after it ends), overnight | `tune --train <y-4>-<y-2> --validate <y-1>` | tuning run (hours); it uses completed seasons only, so repeating it mid-season mostly repeats the same search |
 
 `scan` re-sims only when inputs changed (the cache key includes the config, the two teams' lineup overrides and the
 version of the downloaded data) or the

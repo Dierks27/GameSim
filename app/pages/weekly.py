@@ -1,7 +1,7 @@
 """Weekly routine: the whole week's to-do list as buttons (no console needed).
 
 1 Refresh data  ->  2 Lock in this week's predictions  ->  3 Grade last week  ->  4 Check what's off (diagnose)
--> 5 (every few weeks) self-tune in the background.  Same library calls as `gridsim weekly` / the CLI.
+-> 5 (once a season) self-tune in the background.  Same library calls as `gridsim weekly` / the CLI.
 """
 from __future__ import annotations
 
@@ -158,8 +158,10 @@ with st.container(border=True):
 
 # ---- 5. tune ----------------------------------------------------------------------------------
 with st.container(border=True):
-    st.markdown("#### 5 · Self-tune (every few weeks, optional)")
-    st.caption("Searches the model's settings on past seasons and tests the winner on a season it never saw. "
+    st.markdown("#### 5 · Self-tune (once a season, optional)")
+    st.caption(f"Searches the model's settings on the {season - 4}–{season - 2} seasons and tests the winner on "
+               f"{season - 1}, a season it never saw. It does not use this season's games, so running it again later "
+               "in the season mostly repeats the same search: once now and once after the season ends is enough. "
                "At 150 trials it runs for many hours in the background, at low priority, leaving "
                f"{(common.cfg().raw.get('resources') or {}).get('free_cores', 2)} processor cores free and keeping the "
                f"whole PC under {100 * float((common.cfg().raw.get('resources') or {}).get('max_ram_fraction', 0.8)):.0f}% "
