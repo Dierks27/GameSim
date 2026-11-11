@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gridsim"
-version = "0.1.0"
+version = "2026.11.11"
 description = "NFL single-game Monte Carlo simulator built on resampled nflverse play-by-play"
 requires-python = ">=3.11"
 dependencies = [

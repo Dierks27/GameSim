@@ -232,6 +232,10 @@ watchlist in GridSim but no phone alerts.
   **Extract All…** → type exactly the same place as the first time (**`C:\GridSim`** — not the GameSim-… folder
   inside it) → **Extract** → choose **Replace the files in the destination**. Then double-click **Setup GridSim** once.
 
+**Which version do I have?** Look at the bottom of the left-hand menu in GridSim: *GridSim version 2026.11.11 · …*
+The version is the date the update was released, so after an update it shows a newer date. The same line is the
+first thing in the black Start GridSim window.
+
 Your locked-in predictions, lineup changes, Kalshi records, tuning history and setting changes live in your data
 folder, so an update never touches them — even a completely fresh install in a new place finds them again
 automatically.

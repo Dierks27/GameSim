@@ -248,3 +248,16 @@ def test_config_rewrite_keeps_crlf_and_rejects_bad_edits(tmp_path):
         with pytest.raises(ValueError):
             helpers.rewrite_config(text, bad)
     assert helpers.rewrite_config(text, {}) == text
+
+
+def test_the_version_is_a_release_date_and_the_same_everywhere():
+    import datetime as dt
+    import re
+
+    import gridsim
+    y, m, d = (int(x) for x in gridsim.__version__.split("."))
+    dt.date(y, m, d)                                               # a real date
+    toml = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert re.search(r'^version = "(.+)"$', toml, re.M).group(1) == gridsim.__version__
+    assert "gridsim.__version__" in (APP / "streamlit_app.py").read_text(encoding="utf-8")
+    assert "gridsim.__version__" in (ROOT / "Start GridSim.bat").read_text(encoding="utf-8")

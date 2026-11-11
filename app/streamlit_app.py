@@ -102,7 +102,12 @@ def sidebar() -> None:
                             on_change=_sync, args=("seed",))
     st.sidebar.toggle("Player projections", key=_persist("players", True), on_change=_sync, args=("players",),
                       help="Same as leaving out --no-players on the CLI. Off is faster.")
-    st.sidebar.caption(f"config {c.hash}")
+    import gridsim
+    from gridsim.config import MODEL_REV
+    st.sidebar.caption(f"GridSim version {gridsim.__version__} · model {MODEL_REV} · settings {c.hash}",
+                       help="Version: the date this copy of GridSim was released — it changes with every update. "
+                            "Model: counts up when an update changes how games are simulated. Settings: a code for "
+                            "your current settings; the Scorecard lists its results under it.")
 
 
 pages = {

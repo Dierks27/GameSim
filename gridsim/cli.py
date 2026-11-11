@@ -75,6 +75,8 @@ def cmd_sanity(args) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="gridsim", description="NFL single-game Monte Carlo simulator")
+    from . import __version__
+    p.add_argument("--version", action="version", version=f"gridsim {__version__}")
     p.add_argument("--config", default=None, help="path to config.yaml")
     sub = p.add_subparsers(dest="cmd", required=True)
 

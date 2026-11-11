@@ -27,6 +27,7 @@ if not errorlevel 1 (
 )
 
 echo.
+"%VPY%" -c "import gridsim; print('  GridSim version ' + gridsim.__version__)"
 echo  Starting GridSim ... your browser will open in a few seconds.
 echo  Leave this window open while you use GridSim; close it to stop.
 echo  For your phone (same Wi-Fi): use the "Network URL" line shown below.
