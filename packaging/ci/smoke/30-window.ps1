@@ -104,7 +104,8 @@ Invoke-Test -Id '07' -Name 'Closing the window the way a user does stops everyth
         }
         Note "window '$($owner.MainWindowTitle)' owned by $($owner.ProcessName) (pid $($owner.Id)); the launcher is pid $($launcher.Id)"
         Expect ($owner.Id -eq $launcher.Id) 'the window to belong to the launcher itself (pywebview), so the taskbar shows GridSim' "it belongs to $($owner.ProcessName)"
-        Start-Sleep -Seconds 3
+        Start-Sleep -Seconds 12
+        Save-Screenshot -Name 'window-test07.png'
 
         $asked = $owner.CloseMainWindow()
         Expect $asked 'the window to accept a normal close request' 'CloseMainWindow() returned false'

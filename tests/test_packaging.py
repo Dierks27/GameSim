@@ -392,7 +392,7 @@ def test_the_workflow_is_thin_and_only_runs_the_scripts():
     assert job["runs-on"] == "windows-2025" and job["defaults"]["run"]["shell"] == "pwsh"
     runs = [s["run"] for s in job["steps"] if "run" in s]
     assert runs == ["./packaging/ci/probe.ps1", "./packaging/ci/build.ps1", "./packaging/ci/smoke.ps1",
-                    "./packaging/ci/release.ps1"]
+                    "./packaging/ci/unit.ps1", "./packaging/ci/release.ps1"]
     for r in runs:
         assert (ROOT / r[2:]).exists(), r
     steps = {s.get("name", s.get("uses")): s for s in job["steps"]}

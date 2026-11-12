@@ -441,6 +441,30 @@ function Get-WindowList {
     return @(Get-Process | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero -and $_.MainWindowTitle } | ForEach-Object { "pid $($_.Id) $($_.ProcessName): '$($_.MainWindowTitle)'" })
 }
 
+function Save-Screenshot {
+    # A picture of the whole screen into ci-logs (so a person can see what the window really looks like).
+    param([Parameter(Mandatory = $true)][string]$Name)
+    try {
+        Add-Type -AssemblyName System.Windows.Forms
+        Add-Type -AssemblyName System.Drawing
+        $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+        $bitmap = New-Object -TypeName System.Drawing.Bitmap -ArgumentList $bounds.Width, $bounds.Height
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        try {
+            $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+            $bitmap.Save((Join-Path $ctx.Logs $Name), [System.Drawing.Imaging.ImageFormat]::Png)
+        }
+        finally {
+            $graphics.Dispose()
+            $bitmap.Dispose()
+        }
+        Note "picture of the screen saved: ci-logs\$Name ($($bounds.Width) x $($bounds.Height))"
+    }
+    catch {
+        Note "no picture of the screen ($Name): $($_.Exception.Message)"
+    }
+}
+
 function Save-LogSlice {
     # Copies what desktop.log and server.log gained since the last call to ci-logs\desktop-test<Id>.log and
     # ci-logs\server-test<Id>.log, so every launcher test has its own piece of the logs.

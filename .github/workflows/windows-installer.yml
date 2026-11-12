@@ -6,6 +6,7 @@
 #   probe.ps1    facts about the machine (never fails the run)
 #   build.ps1    private Python + libraries + GridSim's files -> dist/GridSim-Setup.exe
 #   smoke.ps1    installs it and runs the tests; the results are in ci-logs/summary.txt
+#   unit.ps1     GridSim's own unit tests on Windows; the result is in ci-logs/unit-tests.txt
 #   release.ps1  publishes a GitHub Release - only if everything above passed AND the commit message contains
 #                [release] (or "publish" was ticked on the Run workflow form)
 #
@@ -65,6 +66,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: ./packaging/ci/smoke.ps1
+
+      # GridSim's own test suite on Windows. It cannot stop a release by itself yet (continue-on-error): its
+      # result is in ci-logs/unit-tests.txt.
+      - name: Unit tests on Windows
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 30
+        run: ./packaging/ci/unit.ps1
 
       - name: Upload installer
         if: ${{ always() }}
