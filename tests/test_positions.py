@@ -300,7 +300,9 @@ def test_refreshing_a_data_file_with_nothing_new_keeps_cached_sims(tmp_path):
     f.write_bytes(b"same content")                                # re-downloaded, nothing new
     os.utime(f, None)
     assert _content_stamp(f) == a
+    time.sleep(0.05)                                              # Windows stamps file times in coarse steps
     f.write_bytes(b"new report!!")
+    os.utime(f, ns=(time.time_ns(), os.stat(f).st_mtime_ns + 1_000_000))
     assert _content_stamp(f) != a
 
 

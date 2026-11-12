@@ -10,6 +10,7 @@ import fnmatch
 import importlib.util
 import re
 import struct
+import sys
 import tomllib
 from pathlib import Path
 
@@ -96,8 +97,9 @@ def test_the_checker_accepts_ordinary_powershell():
 def test_the_python_helpers_compile_and_the_runtime_check_refuses_to_run_off_windows(capsys):
     for p in (PKG / "print_deps.py", PKG / "smoke_runtime.py", PKG / "make_icon.py", SMOKE / "spawn_under.py"):
         compile(_text(p), str(p), "exec")
-    assert _load(PKG / "smoke_runtime.py").main() == 1
-    assert "Windows program only" in capsys.readouterr().out
+    if sys.platform != "win32":                       # on Windows it really runs, and only the installed Python passes
+        assert _load(PKG / "smoke_runtime.py").main() == 1
+        assert "Windows program only" in capsys.readouterr().out
     assert _load(SMOKE / "spawn_under.py").main(["spawn_under.py", "1", "0", "x"]) == 1
 
 
