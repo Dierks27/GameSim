@@ -224,6 +224,8 @@ def test_only_one_run_at_a_time_and_a_dead_run_is_not_running(cfg, monkeypatch):
 def test_the_app_starts_it_only_when_something_is_due_and_not_again_at_once(cfg, monkeypatch):
     started = []
     monkeypatch.setattr(ap.subprocess, "Popen", lambda cmd, **kw: started.append(cmd))
+    # (on Windows "is that process alive?" asks tasklist, which would go through the Popen replaced above)
+    monkeypatch.setattr(ap, "pid_alive", lambda pid: True)
     monkeypatch.setattr(ap, "due", lambda cfg_: [])
     assert ap.start_if_due(cfg) == "nothing" and not started
     assert ap.start_if_due(cfg) == "waiting"                              # looked a moment ago

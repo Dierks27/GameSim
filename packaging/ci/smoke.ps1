@@ -19,6 +19,7 @@
 #   50-schedule.ps1    12 the scheduled jobs
 #   60-update.ps1      14 update over a running GridSim (a: by hand, b: started by the app)
 #                      15 the update download (a: no "from the internet" mark, b: against a published release)
+#   65-autopilot.ps1   18 the installed program does its own upkeep for real (data, lock-in, prices, check-up)
 #   70-uninstall.ps1   16 uninstall   17 which files are signed
 # A mistake in one of those files (even a syntax error) is reported as a failure of that file; the others still run.
 #
@@ -155,6 +156,7 @@ try {
 
     Invoke-Part -File '50-schedule.ps1'
     Invoke-Part -File '60-update.ps1'
+    Invoke-Part -File '65-autopilot.ps1'
     Invoke-Part -File '70-uninstall.ps1'
 }
 catch {

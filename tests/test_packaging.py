@@ -289,13 +289,13 @@ def test_the_smoke_test_runs_every_planned_test_and_every_file_it_names_exists()
     driver = _text(CI / "smoke.ps1")
     parts = re.findall(r"Invoke-Part -File '([^']+)'", driver)
     assert parts == ["10-runtime.ps1", "20-install.ps1", "30-window.ps1", "40-process.ps1", "50-schedule.ps1",
-                     "60-update.ps1", "70-uninstall.ps1"]
+                     "60-update.ps1", "65-autopilot.ps1", "70-uninstall.ps1"]
     ids = re.findall(r"Add-Result -Id '(\d\d)'", driver) + re.findall(r"Invoke-Test -Id '([^']+)'", driver)
     for part in parts:
         assert (SMOKE / part).exists(), part
         ids += re.findall(r"Invoke-Test -Id '([^']+)'", _text(SMOKE / part))
     assert sorted(ids) == ["00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14a",
-                           "14b", "15a", "15b", "16", "17"]
+                           "14b", "15a", "15b", "16", "17", "18"]
     assert len(ids) == len(set(ids))
     for helper in ("lib.ps1", "win32.cs", "spawn_under.py"):
         assert (SMOKE / helper).exists() and f"smoke\\{helper}" in driver + "".join(_text(SMOKE / p) for p in parts)
