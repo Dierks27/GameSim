@@ -13,7 +13,9 @@ then on GridSim is in the Start menu and on the desktop. It brings its own Pytho
 **no black window**, and updates itself when you say so. This takes about five minutes, most of it waiting.
 
 **With the installer you skip Steps 1 to 4 below.** They describe the old, manual way (Python, a ZIP, Setup GridSim)
-and are only still there for anyone who needs it. Everything from *A quick tour* onwards applies either way.
+and are only still there for anyone who needs it. Everything from *A quick tour* onwards applies either way,
+except where it mentions the black window, the GridSim folder, *Schedule GridSim* or *Allow phone access*: with the
+installer, use *Settings → Schedule*, the **Update now** line and the notes just below instead.
 
 **Before you start**
 
@@ -21,7 +23,7 @@ and are only still there for anyone who needs it. Everything from *A quick tour*
    control** → **Smart App Control settings**. If it says **Off** or **Evaluation**, carry on. If it says **On**,
    stop here: with that setting on, Windows blocks any program that isn't signed by its maker, GridSim's installer
    included, and offers no "run anyway". Keep using GridSim the way you do now and say that the setting is on.
-2. **If the old GridSim is running, close it** (its black window).
+2. **If the old GridSim is running, close it** (its black window). The installer does not do that for you.
 
 **Install**
 
@@ -34,7 +36,8 @@ and are only still there for anyone who needs it. Everything from *A quick tour*
    Setup GridSim used to cause.
 4. Click **Install**. There is nothing to choose, and Windows does **not** ask for an administrator password.
    Copying takes a minute or two.
-5. Leave **Start GridSim now** ticked and click **Finish**.
+5. Leave **Start GridSim now** ticked and click **Finish**. Then **wait**: the first time, nothing shows for up to
+   a minute or two before the GridSim window opens. Clicking the icon again does not speed it up.
 
 GridSim is now in the **Start menu** and has a **GridSim icon on the desktop** (it replaces the old icon). It needs
 about 1 GB of disk space.
@@ -43,14 +46,18 @@ about 1 GB of disk space.
 
 - **Your data is found by itself.** It was never inside the program: it is in `C:\Users\<you>\GridSim Data`, and the
   new program reads the same folder. Nothing is moved, copied or imported. After the first start, look at the
-  **Scorecard** and at this week's predictions: they should be there as before. If something looks missing,
+  **Scorecard**: it is there as before. This week's numbers on *This Week* fill in a few minutes later, once
+  GridSim has downloaded the data and simulated the games again (the line at the top says so). If something looks
+  missing,
   *Settings → Your data → Bring in data from an old GridSim folder* adds it from the old folder without overwriting
   anything.
 - **The first start takes longer**: about a minute until the window shows, and GridSim downloads the football data
   again (that part was kept in the old program folder and can always be downloaded again). A line at the top says
   what it is doing.
-- **No black window.** GridSim is its window. **Closing the window stops GridSim**; double-clicking the icon while
-  it is open brings that window to the front. **F5** reloads the page, as in a browser.
+- **No black window.** GridSim is its window. **Closing the window closes GridSim**; double-clicking the icon while
+  it is open brings that window to the front. **F5** reloads the page, as in a browser. An upkeep run that was
+  already under way finishes on its own after you close the window (a few minutes; Task Manager shows *Python*
+  until then), and so does a tuning run you started.
 - **Updates:** when a newer version is out, GridSim shows a line saying so, with an **Update now** button. Click it,
   watch the progress bar, and GridSim closes, updates and opens again by itself. Nothing to download by hand, and
   the two warnings from the first install should not come back (the update doesn't go through the browser).
@@ -61,12 +68,15 @@ about 1 GB of disk space.
 - **Background jobs:** if you had set up **Schedule GridSim** before, the installer points those jobs at the new
   program by itself. *Settings → Schedule* shows whether they are on and has buttons to switch them **on** or
   **off**; that page replaces the old *Schedule GridSim* file, and after an update there is nothing to do: the
-  jobs carry over. If it reports a problem, take a screenshot of it.
+  jobs carry over. It should show a green line saying the background jobs are on; if the line is yellow, press
+  **Turn background jobs on** once. If it reports a problem, take a screenshot of it.
 - **Phone access is off at first.** The new program is private to this PC until you say otherwise, so Windows shows
   no firewall question. To use GridSim from your phone on your home Wi-Fi: *Settings → Config → display →
   phone_access* → switch it on → **Save changes**, then close GridSim and start it again. Windows asks once whether
   to allow it: tick **Private networks** and click **Allow**. The phone then opens `http://<your PC's address>:8501`
-  (Windows shows the address under *Settings → Network & internet →* your network *→ IPv4 address*). The advice in
+  (Windows shows the address under *Settings → Network & internet →* your network *→ IPv4 address*; it is the
+  same address as before). If the phone still can't connect, double-click **Allow phone access** in the old
+  `C:\GridSim` folder once, before you delete that folder: it only adds the firewall rule. The advice in
   *Using GridSim on your phone* below still holds: there is no password, so home Wi-Fi only.
 - **Uninstalling:** Windows *Settings → Apps → Installed apps → GridSim →* the three dots *→ Uninstall*. That
   removes the program, its icons and its background jobs. **Your data folder stays** exactly as it is.
@@ -79,8 +89,8 @@ the new GridSim has run through a week, delete the old folder by hand. The Pytho
 stay or be uninstalled; the new program doesn't use it.
 
 Four things only you can confirm, because they can't be checked on the machines that test the installer: the
-window opens without any sign-in or welcome question, the taskbar shows the GridSim icon, closing the window leaves
-nothing running, and no black window flashes up. If one of them is not so, say which.
+window opens without any sign-in or welcome question, the taskbar shows the GridSim icon, GridSim is gone from the
+taskbar after you close the window, and no black window flashes up. If one of them is not so, say which.
 
 **Steps 1 to 4, from here to *A quick tour*, are the old, manual way. With the installer you don't need them.**
 
@@ -289,7 +299,7 @@ A plain-English check-up of where GridSim is most likely wrong (for example "tot
 Five tabs: **Config** (change a model setting — each shows its description; press **Save changes**; settings you
 changed are marked *(yours)*, and **Reset to defaults** undoes them all), **Your data** (backups, restore, bringing in
 an old GridSim folder — see *Your data and backups* below), **Data** (**Refresh data now**, and when each file was
-downloaded), **Notifications** (test phone alerts) and **Schedule** (when things last ran). Your changes are kept in
+downloaded), **Notifications** (test phone alerts) and **Schedule** (background jobs on/off, and when things last ran). Your changes are kept in
 your data folder, so updating GridSim never wipes them.
 
 ---
@@ -314,7 +324,9 @@ want to run the week by hand, these are the days:
 | Sunday morning (optional) | Game → **Lineup** tab for late scratches, then box 2 → **Lock in predictions** | locking in again makes the Scorecard use the updated lineups (games already started are skipped) |
 | Once a season (e.g. now, and again after the season ends), in the evening | box 5 → **Start tuning in the background** | GridSim tests better settings on the last few completed seasons (not this season's games — so running it again mid-season mostly repeats the same search). At 150 trials this takes many hours (overnight, or longer on a PC with less memory). It runs at low priority, leaves two processor cores free and keeps the whole PC under 80% memory, so the PC stays usable (Task Manager shows several *Python* entries — normal; both limits can be changed under *Settings → Config → resources*). To stop it early, restart the PC (nothing is harmed; that run's progress is lost). Come back later and press **Refresh status**. Only if the tuned settings did clearly better on a season they never saw (by more than the margin of error) do you get a **Use the tuned settings** button — you decide (it changes only the tuned values; anything else you set stays). A result found before a GridSim update that changed the model is not offered: run the tune once more after such an update. |
 
-**Want it automatic?** Double-click **Schedule GridSim** in the GridSim folder and press **A**. Windows will then,
+**Want it automatic?** Installed program: *Settings → Schedule →* **Turn background jobs on** (never the old
+*Schedule GridSim* file). Old folder way: double-click **Schedule GridSim** in the GridSim folder and press **A**.
+Windows will then,
 in the background (no windows pop up):
 - every **Tuesday at 9:00 am**: refresh the data, grade last week, run the check-up and lock in the new week;
 - every **Friday at 7:00 pm**: lock in fresh predictions after the final injury reports;
@@ -374,7 +386,9 @@ Your locked-in predictions, lineup changes, Kalshi records, tuning history and s
 folder, so an update never touches them — even a completely fresh install in a new place finds them again
 automatically.
 
-- **If you use Schedule GridSim:** after an update, double-click **Schedule GridSim** again and press **A**. The
+- **Installed program:** click **Update now** on the line GridSim shows; there is nothing else to do, and the
+  background jobs carry over by themselves. The points above and the next one are for the old folder way only.
+- **Old folder way only, if you use Schedule GridSim:** after an update, double-click **Schedule GridSim** again and press **A**. The
   scheduled jobs live in Windows, not in the GridSim folder, so an update cannot change them; pressing A simply
   replaces the old jobs with the current ones (the price check on every day of the week, and the 10-minute
   position watch).
@@ -434,8 +448,8 @@ where they were.
 | Black window says *"Port 8501 is not available"* | GridSim is already open (or still starting) in another black window. Close this one, wait a few seconds, then use the GridSim window that is already open, or <http://localhost:8501>. |
 | Browser didn't open | Open it yourself and go to <http://localhost:8501>. |
 | A page says the schedule / data is missing | Weekly routine → box 1 → **Refresh data** (or run Setup again). |
-| Phone can't connect | Double-click **Allow phone access** in the GridSim folder (it adds the firewall rule and checks the network type). If the phone still can't connect after that, do these by hand: 1) Windows *Settings → Network & internet → Wi-Fi* (or *Ethernet* if the PC is plugged in by cable) *→* your network → set *Network profile type* to **Private** (Windows often sets new networks to Public, which blocks the phone). 2) Start menu → type **Allow an app through Windows Firewall** → *Change settings* → tick **Private** on every **Python** row → OK. 3) Phone on the same Wi-Fi, GridSim's black window still open. |
-| The scheduled jobs don't seem to run | Open `logs\scheduled.log` in your data folder (*Settings → Your data → Open data folder*) to see what happened; run **Schedule GridSim** again and press **A**. |
+| Phone can't connect | Installed program: first make sure *Settings → Config → display → phone_access* is on and GridSim was closed and started again since. Then: double-click **Allow phone access** in the GridSim folder (it adds the firewall rule and checks the network type). If the phone still can't connect after that, do these by hand: 1) Windows *Settings → Network & internet → Wi-Fi* (or *Ethernet* if the PC is plugged in by cable) *→* your network → set *Network profile type* to **Private** (Windows often sets new networks to Public, which blocks the phone). 2) Start menu → type **Allow an app through Windows Firewall** → *Change settings* → tick **Private** on every **Python** row → OK. 3) Phone on the same Wi-Fi, GridSim's black window still open. |
+| The scheduled jobs don't seem to run | Open `logs\scheduled.log` in your data folder (*Settings → Your data → Open data folder*) to see what happened; then *Settings → Schedule →* **Turn background jobs on** (old folder way: run **Schedule GridSim** again and press **A**). |
 | Anything else | Close the black window and start GridSim again. If an error stays, take a screenshot of the black window. |
 
 ## How the numbers are adjusted

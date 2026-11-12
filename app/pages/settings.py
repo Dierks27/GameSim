@@ -120,6 +120,8 @@ with tab_cfg:
             else:
                 lst = ", ".join(f"{'.'.join(p)} = {v!r}" for p, v in changes.items())
                 ss["cfg_saved"] = f"Saved {len(changes)} change(s): {lst}. Config hash {before} → **{new.hash}**."
+                if ("display", "phone_access") in changes:
+                    ss["cfg_saved"] += " **Close GridSim and start it again** for the phone setting to take effect."
                 st.rerun()
     if LOCAL_CONFIG_PATH.exists():
         with st.popover("Reset to defaults", icon=":material/restart_alt:"):

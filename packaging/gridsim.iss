@@ -99,6 +99,9 @@ Type: filesandordirs; Name: "{app}\tools"
 Type: dirifempty; Name: "{app}"
 
 [Code]
+var
+  TasksPaused: Boolean;
+
 function WantsRelaunch(): Boolean;
 begin
   Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
@@ -135,6 +138,7 @@ begin
   QuietTask('GridSim Predict');
   QuietTask('GridSim Scan');
   QuietTask('GridSim Watch');
+  TasksPaused := True;
   ExtractTemporaryFile('stop-gridsim.ps1');
   if Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
       '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + ExpandConstant('{tmp}\stop-gridsim.ps1') + '" -Dir "' + ExpandConstant('{app}') + '"',
@@ -144,6 +148,27 @@ begin
     WakeTask('GridSim Predict');
     WakeTask('GridSim Scan');
     WakeTask('GridSim Watch');
+    TasksPaused := False;
     Result := 'GridSim is still running and could not be closed. Close GridSim, then run this installer again.';
+  end;
+end;
+
+{ The files are in place: from here "gridsim schedule --repoint" (run next) switches the jobs back on. }
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    TasksPaused := False;
+end;
+
+{ Setup is closing. If the install was cancelled or stopped half-way (nothing was installed, so nothing runs
+  --repoint), the jobs the user already had must not stay switched off. }
+procedure DeinitializeSetup();
+begin
+  if TasksPaused then
+  begin
+    WakeTask('GridSim Weekly');
+    WakeTask('GridSim Predict');
+    WakeTask('GridSim Scan');
+    WakeTask('GridSim Watch');
   end;
 end;

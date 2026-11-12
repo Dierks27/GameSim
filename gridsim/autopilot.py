@@ -25,6 +25,7 @@ import polars as pl
 from .config import Config
 
 PRICE_MAX_AGE_MIN = 45          # the scheduled price check runs every 30 minutes: only step in when that is not happening
+SIMS_RETRY_MIN = 45             # games with no simulation: ask the price check for them at most this often
 STEPS = [("data", "Getting the latest data"), ("grade", "Grading finished games"),
          ("lockin", "Locking in predictions for the coming games"), ("prices", "Checking Kalshi's prices"),
          ("checkup", "Running the weekly check-up")]
@@ -213,6 +214,29 @@ def _prices_due(cfg: Config, now: dt.datetime) -> str | None:
     return f"the last price check was {age:.0f} minutes ago" if age > PRICE_MAX_AGE_MIN else None
 
 
+def _sims_missing(cfg: Config, now: dt.datetime) -> str | None:
+    """Coming games with no saved simulation at the standard settings: a newly installed GridSim, or new data that
+    made the saved ones out of date. The price check simulates them, so it is run although prices were checked
+    recently - at most once per SIMS_RETRY_MIN, so that a game which cannot be simulated does not start a price
+    check every few minutes."""
+    from .api import RunRequest, cache_path, week_slate
+    from .live import kickoff_utc
+    asked = _read(_dir(cfg) / "sims_asked.json", {})
+    try:
+        if (now - dt.datetime.fromisoformat(asked["at"])).total_seconds() < SIMS_RETRY_MIN * 60:
+            return None
+    except (KeyError, TypeError, ValueError):
+        pass
+    season, week, games = week_slate(cfg)
+    n = 0
+    for g in games:
+        if g.get("home_score") is not None or (kickoff_utc(g) is not None and kickoff_utc(g) <= now):
+            continue
+        req = RunRequest(home=g["home_team"], away=g["away_team"], season=season, week=week, market_lines=True)
+        n += not cache_path(req, cfg).exists()
+    return f"{n} of this week's games have not been simulated yet" if n else None
+
+
 def _checkup_due(cfg: Config, season: int, sched) -> tuple[int, int] | None:
     """(first week, last week) when the last COMPLETE regular-season week has no check-up report yet. (The week being
     played does not hide it: someone who opens GridSim only at weekends still gets last week's check-up.)"""
@@ -251,6 +275,8 @@ def due(cfg: Config, now: dt.datetime | None = None) -> list[dict]:
     for key, fn in (("lockin", _lockin_due), ("prices", _prices_due)):
         try:
             why = fn(cfg, now)
+            if key == "prices" and not why:
+                why = _sims_missing(cfg, now)
         except Exception as e:
             why = None if key == "prices" else f"could not check ({type(e).__name__})"
         if why:
@@ -336,7 +362,13 @@ def _do(cfg: Config, key: str) -> str:
     if key == "prices":
         from .scanner import scan
         if not _prices_due(cfg, now):
-            return "checked recently"
+            try:
+                missing = _sims_missing(cfg, now)
+            except Exception:
+                missing = None
+            if not missing:
+                return "checked recently"
+            _write(_dir(cfg) / "sims_asked.json", {"at": now.isoformat(timespec="seconds")})
         sigs = scan(cfg, notify_on=True, verbose=False)
         if _prices_due(cfg, _now()):
             raise StepFailed("Kalshi's prices could not be fetched (no internet connection, or Kalshi is not "

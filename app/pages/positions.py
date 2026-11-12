@@ -158,7 +158,7 @@ if c1.button("Check now", icon=":material/refresh:", width="stretch", disabled=n
         except Exception as e:
             ss["pos_msg"] = ("err", f"Check failed — {type(e).__name__}: {e}")
     st.rerun()
-c2.caption(f"Last check: {_local(last.get('checked_utc'))}. With **Schedule GridSim** set up, positions are checked "
+c2.caption(f"Last check: {_local(last.get('checked_utc'))}. With the background jobs on (Settings > Schedule), positions are checked "
            "every 30 minutes, and every 10 minutes in the last "
            f"{cfg.watch.get('near_kickoff_hours', 3)} hours before kickoff, with alerts to your phone.")
 for pr in (last.get("problems") or {}).values():

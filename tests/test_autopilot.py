@@ -105,6 +105,39 @@ def test_prices_are_checked_when_the_last_check_is_old_and_games_are_still_to_co
     assert ap._prices_due(cfg, now) is None                               # nothing left to kick off
 
 
+def test_games_with_no_saved_simulation_get_a_price_check_at_once_but_not_again_and_again(cfg, monkeypatch, tmp_path):
+    import gridsim.api as api
+    import gridsim.scanner as scanner
+    now = dt.datetime.now(UTC)
+    soon = (now + dt.timedelta(days=2)).astimezone(ET)
+    games = [game("2026_10_MIN_GB", soon.strftime("%Y-%m-%d"), soon.strftime("%H:%M")),
+             game("2026_10_DAL_PHI", "2026-11-01", score=3)]                       # (a finished game never counts)
+    week(monkeypatch, games)
+    lock(cfg, "2026_10_MIN_GB", now - dt.timedelta(minutes=30))
+    monkeypatch.setattr(ap, "_friday_cut", lambda now_: now + dt.timedelta(days=1))
+    d = cfg.resolve_path("signals") / "snapshots"
+    d.mkdir(parents=True)
+    (d / "2026_wk10_20261112T100000Z.json").write_text("{}")                # prices were checked a moment ago
+    sim = tmp_path / "sim.json"
+    monkeypatch.setattr(api, "cache_path", lambda req, cfg_: sim)
+    assert ap._prices_due(cfg, now) is None
+    assert "1 of this week's games" in ap._sims_missing(cfg, now)           # a new install: nothing simulated yet
+    assert [x["key"] for x in ap.due(cfg, now)] == ["prices"]
+    scans = []
+    monkeypatch.setattr(scanner, "scan", lambda cfg_, **kw: scans.append(1) or [])
+    assert ap._do(cfg, "prices").startswith("prices saved")
+    assert scans == [1]
+    assert ap._sims_missing(cfg, _later(now, 5)) is None                     # the game could not be simulated: not asked
+    assert ap.due(cfg, _later(now, 5)) == [] and ap._do(cfg, "prices") == "checked recently"      # again straight away
+    assert "1 of this week's games" in ap._sims_missing(cfg, _later(now, 50))
+    sim.write_text("{}")
+    assert ap._sims_missing(cfg, _later(now, 50)) is None                    # simulated: nothing to ask for
+
+
+def _later(now, minutes):
+    return now + dt.timedelta(minutes=minutes)
+
+
 def test_the_check_up_is_for_the_last_complete_week_also_while_the_next_one_is_being_played(cfg, monkeypatch):
     done = [game("2026_09_DAL_PHI", "2026-11-08", score=20), game("2026_09_SF_SEA", "2026-11-09", score=17)]
     half = [done[0], game("2026_09_SF_SEA", "2026-11-09")]
