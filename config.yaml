@@ -214,6 +214,8 @@ market_blend:
 display:
   # How the app shows things; never changes a prediction. The pages remember your last choice here.
   price_filter: all            # Kalshi contracts shown by default: all | under50 (long shots: bigger payouts) | over50
+  phone_access: false          # installed program only: true lets a phone on your home Wi-Fi open GridSim (Windows asks
+                               # once to allow it); false keeps GridSim private to this PC. Takes effect at the next start.
 
 watch:
   # Position watch (read-only): GridSim keeps an eye on contracts YOU say you hold and alerts you. It never trades.
