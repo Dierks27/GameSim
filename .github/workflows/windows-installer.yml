@@ -1,0 +1,92 @@
+# Builds GridSim-Setup.exe on a Windows machine, installs and tests it there, and (only when asked) publishes it.
+#
+# This file is deliberately thin and should never need to change: everything it does lives in
+# packaging/ci/*.ps1, which can be changed like any other file.
+#
+#   probe.ps1    facts about the machine (never fails the run)
+#   build.ps1    private Python + libraries + GridSim's files -> dist/GridSim-Setup.exe
+#   smoke.ps1    installs it and runs the tests; the results are in ci-logs/summary.txt
+#   release.ps1  publishes a GitHub Release - only if everything above passed AND the commit message contains
+#                [release] (or "publish" was ticked on the Run workflow form)
+#
+# After a run: "GridSim-Setup" (the installer) and "ci-logs" (summary.txt and every log) can be downloaded from
+# the run's page.
+name: windows-installer
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'gridsim/**'
+      - 'app/**'
+      - 'packaging/**'
+      - '.streamlit/**'
+      - 'pyproject.toml'
+      - 'config.yaml'
+      - 'regime_changes.yaml'
+      - '.gitattributes'
+      - '.github/workflows/windows-installer.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish a GitHub Release if all tests pass'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-installer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Probe runner
+        continue-on-error: true
+        run: ./packaging/ci/probe.ps1
+
+      # The step time limits are a safety net only (every wait inside the scripts has its own, shorter limit).
+      # A step that runs into its limit fails, and the uploads below still run.
+      - name: Build
+        timeout-minutes: 45
+        run: ./packaging/ci/build.ps1
+
+      - name: Smoke test
+        timeout-minutes: 80
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./packaging/ci/smoke.ps1
+
+      - name: Upload installer
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: GridSim-Setup
+          path: dist/GridSim-Setup.exe
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 14
+
+      - name: Upload logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-logs
+          path: ci-logs/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Publish release
+        if: ${{ success() && (inputs.publish || contains(github.event.head_commit.message, '[release]')) }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./packaging/ci/release.ps1
