@@ -46,7 +46,12 @@ Invoke-Test -Id '18' -Name 'The installed program does its own upkeep for real (
     if ($steps.ContainsKey('data')) {
         Expect (@('done', 'skipped') -contains "$($steps['data'].state)") 'the data step to succeed (football data downloaded)' "'$($steps['data'].state)': $($steps['data'].detail)"
     }
-    if ($steps.ContainsKey('lockin')) {
+    # with no game of this week still to come (Monday night, the offseason) there is nothing to lock in
+    $nothingToLock = $steps.ContainsKey('lockin') -and "$($steps['lockin'].state)" -eq 'skipped'
+    if ($nothingToLock) {
+        Note "NOT proven: the lock-in ($($steps['lockin'].detail)); no game of this week was still to come when this ran"
+    }
+    elseif ($steps.ContainsKey('lockin')) {
         Expect ("$($steps['lockin'].state)" -eq 'done') 'the lock-in step to succeed (the coming games simulated and saved)' "'$($steps['lockin'].state)': $($steps['lockin'].detail)"
     }
     $predictions = @()
@@ -54,7 +59,9 @@ Invoke-Test -Id '18' -Name 'The installed program does its own upkeep for real (
     if (Test-Path -LiteralPath $predDir) {
         $predictions = @(Get-ChildItem -LiteralPath $predDir -Recurse -File -Filter '*__*.json')
     }
-    Expect ($predictions.Count -gt 0) 'locked-in prediction files in the data folder' 'none'
+    if (-not $nothingToLock) {
+        Expect ($predictions.Count -gt 0) 'locked-in prediction files in the data folder' 'none'
+    }
     Note "$($predictions.Count) locked-in prediction files"
 
     # Kalshi and the check-up depend on things outside GridSim (Kalshi may not answer a test machine; a check-up

@@ -153,7 +153,7 @@ begin
   end;
 end;
 
-{ The files are in place: from here "gridsim schedule --repoint" (run next) switches the jobs back on. }
+{ The files are in place and "gridsim schedule --repoint" has switched the jobs back on. }
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
