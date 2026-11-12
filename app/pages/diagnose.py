@@ -8,6 +8,8 @@ from pathlib import Path
 import streamlit as st
 
 import common
+
+common.via_app(common.DIAGNOSE_PAGE)
 import helpers
 from gridsim import userdata
 
@@ -136,6 +138,4 @@ with tabs[4]:
     for k, v in m.items():
         if isinstance(v, (int, float)) and not isinstance(v, bool):
             rows.append({"metric": k, "sim": v, "market": mk.get(k)})
-    st.dataframe(rows, hide_index=True, width="stretch",
-                 column_config={"sim": st.column_config.NumberColumn(format="%.4f"),
-                                "market": st.column_config.NumberColumn(format="%.4f")})
+    common.table(rows, fmt={"sim": "%.4f", "market": "%.4f"}, height=520)

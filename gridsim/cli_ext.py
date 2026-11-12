@@ -165,6 +165,21 @@ def cmd_scorecard(args) -> int:
     return 0
 
 
+def cmd_autopilot(args) -> int:
+    from . import autopilot
+    from .config import load_config
+    cfg = load_config(args.config)
+    if args.dry_run:
+        todo = autopilot.due(cfg)
+        for x in todo:
+            print(f"due: {x['what']} — {x['why']}")
+        if not todo:
+            print("nothing is due")
+        return 0
+    st = autopilot.run(cfg)
+    return 1 if any(s["state"] == "failed" for s in st.get("steps", [])) else 0
+
+
 def cmd_weekly(args) -> int:
     from .config import load_config
     from .live import weekly
@@ -352,6 +367,11 @@ def register(sub) -> None:
     s.add_argument("--season", type=int, default=None)
     s.set_defaults(func=cmd_scorecard)
 
+    ap = sub.add_parser("autopilot", help="do whatever is due now: refresh data, grade, lock in, check prices, "
+                                          "check-up (the app starts this by itself)")
+    ap.add_argument("--config", default=None)
+    ap.add_argument("--dry-run", action="store_true", help="only list what is due")
+    ap.set_defaults(func=cmd_autopilot)
     w = sub.add_parser("weekly", help="refresh, grade, diagnose, (tune), predict")
     w.add_argument("--tune", action="store_true")
     w.set_defaults(func=cmd_weekly)

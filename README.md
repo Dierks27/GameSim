@@ -206,8 +206,9 @@ sims and seed give identical numbers in the GUI and in `gridsim run`.
   shortcut)*. Optionally rename it and pick an icon under *Properties* → *Change Icon*.
 * **Phone / tablet**: on the same home network, open `http://<PC-LAN-IP>:8501` (find the IP with `ipconfig`,
   "IPv4 Address", e.g. `http://192.168.1.23:8501`). The first start shows a **Windows Defender Firewall** prompt for
-  Python: allow it on **Private networks** (not Public), otherwise other devices cannot connect. There is no login,
-  so only do this on a network you trust.
+  Python: allow it on **Private networks** (not Public), otherwise other devices cannot connect — or run
+  `Allow phone access.bat` (adds a Private-profile rule for TCP 8501; asks for elevation). There is no login,
+  so only do this on a network you trust, and never behind a public tunnel or forwarded port.
 
 Pages:
 
@@ -219,7 +220,13 @@ Pages:
   team stat ranges, top scores, availability. The **Lineup** tab lets you rule players OUT, force them IN or pick the
   starting QB; "Re-sim with these changes" writes them to the week's `overrides\<season>_wk<week>.yaml` in the data folder (the same
   file the CLI reads) and re-simulates. The Details tab shows the equivalent CLI command and downloads the HTML
-  report / JSON.
+  report / JSON. The first tab, **Kalshi prices**, lists both sides of every open Kalshi contract of the game against
+  the sim (cost with fee, return per $1, break-even %, sim %, edge) with the price check's rating, filterable to
+  contracts under 50¢.
+* **Signals**: the same board for every upcoming game of the week from the last saved price snapshot
+  (`scanner.week_board`, no network), with filters; the scan's own alert list; the graded record, also by price paid.
+* **Parlays**: auto parlays across games from the week's edges (`gridsim.parlay`: one leg per game, legs treated as
+  independent, grouped by chance of hitting) and a builder for same-game and cross-game parlays.
 
 The sidebar (season, week, sims per game, seed, player projections) applies to every page. Results are cached in
 `out\cache`; use "Re-simulate (ignore cache)" on the Game page after refreshing data or editing an overrides file

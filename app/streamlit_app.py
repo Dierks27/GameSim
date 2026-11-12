@@ -10,57 +10,133 @@ import common
 
 st.set_page_config(page_title="gridsim", page_icon="🏈", layout="wide", initial_sidebar_state="auto")
 common.inject_css()
+st.session_state["_via_app"] = True     # pages check this (common.via_app): they are only shown through this script
 
 
 def landing() -> None:
+    import datetime as dt
+
+    from gridsim import positions as pos
     s = common.settings()
-    st.html('<div class="gs"><h1>gridsim</h1><p class="sub">NFL single-game Monte Carlo simulator — every snap '
-            "resampled from real nflverse play-by-play. Same inputs and seed give the same numbers here and in "
-            "<code>gridsim run</code>.</p></div>")
+    st.html('<div class="gs"><h1>GridSim</h1><p class="sub">Every NFL game of the week simulated thousands of times, '
+            "then compared with Kalshi's prices. <b>Read-only</b>: GridSim shows numbers and watches what you tell it "
+            "you hold; it never places an order.</p></div>")
     try:
         season, week, games = common.slate(s["season"], s["week"])
-        st.markdown(f"**{season} week {week}** — {len(games)} games on the slate.")
     except Exception as e:  # schedule not downloaded yet
+        season = week = None
+        games = []
         st.warning(f"Schedule not downloaded yet ({e}). Open **Weekly routine** and press **Refresh data**, then reload this page.")
-    cards = [
-        (common.WEEKLY_PAGE, "Weekly routine", ":material/checklist:",
-         "Your weekly to-do list as buttons: refresh data, lock in predictions, grade last week, check-up."),
-        (common.WEEK_PAGE, "This Week", ":material/calendar_month:",
-         "The slate as cards with market lines, sim win % and the sim-vs-market gap. Sim one game or all."),
-        (common.GAME_PAGE, "Game", ":material/sports_football:",
-         "One matchup in depth: charts, any-line cover calculator, alt lines, team stats, lineup editor."),
-        (common.PROPS_PAGE, "Player props", ":material/person:",
-         "Any player stat's distribution with a movable line — over / under counted from the sims."),
-        (common.PARLAY_PAGE, "Parlay builder", ":material/join_inner:",
-         "Same-game parlays priced from the sims: joint % vs naive product, correlation lift, fair odds."),
-        (common.WHATIF_PAGE, "What-if & Live", ":material/swap_horiz:",
-         "With vs without a player (or a QB swap), and sims that start from a live game situation."),
-        (common.SIGNALS_PAGE, "Signals", ":material/radar:",
-         "Kalshi scanner (read-only): current edges, watchlist and the graded signal record."),
-        (common.POSITIONS_PAGE, "My positions", ":material/visibility:",
-         "Position watch (read-only): enter what you hold on Kalshi; get alerts on price jumps and lineup news."),
-        (common.SCORECARD_PAGE, "Scorecard", ":material/scoreboard:",
-         "The live record of frozen predictions, calibration, backtests and tuning history."),
-        (common.DIAGNOSE_PAGE, "Diagnose", ":material/troubleshoot:",
-         "Where the sim is wrong: top-3 summary, component bias, residual groups, worst misses."),
-        (common.SETTINGS_PAGE, "Settings", ":material/settings:",
-         "Edit config.yaml (comments kept), refresh data, test notifications, schedule status."),
+
+    # ---- where things stand right now ----
+    if season is not None:
+        wb = common.week_board(s["season"], s["week"])
+        rows = [r for g in wb["games"].values() for r in (g.get("rows") or [])]
+        edges = [r for r in rows if r["rating"] in common.EDGE_RATINGS]
+        leans = [r for r in rows if r["rating"] == "lean"]
+        try:
+            when = dt.datetime.fromisoformat(wb["ts_utc"]).astimezone().strftime("%a %I:%M %p").replace(" 0", " ")
+        except (TypeError, ValueError):
+            when = None
+        c = common.cfg()
+        try:
+            held = pos.open_positions(c)
+            last_alert = (pos.recent_alerts(c, 1) or [None])[0]
+        except Exception:
+            held, last_alert = [], None
+        st.html(common.kv_html([
+            (f"{season} · week {week}", f"{len(games)} games", f"{len(wb['games'])} still to kick off"),
+            ("Kalshi edges", f"{len(edges)}" if rows else "—",
+             (f"after adjusting · GridSim leans to {len(leans)} more ({sum(r['cost'] < 0.5 for r in leans)} under 50¢)")
+             if rows else ("no games left this week" if not wb["games"] else
+                           "prices saved; the games are simulated at the next price check" if when
+                           else "no prices saved yet this week")),
+            ("Last price check", common.hr.esc(when) if when else "—",
+             "GridSim checks every 45 minutes while it is open" if when else
+             ("this week's games have all kicked off" if not wb["games"] and not wb.get("error")
+              else "GridSim fetches them within a few minutes of starting")),
+            ("My positions", f"{len(held)} open",
+             common.hr.esc(last_alert["title"][:70]) if last_alert else "no alerts yet"),
+        ]))
+
+    # ---- what GridSim did by itself ----
+    try:
+        from gridsim import autopilot
+        ap = autopilot.status(common.cfg())
+        low = lambda t: t[:1].lower() + t[1:]            # ("Checking Kalshi's prices": only the first letter)
+        if st.session_state.get("_ap_wait") or st.session_state.get("_ap_busy") or ap.get("state") == "running":
+            st.caption("⏳ GridSim is looking after itself right now (see the line at the top); this page refreshes "
+                       "when it is done.")
+        elif ap.get("interrupted"):
+            st.caption("GridSim's own upkeep was interrupted (GridSim or the PC was closed while it ran); it picks up "
+                       "where it left off within a few minutes.")
+        elif ap.get("state") == "done" and ap.get("finished_utc"):
+            fin = dt.datetime.fromisoformat(ap["finished_utc"]).astimezone().strftime("%a %I:%M %p").replace(" 0", " ")
+            did = [f"{low(x['what'])} ({x['detail']})" for x in ap["steps"] if x["state"] == "done"]
+            bad = [f"{low(x['what'])} — {x['detail']}" for x in ap["steps"] if x["state"] == "failed"]
+            if bad:
+                st.warning(f"GridSim's own upkeep at {fin} could not finish: " + "; ".join(bad) + ". It tries again "
+                           "by itself every few minutes while GridSim is open.")
+            else:
+                st.caption(f"✅ Up to date — GridSim looked after itself at {fin}"
+                           + (": " + "; ".join(did) if did else ": nothing was due") + ". Nothing for you to press.")
+        elif ap.get("state") == "never":
+            st.caption("GridSim looks after itself: when you start it, it refreshes the data, grades finished games, "
+                       "locks in predictions and checks Kalshi's prices in the background.")
+    except Exception:
+        pass
+
+    # ---- the way through the app ----
+    st.markdown("#### Start here")
+    steps = [
+        ("1 · See the week", common.WEEK_PAGE, "This Week", ":material/calendar_month:",
+         "Every game as a card: the line, GridSim's number and its top Kalshi edge or lean."),
+        ("2 · Open a game", common.GAME_PAGE, "Game", ":material/sports_football:",
+         "Everything about one game. The **Kalshi prices** tab lists every contract you could buy against GridSim's "
+         "chance — filter to under 50¢ for the long shots."),
+        ("3 · Or search the whole week", common.SIGNALS_PAGE, "Signals", ":material/radar:",
+         "All games in one list, filtered by price, type and game — plus how the contracts GridSim flagged before "
+         "turned out."),
+        ("4 · Bought something?", common.POSITIONS_PAGE, "My positions", ":material/visibility:",
+         "Note what you hold; GridSim watches the price, the injury report and its own number, and alerts you."),
     ]
-    for i in range(0, len(cards), 3):
+    cols = st.columns(4)
+    for col, (head, page, title, icon, blurb) in zip(cols, steps):
+        with col, st.container(border=True):
+            st.markdown(f"**{head}**")
+            st.caption(blurb)
+            st.page_link(page, label=title, icon=icon)
+
+    groups = [
+        ("More ways to look at a game", [
+            (common.PARLAY_PAGE, "Parlays", ":material/join_inner:",
+             "Auto parlay from this week's edges and leans (safer to long shot), or build your own across games."),
+            (common.PROPS_PAGE, "Player props", ":material/person:",
+             "Any player stat with a movable line — over / under counted from the sims."),
+            (common.WHATIF_PAGE, "What-if & Live", ":material/swap_horiz:",
+             "With vs without a player, a QB swap, or a sim that starts from a live game situation."),
+        ]),
+        ("How good is GridSim?", [
+            (common.SCORECARD_PAGE, "Scorecard", ":material/scoreboard:",
+             "The record of locked-in predictions against results and the betting line."),
+            (common.DIAGNOSE_PAGE, "Diagnose", ":material/troubleshoot:",
+             "The check-up: where the sim is off, in plain words."),
+        ]),
+        ("Upkeep", [
+            (common.WEEKLY_PAGE, "Weekly routine", ":material/checklist:",
+             "Once a week: refresh data, lock in predictions, grade last week, check-up, tuning."),
+            (common.SETTINGS_PAGE, "Settings", ":material/settings:",
+             "Your settings, your data and backups, phone alerts, the schedule."),
+        ]),
+    ]
+    for head, cards in groups:
+        st.markdown(f"##### {head}")
         cols = st.columns(3)
-        for col, (page, title, icon, blurb) in zip(cols, cards[i:i + 3]):
+        for col, (page, title, icon, blurb) in zip(cols, cards):
             with col, st.container(border=True):
-                st.markdown(f"#### {title}")
+                st.markdown(f"**{title}**")
                 st.caption(blurb)
-                st.page_link(page, label=f"Open {title}", icon=icon)
-    done = st.session_state.get("results", {})
-    if done:
-        st.markdown("##### Simulated this session")
-        for k, r in list(done.items())[-8:][::-1]:
-            H, A = r["matchup"]["home"], r["matchup"]["away"]
-            st.markdown(f"- {A} @ {H}: {H} {common.hr.fmt_pm(r['win']['home'])} · fair {H} "
-                        f"{common.hr.fmt_line(r['fair']['spread_home'])} · total {r['fair']['total']:.1f} "
-                        f"({r['n_sims']:,} sims, seed {r['meta'].get('seed')})")
+                st.page_link(page, label=title, icon=icon)
     st.caption("Spreads are always from the home team's perspective: negative = home favored. Every percentage carries "
                "its 95% simulation margin of error.")
 
@@ -112,23 +188,28 @@ def sidebar() -> None:
 
 pages = {
     "": [st.Page(landing, title="Home", icon=":material/home:", default=True)],
-    "Games": [
+    "This week": [
         st.Page(common.WEEK_PAGE, title="This Week", icon=":material/calendar_month:"),
         st.Page(common.GAME_PAGE, title="Game", icon=":material/sports_football:"),
-        st.Page(common.PROPS_PAGE, title="Player props", icon=":material/person:"),
-        st.Page(common.PARLAY_PAGE, title="Parlay builder", icon=":material/join_inner:"),
-        st.Page(common.WHATIF_PAGE, title="What-if & Live", icon=":material/swap_horiz:"),
-    ],
-    "Markets & grading": [
         st.Page(common.SIGNALS_PAGE, title="Signals", icon=":material/radar:"),
         st.Page(common.POSITIONS_PAGE, title="My positions", icon=":material/visibility:"),
+    ],
+    "Game tools": [
+        st.Page(common.PARLAY_PAGE, title="Parlays", icon=":material/join_inner:"),
+        st.Page(common.PROPS_PAGE, title="Player props", icon=":material/person:"),
+        st.Page(common.WHATIF_PAGE, title="What-if & Live", icon=":material/swap_horiz:"),
+    ],
+    "Track record": [
         st.Page(common.SCORECARD_PAGE, title="Scorecard", icon=":material/scoreboard:"),
         st.Page(common.DIAGNOSE_PAGE, title="Diagnose", icon=":material/troubleshoot:"),
     ],
-    "Setup": [st.Page(common.WEEKLY_PAGE, title="Weekly routine", icon=":material/checklist:"),
-              st.Page(common.SETTINGS_PAGE, title="Settings", icon=":material/settings:")],
+    "Upkeep": [st.Page(common.WEEKLY_PAGE, title="Weekly routine", icon=":material/checklist:"),
+               st.Page(common.SETTINGS_PAGE, title="Settings", icon=":material/settings:")],
 }
 nav = st.navigation(pages)
+_goto = st.session_state.pop("_goto", None)      # a page that was opened by its own address (see common.via_app)
+if _goto:
+    st.switch_page(_goto)
 # Widget values under common.KEEP keys survive page switches: re-assigning them as plain session state stops
 # Streamlit from discarding them when their widget is not on the current page.
 for _k in [k for k in st.session_state.keys() if isinstance(k, str) and k.startswith(common.KEEP)]:
@@ -193,4 +274,52 @@ try:
     data_guard()
 except Exception as e:  # never block the app
     st.caption(f"(data folder check skipped: {e})")
+
+
+def autopilot_line(view_page: bool = True) -> None:
+    """GridSim looks after itself: whatever is due (data, grading, lock-in, price check, check-up) is started in the
+    background when the app is opened and, by a timer, whenever something becomes due while it stays open; this line
+    says what it is doing. Nothing to press."""
+    from gridsim import autopilot
+    ss = st.session_state
+    c = common.cfg()
+    autopilot.ensure_ticker()          # and every few minutes from now on, for as long as GridSim keeps running
+    started = autopilot.start_if_due(c)
+    if started == "started":
+        ss["_ap_wait"] = True
+
+    def show() -> None:
+        stt = autopilot.status(c)
+        busy = stt.get("state") == "running" or (ss.get("_ap_wait") and autopilot.running(c))
+        if busy:
+            ss["_ap_wait"], ss["_ap_busy"] = False, True
+            steps = stt.get("steps") or []
+            cur = next((x for x in steps if x["state"] == "running"), None)
+            n = sum(x["state"] != "waiting" for x in steps)
+            what = cur["what"][:1].lower() + cur["what"][1:] if cur else "starting"
+            st.info(f"**GridSim is getting things ready** — {what}"
+                    + (f" (step {n} of {len(steps)})" if steps else "") + ". You can use the app meanwhile; the "
+                    "numbers refresh by themselves when it is done.", icon=":material/autorenew:")
+        elif ss.get("_ap_busy"):
+            ss["_ap_busy"] = False                # just finished: the new data is there on the next look
+            st.cache_data.clear()
+            if view_page:
+                st.rerun()                        # a page that only shows things: redraw it with the new numbers
+            # a page with buttons may be showing the result of one just pressed (a check-up, a priced parlay):
+            # redrawing would wipe it, so say it instead
+            st.toast("GridSim finished its upkeep — the numbers are fresh on your next click.", icon=":material/check:")
+
+    busy_now = autopilot.status(c).get("state") == "running" or ss.get("_ap_wait")
+    frag = getattr(st, "fragment", None)
+    if frag is not None:
+        frag(show, run_every=4 if busy_now else 30)()
+    else:
+        show()
+
+
+try:
+    # pages that only show things may be redrawn when a background run ends; the others keep what they show
+    autopilot_line(view_page=(getattr(nav, "title", "") in ("Home", "This Week", "Signals", "Scorecard", "My positions")))
+except Exception as e:  # never block the app
+    st.caption(f"(automatic upkeep skipped: {type(e).__name__}: {e})")
 nav.run()

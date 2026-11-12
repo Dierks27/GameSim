@@ -40,12 +40,27 @@ def cfg():
     return load_config()
 
 
+def via_app(page: str) -> None:
+    """Call at the top of every page. A page opened by its own address before the app has run once (a browser tab
+    left open while GridSim was restarted) is served by Streamlit on its own: no styling, no menu, no Settings box.
+    Send it through the app, which then opens this page properly."""
+    if st.session_state.get("_via_app"):
+        return
+    st.session_state["_goto"] = page
+    try:
+        st.switch_page("streamlit_app.py")
+    except Exception as e:                 # (a control-flow rerun is a BaseException and passes through)
+        if type(e).__name__ != "StreamlitAPIException":
+            raise
+        inject_css()                       # not reachable through the app (a test harness): at least the styling
+
+
 def inject_css() -> None:
     st.html(f"<style>{hr.TOKENS}{hr.COMPONENT_CSS}{_APP_CSS}</style>")
 
 
 _APP_CSS = """
-.block-container { padding-top: 2.2rem; padding-bottom: 3rem; max-width: 1180px; }
+.block-container { padding-top: 2.2rem; padding-bottom: 3rem; max-width: none; padding-left: 2.2rem; padding-right: 2.2rem; }
 @media (max-width: 640px) { .block-container { padding-left: 0.8rem; padding-right: 0.8rem; padding-top: 3.6rem; } }
 .gs .gc-teams { font-size: 19px; font-weight: 650; }
 .gs .gc-meta { color: var(--muted); font-size: 12.5px; margin: 1px 0 8px; }
@@ -67,6 +82,48 @@ _APP_CSS = """
 .gs .kv .v small { font-size: 14px; color: var(--ink2); font-weight: 400; }
 .gs .kv .n { color: var(--ink2); font-size: 12.5px; margin-top: 2px; }
 .gs.lastleft td:last-child, .gs.lastleft th:last-child, .gs .lastleft td:last-child, .gs .lastleft th:last-child { text-align: left; white-space: normal; min-width: 220px; }
+/* Tables: always as wide as the page, never wider. Text wraps inside its cell, numbers stay on one line, long
+   tables scroll up and down under a fixed header. In a narrow window the least important columns drop out, and on a
+   phone every row becomes a small card (label: value), so nothing ever has to be scrolled sideways. */
+.gs .tbl { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); overflow-x: auto; overflow-y: auto; margin: 6px 0 10px; }
+.gs .tbl table { width: 100%; table-layout: auto; font-size: 13.5px; }
+.gs .tbl th, .gs .tbl td { padding: 5px 9px; white-space: normal; overflow-wrap: anywhere; vertical-align: top; text-align: left; }
+.gs .tbl th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; z-index: 1; vertical-align: bottom;
+  overflow-wrap: normal; }
+.gs .tbl td.t { min-width: 8em; }
+.gs .tbl td.l, .gs .tbl th.l { white-space: nowrap; text-align: right; min-width: 0; }
+.gs .tbl th[title] { cursor: help; text-decoration: underline dotted var(--muted); text-underline-offset: 3px; }
+.gs .tbl td.n, .gs .tbl th.n { text-align: right; white-space: nowrap; }
+.gs .tbl td.n { white-space: pre; }
+.gs .tbl td.c, .gs .tbl th.c { text-align: center; white-space: nowrap; }
+.gs .tbl td.k { white-space: nowrap; min-width: 0; }
+.gs .tbl td.pos { color: #0ca30c; font-weight: 600; }
+.gs .tbl td.neg { color: var(--ink2); }
+.gs .tbl tr:last-child td { border-bottom: 0; }
+.gs .tbl a { color: var(--home); text-decoration: none; }
+.gs .tbl-note { color: var(--muted); font-size: 12.5px; margin: -4px 0 10px; }
+@media (max-width: 1500px) { .gs .tbl .w2 { display: none; } }
+@media (max-width: 1150px) { .gs .tbl .w3 { display: none; } }
+@media (max-width: 900px) {
+  .gs .tbl { max-height: none !important; }
+  .gs .tbl table, .gs .tbl tbody, .gs .tbl tr, .gs .tbl td { display: block; width: auto; }
+  .gs .tbl thead { display: none; }
+  .gs .tbl tr { padding: 7px 10px; border-bottom: 1px solid var(--grid); }
+  .gs .tbl tr:last-child { border-bottom: 0; }
+  .gs .tbl td, .gs .tbl td.n, .gs .tbl td.c, .gs .tbl td.k, .gs .tbl td.l, .gs .tbl td.t { display: flex; justify-content: space-between; gap: 14px; border: 0; padding: 1px 0;
+    text-align: right; white-space: normal; font-size: 13.5px; overflow-wrap: anywhere; min-width: 0; }
+  .gs .tbl td::before { content: attr(data-label); color: var(--muted); font-size: 11px; text-transform: uppercase;
+    letter-spacing: .03em; flex: none; text-align: left; padding-top: 2px; }
+  .gs .tbl td:first-child { font-weight: 600; }
+  .gs .tbl td.w1, .gs .tbl td.w2, .gs .tbl td.w3 { display: flex; }
+  .gs .tbl td.empty { display: none; }
+}
+/* the report's own tables (alt lines, team stats, players ...): let them wrap instead of scrolling sideways */
+.gs .scroll { overflow-x: auto; }
+.gs .scroll td, .gs .scroll th { white-space: normal; }
+.gs .scroll td, .gs .scroll th { overflow-wrap: anywhere; }
+@media (max-width: 1150px) { .gs .scroll th, .gs .scroll td { padding: 5px 6px; font-size: 13px; } .gs .tbl th, .gs .tbl td { padding: 5px 6px; } }
+@media (max-width: 900px) { .gs .scroll th, .gs .scroll td { padding: 4px 5px; font-size: 12.5px; overflow-wrap: anywhere; } }
 .gs .readonly { display: inline-block; border: 1px solid var(--warn); color: var(--warn); border-radius: 999px;
   padding: 1px 10px; font-size: 12px; font-weight: 600; letter-spacing: .03em; vertical-align: middle; margin-left: 6px; }
 """
@@ -575,3 +632,316 @@ def signal_history_figures(rows: list[dict], height: int = 300):
         fig.update_yaxes(title=dict(text=yt), ticksuffix="", rangemode="normal", zeroline=True, zerolinecolor=hr.C["axis"])
         fig.update_layout(hovermode="x unified")
     return pnl_fig, clv_fig
+
+
+# ---- Kalshi board: the same table on Game, This Week, Signals and the parlay page ---------------------------------
+
+PRICE_FILTERS = {"all": "All prices", "under50": "Under 50¢ (long shots)", "over50": "50¢ and up"}
+RATING_LABEL = {"signal": "🟢 Signal", "unproven": "🟡 Unproven", "catch": "🟠 Catch", "lean": "⚪ Lean",
+                "small": "▫️ Small", "none": "—"}
+EDGE_RATINGS = ("signal", "unproven", "catch")
+MARKET_LABEL = {"moneyline": "Who wins", "spread": "Spread", "total": "Total points"}
+BOARD_HELP = {
+    "rating": "🟢 Signal: an adjusted edge that passes every rule. 🟡 Unproven: the same, without a proven record yet. "
+              "🟠 Catch: an adjusted edge with a problem (see the last column). ⚪ Lean: no edge after adjusting, but "
+              "GridSim alone rates it well above its cost.",
+    "you buy": "What has to happen for the contract to pay $1.",
+    "costs": "Kalshi's price to buy it now, plus Kalshi's fee.",
+    "pays": "What you get back for every $1 put in if it wins (your $1 included).",
+    "market": "The market's own chance for it: the middle of Kalshi's buy and sell price.",
+    "GridSim": "How often it won in GridSim's simulations, ± its margin of error.",
+    "adjusted": "The best estimate: the market's chance, moved toward GridSim's by as much as GridSim's "
+                "disagreements have been worth in the past.",
+    "edge": "Adjusted chance minus the cost, in points. Positive = worth more than it costs.",
+    "lean": "GridSim's own chance minus the cost: the edge there would be if GridSim alone were right. Its opinion, "
+            "not a proven edge.",
+    "catch": "Why to be careful with this row: a thin market, too few sims, or far from the market.",
+}
+
+
+@st.cache_data(ttl=120, show_spinner="Reading Kalshi prices …")
+def _kalshi_contracts(game_id: str, home: str, away: str, gameday: str | None) -> dict:
+    from gridsim.markets import Kalshi, game_markets
+    k = Kalshi(cfg())
+    k.timeout = min(k.timeout, 6.0)          # someone is waiting on the page: do not hang for the full timeout
+    return game_markets(k, {"home_team": home, "away_team": away, "gameday": gameday})
+
+
+def kalshi_contracts(game_id: str, home: str, away: str, gameday: str | None) -> dict:
+    """Kalshi's open contracts for one game, read now (a good answer is kept for two minutes). {"error": text}
+    when Kalshi can't be reached — not kept, so the next look tries again."""
+    try:
+        return _kalshi_contracts(game_id, home, away, gameday)
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+kalshi_contracts.clear = _kalshi_contracts.clear          # "Refresh prices" buttons
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _week_board(season: int | None, week: int | None, stamp: str, cfg_hash: str) -> dict:
+    from gridsim import scanner
+    return scanner.week_board(cfg(), season, week)
+
+
+def week_board(season: int | None, week: int | None) -> dict:
+    """Every upcoming game's contracts as of the last price check (see scanner.week_board). Re-read only when a new
+    price snapshot, a new sim or a new grading exists."""
+    from gridsim import scanner
+    c = cfg()
+    try:
+        s_, w_, _ = slate(season, week)
+        snap = scanner.latest_snapshot(c, s_, w_)
+        cache = c.resolve_path("out/cache")
+        newest = max((p.stat().st_mtime for p in cache.glob("*.json")), default=0) if cache.exists() else 0
+        graded = c.resolve_path("signals") / "graded.csv"
+        from gridsim.markets import blend_weight
+        # (market_blend is left out of the config hash — it never changes a sim — but it changes every rating here)
+        stamp = (f"{snap.name if snap else ''}|{newest}|{graded.stat().st_mtime if graded.exists() else 0}"
+                 f"|w{blend_weight(c)}")
+        # the minute is part of the key near kickoffs only through the snapshot name; started games drop out at the next check
+        return _week_board(season, week, stamp, c.hash)
+    except Exception as e:
+        return {"ts_utc": None, "season": season, "week": week, "games": {}, "error": f"{type(e).__name__}: {e}"}
+
+
+def board_empty_text(wb: dict, scan_hint: str) -> str:
+    """Why the week has nothing to list from Kalshi, in plain words. Cases that look alike on screen: no price check
+    yet, prices saved but the games not simulated at the standard settings, and a week with no game left."""
+    games = list((wb.get("games") or {}).values())
+    if wb.get("error"):
+        return f"The Kalshi prices of this week could not be read ({wb['error']})."
+    if not games:
+        return ("Every game of this week has already kicked off, so there is nothing left to compare with Kalshi's "
+                "prices. Set **Week** in the sidebar to **Current** for the coming games.")
+    if not wb.get("ts_utc"):
+        return ("No Kalshi prices saved for this week yet. GridSim fetches them by itself within a few minutes of "
+                f"starting — or press {scan_hint}.")
+    try:
+        when = dt.datetime.fromisoformat(wb["ts_utc"]).astimezone().strftime("%a %b %d, %I:%M %p").replace(" 0", " ")
+    except (TypeError, ValueError):
+        when = "the last price check"
+    waiting = sum("not simulated" in (g.get("note") or "") for g in games)
+    if not waiting:
+        return (f"The last price check ({when}) found no Kalshi prices for the coming games. GridSim looks again at "
+                f"the next price check — or press {scan_hint}.")
+    return (f"Kalshi's prices were saved at {when}, but {waiting} of the {len(games)} coming games have not been "
+            "simulated yet with the newest data and settings, so there is nothing to compare them with. The next "
+            f"price check simulates them by itself — or press {scan_hint}.")
+
+
+def remember_display(name: str, value) -> None:
+    """Keep a display choice for next time (config.local.yaml, section `display`; never part of the config hash)."""
+    from gridsim.config import load_local, save_local
+    try:
+        local = load_local()
+        if (local.get("display") or {}).get(name) == value:
+            return
+        local.setdefault("display", {})[name] = value
+        save_local(local, backup=False)
+    except Exception:
+        pass            # a read-only settings file must not break a page
+
+
+def price_filter(where: str = "") -> str:
+    """The "which prices" choice, shared by every page that lists contracts and remembered between sessions."""
+    ss = st.session_state
+    start = (cfg().raw.get("display") or {}).get("price_filter", "all")
+    key = keep("price_filter", start if start in PRICE_FILTERS else "all")
+    if ss[key] not in PRICE_FILTERS:
+        ss[key] = "all"
+
+    def _saved():
+        remember_display("price_filter", ss[key])
+
+    return st.radio("Show contracts priced", list(PRICE_FILTERS), format_func=PRICE_FILTERS.get, horizontal=True,
+                    key=key, on_change=_saved,
+                    help="A contract pays $1 if it wins. One that costs under 50¢ has to win less than half the "
+                         "time to break even and pays more than double. GridSim remembers this choice.")
+
+
+def in_band(row: dict, band: str) -> bool:
+    """By what you would pay (price plus fee), the number the "costs" column shows."""
+    return band == "all" or (row["cost"] < 0.5) == (band == "under50")
+
+
+def _pct1(p: float) -> str:
+    """41% / 30.5%: the half point is kept (Kalshi's middle price is very often x.5) so the columns add up."""
+    return f"{100 * p:.1f}".rstrip("0").rstrip(".") + "%"
+
+
+def board_table(rows: list[dict], game: bool = False) -> list[dict]:
+    """Board rows (scanner.game_board) as plain table rows (see board())."""
+    from gridsim.markets import blend_weight
+    adj = blend_weight(cfg()) > 0            # with weight 0 the adjusted chance IS the market's: no second column
+    out = []
+    for r in rows:
+        d = {"rating": RATING_LABEL.get(r["rating"], r["rating"]) + (" (strong)" if r.get("confidence") == "strong" else "")}
+        if game:
+            d["game"] = r.get("matchup")
+        d.update({"you buy": r["what"], "costs": 100 * r["cost"], "pays": r["pays"], "market": _pct1(r["p_market"]),
+                  "GridSim": f"{100 * r['p_side']:.0f}% ±{100 * (r.get('moe') or 0):.0f}"})
+        if adj:
+            d["adjusted"] = _pct1(r["p_adj"])
+        d.update({"edge": 100 * r["edge"], "lean": 100 * r["lean"], "catch": "; ".join(r.get("catches") or []),
+                  "Kalshi": r.get("url")})
+        out.append(d)
+    return out
+
+
+def board(rows: list[dict], game: bool = False, height: int | None = 640) -> None:
+    """The contract table of the Game, Signals and parlay pages: fits the page, no sideways scrolling."""
+    table(board_table(rows, game=game), help=BOARD_HELP, link={"Kalshi": "open ↗"}, right=("GridSim", "market", "adjusted"),
+          nowrap=("rating", "game"),
+          fmt={"costs": "%.0f¢", "pays": "$%.2f", "edge": "%+.1f", "lean": "%+.1f"},
+          sign=("edge", "lean"), hide={"pays": 2, "market": 3} if game else {"pays": 3},
+          height=height if len(rows) > 16 else None)
+
+
+def blend_note() -> None:
+    """How the numbers are adjusted, with the evidence — said once per page that lists contracts."""
+    from gridsim.markets import blend_weight
+    w = blend_weight(cfg())
+    if w <= 0:
+        body = ("<b>How the numbers are adjusted.</b> When GridSim and the market disagree, the question is who is "
+                "usually right. Replaying past seasons with the closing betting line next to GridSim's number, "
+                "GridSim's disagreement did <b>not</b> predict results: the market's number alone did best. So the "
+                "<b>adjusted</b> chance is the market's own, and GridSim's number is shown as its <b>lean</b> — an "
+                "opinion, not an edge. After fees, the <b>edge</b> of a contract is then slightly negative: the cost of "
+                "trading. If GridSim's graded record on Kalshi starts to show that its leans come true, the weight "
+                "can be raised (Settings → Config → market_blend) and edges will appear here.")
+    else:
+        body = (f"<b>How the numbers are adjusted.</b> The <b>adjusted</b> chance is the market's own, moved "
+                f"{100 * w:.0f}% of the way toward GridSim's — the weight set under Settings → Config → market_blend. "
+                "(Measured on four replayed seasons, GridSim's disagreements with the market were worth 0%; a higher "
+                "weight is a choice, not a measurement.) <b>Edge</b> = adjusted chance − cost. <b>Lean</b> = what the "
+                "edge would be if GridSim alone were right.")
+    callout(body, tone="home")
+
+
+def longshot_note(season: int | None = None) -> None:
+    """What to know about contracts under 50¢ — facts and GridSim's own record there, not advice."""
+    from gridsim import scanner
+    rec = None
+    try:
+        rec = next((r for r in scanner.record_by_price(cfg(), season) if r["price paid"] == "all under 50¢"), None)
+    except Exception:
+        pass
+    if rec:
+        clv = "" if rec["avg CLV"] is None else (f"; Kalshi's price then moved {abs(100 * rec['avg CLV']):.1f}¢ "
+                                                 f"{'toward' if rec['avg CLV'] >= 0 else 'away from'} GridSim's side by kickoff")
+        line = (f"GridSim's record on the under-50¢ contracts it leaned to so far: {rec['contracts']} contracts in {rec['games']} games, "
+                f"{rec['won %']:.0f}% won ({rec['needed %']:.0f}% was needed to break even){clv}.")
+    else:
+        line = "GridSim has no graded record yet on under-50¢ contracts it leaned to; it builds up as weeks are graded."
+    callout("<b>Long shots — the arithmetic</b><ul>"
+            "<li>A 30¢ contract has to win about 1 time in 3 just to break even. Most of them lose; the few that win "
+            "pay for the rest, or don't.</li>"
+            "<li>The <b>market</b> column is the best estimate of how often each one wins. Where GridSim's number is "
+            "higher, that is GridSim's lean — and on long shots a model that knows less than the market leans too "
+            "high more often than not, which is why the adjusted number does not follow it.</li>"
+            f"<li>{hr.esc(line)}</li></ul>", tone="warn")
+
+
+@st.cache_data(ttl=3600, show_spinner="Putting parlays together …")
+def _auto_parlays(season: int | None, week: int | None, band: str, max_legs: int, stamp: str) -> dict:
+    from gridsim import parlay
+    wb = week_board(season, week)
+    games = {gid: {**g, "rows": [r for r in (g.get("rows") or []) if in_band(r, band)]} for gid, g in wb["games"].items()}
+    return parlay.auto_parlays({"games": games}, max_legs=max_legs)
+
+
+def auto_parlays(season: int | None, week: int | None, band: str, max_legs: int) -> dict:
+    """Auto parlays from the last price check's board (see gridsim.parlay); recomputed when the board changes."""
+    import hashlib
+    import json
+    wb = week_board(season, week)
+    # the board itself is the key: a re-simulated game or a changed weight changes the numbers without a new price check
+    stamp = hashlib.sha1(json.dumps(wb["games"], sort_keys=True, default=str).encode()).hexdigest()
+    return _auto_parlays(season, week, band, max_legs, stamp)
+
+
+# ---- tables that fit ----------------------------------------------------------------------------------------------
+
+def _cell(v, f) -> tuple[str, bool]:
+    """(text, is a number) for one value; f is a printf format ("%+.1f", "$%.2f", "%.0f%%") or a function."""
+    import math
+    if v is None or (isinstance(v, float) and math.isnan(v)) or v == "":
+        return "—", False
+    if isinstance(v, bool):
+        return ("yes" if v else "no"), False
+    num = isinstance(v, (int, float))
+    if callable(f):
+        return str(f(v)), num
+    if f and num:
+        try:
+            return f % v, True
+        except (TypeError, ValueError):
+            pass
+    if isinstance(v, float):
+        return (f"{v:,.0f}" if abs(v) >= 1000 else f"{v:.2f}"), True
+    if isinstance(v, int):
+        return (f"{v:,}" if abs(v) >= 10000 else str(v)), True
+    return str(v), False
+
+
+def table_html(data, fmt: dict | None = None, labels: dict | None = None, help: dict | None = None,
+               link: dict | None = None, hide: dict | None = None, center: tuple = (), sign: tuple = (),
+               right: tuple = (), nowrap: tuple = (), height: int | None = None, cols: list[str] | None = None) -> str:
+    """A table that always fits the page: text wraps inside its cell, numbers stay on one line, nothing scrolls
+    sideways. data: list of dicts (or a polars DataFrame).
+      fmt     {column: printf format or function}        labels  {column: shorter heading}
+      help    {column: what it means}  (shown when the mouse rests on the heading)
+      link    {column: link text}  (the value is the address)
+      hide    {column: 2 | 3}  drop the column in a narrow window (2: below about 1500 px, 3: below about 1150 px;
+              on a phone every row becomes a card and shows everything)
+      center  columns centred (icons);  right  text columns set like numbers;  nowrap  short text columns that
+      stay on one line (a rating, a matchup);  sign  columns coloured by sign
+      (positive green);  height  max px, then it
+      scrolls up and down under its heading;  cols  which columns, in which order (default: all, as they come)."""
+    if hasattr(data, "to_dicts"):
+        data = data.to_dicts()
+    data = list(data or [])
+    if not data:
+        return ""
+    fmt, labels, help, link, hide = fmt or {}, labels or {}, help or {}, link or {}, hide or {}
+    names = cols or list(dict.fromkeys(k for r in data for k in r))
+    e = hr.esc
+    numeric = {c: all(isinstance(r.get(c), (int, float)) and not isinstance(r.get(c), bool) or r.get(c) in (None, "")
+                      for r in data) and any(isinstance(r.get(c), (int, float)) for r in data) for c in names}
+
+    def cls(c: str, extra: str = "") -> str:
+        k = "l" if c in link else ("c" if c in center else ("n" if numeric[c] or c in right else "t"))
+        w = (f" w{hide[c]}" if c in hide else "") + (" k" if c in nowrap else "")
+        return f' class="{k}{w}{extra}"'
+
+    head = "".join(f"<th{cls(c)}" + (f' title="{e(help[c])}"' if c in help else "") + f">{e(labels.get(c, c))}</th>"
+                   for c in names)
+    body = []
+    for r in data:
+        tds = []
+        for c in names:
+            v = r.get(c)
+            if c in link:
+                txt = f'<a href="{e(str(v))}" target="_blank" rel="noopener">{e(link[c])}</a>' if v else "—"
+                tds.append(f'<td{cls(c, "" if v else " empty")} data-label="{e(labels.get(c, c))}">{txt}</td>')
+                continue
+            txt, _ = _cell(v, fmt.get(c))
+            extra = ""
+            if c in sign and isinstance(v, (int, float)) and not isinstance(v, bool):
+                extra = " pos" if v > 0 else (" neg" if v < 0 else "")
+            if txt == "—":
+                extra += " empty"            # (dropped from the phone's card view: an empty line says nothing)
+            tds.append(f'<td{cls(c, extra)} data-label="{e(labels.get(c, c))}">{e(txt)}</td>')
+        body.append("<tr>" + "".join(tds) + "</tr>")
+    style = f' style="max-height:{int(height)}px"' if height else ""
+    return (f'<div class="gs"><div class="tbl"{style}><table><thead><tr>{head}</tr></thead>'
+            f'<tbody>{"".join(body)}</tbody></table></div></div>')
+
+
+def table(data, **kw) -> None:
+    """Show a table that fits (see table_html). Nothing is drawn for no rows."""
+    html = table_html(data, **kw)
+    if html:
+        st.html(html)

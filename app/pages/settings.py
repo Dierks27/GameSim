@@ -11,6 +11,8 @@ from pathlib import Path
 import streamlit as st
 
 import common
+
+common.via_app(common.SETTINGS_PAGE)
 import helpers
 from gridsim import userdata
 from gridsim.config import DEFAULT_CONFIG_PATH, REPO_ROOT, data_dir, load_config
@@ -314,16 +316,16 @@ with tab_data:
     st.markdown("##### Sources")
     try:
         fr = _fresh(season)
-        st.dataframe([{"source": k, "downloaded": (v.get("downloaded") or "–").replace("T", " "),
+        common.table([{"source": k, "downloaded": (v.get("downloaded") or "–").replace("T", " "),
                        "nflverse updated": (v.get("nflverse_updated") or "–").replace("T", " ").replace("Z", " UTC")}
-                      for k, v in fr.items()], hide_index=True, width="stretch")
+                      for k, v in fr.items()])
     except Exception as e:
         st.warning(f"Freshness check failed ({e}).")
     st.markdown("##### Local cache files")
     cdir = cfg.resolve_path(cfg.data["cache_dir"])
     files = sorted(cdir.glob("*")) if cdir.exists() else []
-    st.dataframe([{"file": p.name, "modified": common.mtime_text(p), "size (MB)": round(p.stat().st_size / 1e6, 1)}
-                  for p in files if p.is_file()], hide_index=True, width="stretch")
+    common.table([{"file": p.name, "modified": common.mtime_text(p), "size (MB)": round(p.stat().st_size / 1e6, 1)}
+                  for p in files if p.is_file()], fmt={"size (MB)": "%.1f"}, height=420)
     st.caption(f"Current-season files older than {cfg.data['refresh_hours']} h are re-downloaded automatically on the next "
                "run; completed seasons never go stale.")
 
@@ -379,6 +381,6 @@ with tab_sched:
         nf = helpers.newest_file(cfg.resolve_path(name))
         rows.append({"folder": name, "contains": what, "newest file": nf[0].name if nf else "–",
                      "modified": nf[1].strftime("%Y-%m-%d %H:%M") if nf else "never"})
-    st.dataframe(rows, hide_index=True, width="stretch")
+    common.table(rows)
     st.caption("If the scheduled tasks run, these timestamps move: predictions on Tuesday/Friday, signals every 30 "
                "minutes in game weeks.")

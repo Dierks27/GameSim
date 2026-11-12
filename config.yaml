@@ -203,6 +203,18 @@ resources:
   max_ram_fraction: 0.8        # start only as many workers as keep the whole PC at or below this share of memory
   free_cores: 2                # processor cores always left free for you
 
+market_blend:
+  # How much of GridSim's disagreement with the market's price counts when a Kalshi contract is rated.
+  # adjusted chance = market's chance + weight x (GridSim's chance - market's chance)
+  # 0 = the market's price is the best estimate (GridSim's own number is shown as its "lean" only);
+  # 1 = GridSim alone. Measured on replayed seasons (see DECISIONS.md, "Market blend"): GridSim's disagreement
+  # with the closing line has not predicted results, so the measured weight is 0. Never changes a simulation.
+  weight: 0.0
+
+display:
+  # How the app shows things; never changes a prediction. The pages remember your last choice here.
+  price_filter: all            # Kalshi contracts shown by default: all | under50 (long shots: bigger payouts) | over50
+
 watch:
   # Position watch (read-only): GridSim keeps an eye on contracts YOU say you hold and alerts you. It never trades.
   price_jump: 0.06             # alert when the Kalshi price has moved this much (6 cents) since the last alert

@@ -5,6 +5,8 @@ from __future__ import annotations
 import streamlit as st
 
 import common
+
+common.via_app(common.PROPS_PAGE)
 import helpers
 from gridsim.api import cover_from_hist
 from gridsim.report import american, moe

@@ -114,10 +114,11 @@ def build_hash(raw: dict[str, Any]) -> str:
     return config_hash(r)
 
 
-# Sections that never change a number GridSim produces (where backups go, how many CPU cores / how much memory
-# long jobs may use) are left out of the config hash, so
+# Sections that never change a simulation or a locked-in prediction (where backups go, how many CPU cores / how much
+# memory long jobs may use, the position watch, how the app shows things, how Kalshi prices are weighed against the
+# sim) are left out of the config hash, so
 # changing them doesn't split the Scorecard into a new config version or invalidate cached sims.
-HASH_EXCLUDE = {"backup", "resources", "watch"}
+HASH_EXCLUDE = {"backup", "resources", "watch", "display", "market_blend"}
 
 
 # Raised whenever the simulation code itself changes what it predicts (a fix to the model, not a setting). It is part
@@ -168,11 +169,13 @@ def load_local() -> dict:
     return {}
 
 
-def save_local(local: dict) -> Path:
-    """Write config.local.yaml (backing up the previous one to config.local.yaml.bak)."""
+def save_local(local: dict, backup: bool = True) -> Path:
+    """Write config.local.yaml (backing up the previous one to config.local.yaml.bak; backup=False for a change
+    that is not worth a backup, such as a remembered display choice — it must not push out the backup of a real
+    settings change)."""
     p = local_config_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    if p.exists():
+    if backup and p.exists():
         p.with_name(p.name + ".bak").write_bytes(p.read_bytes())
     with open(p, "w", encoding="utf-8") as fh:
         fh.write("# Your GridSim settings: only the values you changed. Merged over config.yaml at load time.\n"

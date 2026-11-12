@@ -5,6 +5,8 @@ from __future__ import annotations
 import streamlit as st
 
 import common
+
+common.via_app(common.WHATIF_PAGE)
 import helpers
 from gridsim import api
 from gridsim.availability import NameMatchError
@@ -152,7 +154,7 @@ with tab_l:
         st.error(str(e))
         st.stop()
     st.markdown("State string (same as `gridsim run --state`):")
-    st.code(state, language=None)
+    st.code(state, language=None, wrap_lines=True)
     if "yl" in parsed:
         st.caption(f"{poss} needs {parsed['yl']} yards for a touchdown · {parsed['down']} & {parsed['togo']}.")
     req = common.make_request(H, A, g["season"], g["week"], s, neutral=g["neutral"], playoff=g["playoff"], state=state)

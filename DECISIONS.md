@@ -563,3 +563,118 @@ Not changed: opening `/positions` directly in a browser tab before the Home page
 shows an unstyled page until Home is opened (Streamlit serves `app/pages` on its own; moving the folder would leave
 the old one behind on an update-in-place install). A settings change the sim does not read still resets the watch's
 reference number.
+
+
+
+## Kalshi board per game, price filter, parlays across games, menu (2026-11-12)
+
+Asked for: signals for the game being looked at, a way to focus on contracts under 50¢, parlays across games with an
+"auto" list from safer to long shot, and a less scattered app.
+
+- **Board, not signals.** `markets.both_sides` lists BOTH sides of every contract (`edges` keeps only the better
+  one, so the cheap side of a contract was invisible unless it was the better edge), each with the market's chance,
+  the sim's and the adjusted one (next section). `scanner.game_board` rates each side by the ADJUSTED edge with the
+  price check's own rules (`_checks`, factored out of `evaluate` with identical output): *signal* (passes all),
+  *unproven* (all but the track-record rule), *catch* (fails a liquidity / margin-of-error / freshness rule; said in
+  a few words), *small*, *none* — and *lean* where only the sim alone sees `scanner.min_edge` or more. The
+  questionable-QB test is not run there (two more sims); the scheduled check still does it.
+- **Where the prices come from.** Game page: Kalshi read live (kept 2 minutes), against the page's own sim. This
+  Week, Signals, Home and Auto parlay: the last saved price snapshot (every price check writes one) against the cached
+  standard-settings sims, the 4× sim when the check made one (`scanner.week_board`) — no network and no simulation
+  on those pages. So they are as fresh as the last check and say when that was.
+- **Under 50¢.** One choice (`display.price_filter`: all / under50 / over50, by cost = price + fee) shared by
+  every page that lists contracts, written to `config.local.yaml` so it is remembered. `display` is excluded from the
+  config hash. With "under 50¢" chosen the pages add the break-even arithmetic and GridSim's own graded record under
+  50¢ (`scanner.record_by_price`: won % against needed %, CLV). No advice.
+- **Parlays across games** (`gridsim/parlay.py`). Legs from different games are treated as independent (product);
+  same-game legs stay with `combos` (counted from the sims). Auto parlay: per game the best one or two sides costing
+  under 50¢ and at 50¢+ that are an edge or a lean with no liquidity / margin-of-error / freshness catch (one line
+  per market type and side: a game's many spread lines are one idea; "X wins" and "Y does not win" are one too),
+  every combination of 2–4 games, grouped by the adjusted chance (≥ 35% / 12–35% / < 12%), ranked by adjusted value
+  per $1, a leg at most twice per group. The cost is the product of the legs' costs (buy each at the ask, roll the
+  stake); Kalshi's own combination price is not read and can differ — the page says so.
+- **Menu.** Groups follow the order of use: This week (This Week, Game, Signals, My positions), Game tools (Parlays,
+  Player props, What-if & Live), Track record, Upkeep. Home shows the state of the week and four numbered steps. Page
+  files and names are unchanged except "Parlay builder" → "Parlays".
+- **Phone access.** `Allow phone access.bat` adds a Private-profile firewall rule for TCP 8501 (self-elevating) and
+  offers to set the current network to Private. Public tunnels are advised against (no login).
+From the review: the week board's cache key carries the blend weight and the parlay cache the board itself (a
+re-simulated game or a changed weight shows at once); leans whose price can really be had sort before thin ones; a
+4¢ gap passes the 4¢ rule whatever the prices (whole cents); a half-written newest snapshot falls back to the one
+before, and snapshots are written under a temporary name; a leg = an idea (a team, or over / under, of a game), so
+"X wins", "Y does not win" and "X wins or loses by 2 or fewer" are one; parlays whose games overlap are marked (the
+cost is a yardstick there, not a way to buy); Build-your-own no longer says when a parlay is "worth buying"; the
+alert list is described as going by GridSim's own number (the lean).
+**Tables.** The 1180 px page cap is gone and every table is a wrapping HTML table (`common.table`): text wraps, numbers
+do not, the least important columns drop out below about 1500 / 1150 px, and under 900 px each row becomes a card.
+Measured with a script on every page and tab at 1024–2560 px: no sideways scrolling (`st.dataframe` is not used any more;
+a test keeps it that way).
+Known limits: the board on This Week / Signals does not include the questionable-QB test; the ledger still records
+only the best side of a contract (grading is unchanged); `signals/ledger.csv` grows by every signal at every
+30-minute check and is read whole by the Signals page and by grading.
+
+
+## Market blend: measured weight 0 (2026-11-12)
+
+Asked: "if we know of a bias we should really adjust for it" (the pages only warned that GridSim sees long-shot
+bargains more often than there are). The adjustment that follows from the evidence is a blend with the market's own
+number: adjusted = market + w × (sim − market). w was measured on model revision 2 backtests, 2022–2025, weeks 3–18,
+300 sims, seed 31337, pre-game data only, against the closing line (959 games), by regressing the result on the
+market's number and on the sim's deviation from it:
+
+| | 2022 | 2023 | 2024 | 2025 | all |
+|---|---|---|---|---|---|
+| margin: w | −0.26 ± 0.27 | −0.04 ± 0.38 | −0.67 ± 0.33 | +0.20 ± 0.31 | **−0.18 ± 0.16** |
+| total: w | +0.01 ± 0.53 | −0.48 ± 0.49 | −0.32 ± 0.46 | +0.20 ± 0.50 | **−0.05 ± 0.23** |
+| home win (probability): w | −0.50 ± 0.38 | −0.26 ± 0.46 | −0.94 ± 0.42 | +0.50 ± 0.40 | **−0.28 ± 0.20** |
+| Brier: market / half-half / sim | .2065 / .2136 / .2255 | .2175 / .2201 / .2262 | .1933 / .2036 / .2180 | .2151 / .2132 / .2162 | .2081 / .2126 / .2215 |
+
+The sim's disagreement with the closing line carries no measurable information (and backtest sim noise, ~0.8 pts of
+margin against a 3.0-pt sd of the disagreement, cannot hide a weight of the size that would matter). So
+`market_blend.weight` ships as 0, floored at 0: the adjusted chance is the market's mid, the adjusted edge is minus
+the trading cost, and the sim's own number is shown as a "lean" (`markets.both_sides`, `scanner.game_board` rating
+"lean"). Auto parlays are built from tradeable leans, grouped by the adjusted chance and ranked by adjusted value
+(i.e. cheapest to trade first), with the sim's own numbers alongside.
+Limits of the measurement: it is against sportsbook closing lines, not Kalshi prices early in the week (Kalshi on a
+Tuesday may be less sharp, but the sim also knows less then); the direct test is the graded Kalshi record (CLV), which
+keeps building because the price check and its ledger still use the raw sim edge — deliberately, so that there is
+something to measure. The section is excluded from the config hash (no simulation or locked-in prediction changes).
+The alert rules (`scanner.evaluate`) are unchanged: they are gated by the Kalshi record itself.
+What tuning is and is not: `tune` fits the sim's own parameters to results; it never sees a market price, so it
+cannot supply what the market knows.
+
+
+## Autopilot and app window (2026-11-12)
+
+Asked: "when I fire up the program it does all the things it needs to do … just done", and a window of its own
+instead of a browser tab.
+
+- `gridsim/autopilot.py`: `due()` lists what is due (no network): data older than `data.refresh_hours`; finished
+  games with a locked-in prediction and no grade, or Kalshi signals of finished games not graded since; a lock-in
+  when a coming game of the week has none, and once more after the week's Friday 19:00 ET (the NFL week runs Tuesday
+  to Monday); a price check when the last snapshot is older than 45 minutes (the scheduled check runs every 30) and
+  games are still to come; the check-up when the last week with results is complete and has no report. `run()` does
+  the steps in that order, each re-checked when its turn comes, a failing step does not stop the others; one run at
+  a time (pid file; a run older than 3 h or whose process is gone does not count). The app calls `start_if_due()`
+  on every load (it looks at most every 10 minutes per app process) and starts `gridsim autopilot` detached, at low
+  priority, without a window; a line at the top of every page shows the current step (a fragment that polls
+  `status()`), and the app reruns once when the run ends. Home says what was done. The scheduled tasks stay as they
+  are (they cover the hours the app is closed, and phone alerts).
+- Review of this section's first version (five lenses, every finding re-verified; no critical or high): a step
+  that ran but did not get its job done (no internet, Kalshi down) is a failed step with a plain reason, not "done"
+  (`StepFailed`; the same due-check is asked again after the step); the lock-in after the Friday cut downloads the
+  injury report first and is not made as "the final one" when that fails; the check-up goes by the last COMPLETE
+  regular-season week (so weekend-only use gets it, and the play-offs do not leave it due forever); this season's
+  plays are not expected before its first game; a lock-in whose files are appearing right now (a scheduled task) is
+  left alone; a run counts as running from the moment the app starts it (pid reserved by the parent); Home does not
+  say "up to date" while a run is going on; only pages that just show things are redrawn when a run ends.
+- A GridSim that is left running must not need a click: `ensure_ticker()` starts one daemon thread per app process
+  (the first page load starts it) that calls `start_if_due()` every 5 minutes, so whatever becomes due — the Friday
+  lock-in, a price check, grading after the games — starts by itself, also with the window closed. An open page
+  notices within 30 seconds (the status fragment) and refreshes when the run ends.
+- Tuning is not part of it: on the evidence so far (two full runs, old and new model: not recommended) it is optional,
+  and the Weekly routine page says so.
+- `gridsim/appwindow.py` + `Start GridSim.bat`: the server starts headless and a helper opens
+  `msedge --app=http://localhost:8501` (Chrome if no Edge; the default browser if neither or on any error) once the
+  port answers. The black window still runs the server; closing it stops GridSim. A real single-file program
+  (no console, own installer, self-update) is a separate piece of work.

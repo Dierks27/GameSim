@@ -133,7 +133,9 @@ def test_the_settings_page_does_not_cut_a_tuned_value_and_an_already_cut_one_is_
     apply_tuned(cfg)
     assert tuned_status(load_config()) == "applied"
     # saving one unrelated value on the Settings page leaves the tuned ones alone
-    at = AppTest.from_file(str(app / "pages" / "settings.py"), default_timeout=60).run()
+    at = AppTest.from_file(str(app / "pages" / "settings.py"), default_timeout=60)
+    at.session_state["_via_app"] = True                                   # (as when opened through the app)
+    at.run()
     assert not at.exception
     at.number_input(key="cfg__watch__price_jump").set_value(0.08)
     next(b for b in at.button if b.label == "Save changes").click().run()

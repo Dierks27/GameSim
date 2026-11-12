@@ -14,6 +14,8 @@ import polars as pl
 import streamlit as st
 
 import common
+
+common.via_app(common.WEEKLY_PAGE)
 from gridsim import live
 from gridsim.data import load_schedules
 
@@ -43,6 +45,11 @@ def _alive(pid: int) -> bool | None:
 
 common.page_header("Weekly routine", "Do these in order once a week. Each button does one job and tells you when "
                                      "it is finished. Nothing here places bets or orders.")
+common.callout("<b>You don't have to press any of this.</b> Every time you start GridSim it does what is due by "
+               "itself, in the background: fresh data, grading finished games, locking in predictions (early in the "
+               "week and again after Friday evening's injury reports), a Kalshi price check and the weekly check-up. "
+               "Home says what it did. The buttons below are for doing a step by hand. <b>Tuning</b> (box 5) is "
+               "optional: the standard settings have held up, and nothing depends on it.", tone="good")
 
 season = s["season"]
 try:

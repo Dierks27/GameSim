@@ -74,49 +74,251 @@ def _depth(row: dict) -> float | None:
     return size * row["price"] if (size is not None and row.get("price")) else None
 
 
+def _checks(cfg: Config, r: dict, trust: dict, sim_age_h: float, q_both: dict | None) -> tuple[list[tuple], dict]:
+    """The signal rules one side of one contract fails, as (code, text, value) — and its market type's record."""
+    sc = cfg.scanner
+    fails = []
+    e, moe = r["edge"], r["moe"]
+    if e <= float(sc["moe_multiple"]) * moe:
+        fails.append(("moe", f"edge {100 * e:.1f} within {sc['moe_multiple']}x MOE {100 * moe:.1f}", moe))
+    depth = _depth(r)
+    if depth is not None and depth < float(sc["min_depth_dollars"]):
+        fails.append(("depth", f"depth ${depth:,.0f}", depth))
+    # (whole cents: 0.56 - 0.52 is 0.040000000000000036 in floating point, and 4 cents must not fail a 4-cent rule)
+    if r.get("spread") is not None and round(100 * r["spread"]) > round(100 * float(sc["max_spread"])):
+        fails.append(("spread", f"spread {100 * r['spread']:.0f}c", r["spread"]))
+    if (r.get("volume") or 0) < float(sc["min_volume"]):
+        fails.append(("volume", f"volume {r.get('volume') or 0:,.0f}", r.get("volume") or 0))
+    if sim_age_h > float(sc["max_sim_age_hours"]):
+        fails.append(("age", f"sim {sim_age_h:.1f} h old", sim_age_h))
+    if q_both is not None:
+        alt = q_both.get((r["ticker"], r["side"]))
+        if alt is not None and alt < float(sc["min_edge"]):
+            fails.append(("flip", f"edge only {100 * alt:.1f} if the questionable player flips", alt))
+    tr = trust.get(r["market"], {"n": 0, "avg_clv": 0.0, "trusted": False})
+    if not tr["trusted"]:
+        fails.append(("trust", f"{r['market']} not trusted yet ({tr['n']} graded games, CLV {tr['avg_clv']:+.3f})", tr["n"]))
+    return fails, tr
+
+
 def evaluate(cfg: Config, summ: dict, rows: list[dict], trust: dict, sim_age_h: float, q_both: dict | None) -> list[dict]:
     sc = cfg.scanner
     out = []
     for r in rows:
         if r.get("edge") is None:
             continue
-        reasons, fails = [], []
-        e, moe = r["edge"], r["moe"]
+        e = r["edge"]
         if e < float(sc["min_edge"]):
             continue
-        if e <= float(sc["moe_multiple"]) * moe:
-            fails.append(f"edge {100 * e:.1f} within {sc['moe_multiple']}x MOE {100 * moe:.1f}")
+        checks, tr = _checks(cfg, r, trust, sim_age_h, q_both)
+        fails = [text for _, text, _ in checks]
         depth = _depth(r)
-        if depth is not None and depth < float(sc["min_depth_dollars"]):
-            fails.append(f"depth ${depth:,.0f}")
-        if r.get("spread") is not None and r["spread"] > float(sc["max_spread"]):
-            fails.append(f"spread {100 * r['spread']:.0f}c")
-        if (r.get("volume") or 0) < float(sc["min_volume"]):
-            fails.append(f"volume {r.get('volume') or 0:,.0f}")
-        if sim_age_h > float(sc["max_sim_age_hours"]):
-            fails.append(f"sim {sim_age_h:.1f} h old")
-        if q_both is not None:
-            alt = q_both.get((r["ticker"], r["side"]))
-            if alt is not None and alt < float(sc["min_edge"]):
-                fails.append(f"edge only {100 * alt:.1f} if the questionable player flips")
-        tr = trust.get(r["market"], {"n": 0, "avg_clv": 0.0, "trusted": False})
-        if not tr["trusted"]:
-            fails.append(f"{r['market']} not trusted yet ({tr['n']} graded games, CLV {tr['avg_clv']:+.3f})")
-        hard = [f for f in fails if "not trusted" not in f]
-        if hard:
-            conf = "watchlist"
-        elif not tr["trusted"]:
+        if fails:
             conf = "watchlist"
         else:
             conf = "strong" if e >= float(sc["strong_edge"]) else "moderate"
         cost = r["price"] + r["fee"]
-        reasons.append(f"sim {100 * r['p_side']:.0f}% vs {r['side']} ask {100 * r['price']:.0f}c + {100 * r['fee']:.1f}c fee "
-                       f"-> edge {100 * e:+.1f} pts, EV ${e / cost:+.2f}/$1")
+        reasons = [f"sim {100 * r['p_side']:.0f}% vs {r['side']} ask {100 * r['price']:.0f}c + {100 * r['fee']:.1f}c fee "
+                   f"-> edge {100 * e:+.1f} pts, EV ${e / cost:+.2f}/$1"]
         if depth is not None:
             reasons.append(f"${depth:,.0f} at the ask")
         reasons.append(f"{r['market']} record: {tr['n']} graded games, CLV {tr['avg_clv']:+.3f}")
         out.append({**r, "depth_dollars": depth, "confidence": conf, "reason": "; ".join(reasons + fails)})
     out.sort(key=lambda s: -s["edge"])
+    return out
+
+
+# What a failed rule means, in plain words (the Game page, This Week and the auto parlay show these).
+def _catch_text(cfg: Config, code: str, value, market: str) -> str:
+    """Short, because it sits in a table cell; the page's "How to read this" spells each one out."""
+    if code == "moe":
+        return "inside the margin of error"
+    if code == "depth":
+        return f"only ${value:,.0f} offered at this price"
+    if code == "spread":
+        return f"buy/sell prices {100 * value:.0f}¢ apart"
+    if code == "volume":
+        return f"hardly traded ({value:,.0f})"
+    if code == "age":
+        return f"sim is {value:.0f} h old"
+    if code == "flip":
+        return "depends on a questionable QB"
+    return f"no record yet on {MARKET_WORD.get(market, market)} contracts"
+
+
+MARKET_WORD = {"moneyline": "who-wins", "spread": "spread", "total": "total"}
+RATING_RANK = {"signal": 0, "unproven": 1, "catch": 2, "lean": 3, "small": 4, "none": 5}
+
+
+# An edge this large is more often GridSim missing something the market knows (an injury, a quarterback change, the
+# weather) than a mistake by the market: the board says so next to it. (Text only: the rating rules are unchanged.)
+BIG_EDGE = 0.10
+
+
+RATING_TEXT = {"signal": "Signal", "unproven": "Edge, unproven", "catch": "Edge, with a catch",
+               "lean": "GridSim leans this way", "small": "Small edge", "none": "No edge"}
+
+
+def game_board(cfg: Config, summ: dict, mk: dict, trust: dict | None = None, now: dt.datetime | None = None) -> list[dict]:
+    """Every side of every Kalshi contract of ONE game: the market's chance, the sim's, the adjusted one
+    (markets.both_sides) and a rating — also the sides without an edge, so the page can show the whole board.
+
+    The rating goes by the ADJUSTED edge and the price check's rules: "signal" (passes every rule), "unproven"
+    (passes all but the track-record rule), "catch" (fails a liquidity / margin-of-error / freshness rule), "small"
+    (an adjusted edge below scanner.min_edge), "none". A side where only the sim ALONE sees an edge of at least
+    scanner.min_edge is a "lean": GridSim's opinion, which the adjustment does not credit as an edge.
+    row["hard"] says whether a liquidity / margin-of-error / freshness rule fails (for edges and leans alike).
+    Not checked here: the questionable-QB test (it needs two more sims; the scheduled price check does it)."""
+    from .markets import both_sides
+    trust = trust_table(cfg) if trust is None else trust
+    now = now or dt.datetime.now(dt.timezone.utc)
+    age = 0.0
+    try:
+        age = (now - dt.datetime.fromisoformat(summ["created_utc"])).total_seconds() / 3600
+    except (KeyError, TypeError, ValueError):
+        pass
+    min_edge = float(cfg.scanner["min_edge"])
+    out = []
+    for r in both_sides(sim_probs(summ, mk), cfg):
+        r["moe"] = r.get("moe") or 0.0
+        row = {**r, "depth_dollars": _depth(r), "confidence": None, "catches": [], "hard": False}
+        is_edge = r["edge"] >= min_edge
+        if is_edge or r["lean"] >= min_edge:
+            # the rules are applied to the number the row stands on: the adjusted edge, or the sim's own lean
+            checks, _ = _checks(cfg, r if is_edge else {**r, "edge": r["lean"]}, trust, age, None)
+            hard = [c for c in checks if c[0] != "trust"]
+            row["hard"] = bool(hard)
+            row["catches"] = [_catch_text(cfg, code, val, r["market"]) for code, _, val in hard]
+            if is_edge:
+                row["catches"] += [_catch_text(cfg, code, val, r["market"]) for code, _, val in checks if code == "trust"]
+                if r["edge"] >= BIG_EDGE:
+                    row["catches"].insert(0, "unusually large — check the news")
+                if not checks:
+                    row["rating"] = "signal"
+                    row["confidence"] = "strong" if r["edge"] >= float(cfg.scanner["strong_edge"]) else "moderate"
+                else:
+                    row["rating"] = "catch" if hard else "unproven"
+                    row["confidence"] = "watchlist"
+            else:
+                row["rating"] = "lean"
+                if r["lean"] >= BIG_EDGE:
+                    row["catches"].insert(0, "far from the market — check the news")
+        else:
+            row["rating"] = "small" if r["edge"] > 0 else "none"
+        out.append(row)
+    # cleanest first: by rating, leans whose price can really be had before the ones with a catch, then the biggest
+    # adjusted edge, then the strongest lean
+    out.sort(key=lambda x: (RATING_RANK[x["rating"]], x["hard"] if x["rating"] == "lean" else False,
+                            -round(x["edge"], 6) if x["rating"] != "lean" else 0, -x["lean"]))
+    return out
+
+
+def _snapshots(cfg: Config, season: int, week: int) -> list[Path]:
+    """A week's saved price snapshots, oldest first (not the one-game files a closing-price backfill writes)."""
+    return sorted(p for p in (_dir(cfg) / "snapshots").glob(f"{season}_wk{int(week):02d}_*.json")
+                  if "backfilled" not in p.name)
+
+
+def latest_snapshot(cfg: Config, season: int, week: int) -> Path | None:
+    """The newest saved price snapshot of a week (every price check writes one)."""
+    files = _snapshots(cfg, season, week)
+    return files[-1] if files else None
+
+
+def _read_snapshot(cfg: Config, season: int, week: int) -> dict:
+    """The newest snapshot of the week that can be read (a half-written newest file must not blank the week)."""
+    for p in reversed(_snapshots(cfg, season, week)[-5:]):
+        try:
+            snap = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(snap, dict) and isinstance(snap.get("games"), dict):
+            return snap
+    return {}
+
+
+def week_board(cfg: Config, season: int | None = None, week: int | None = None, snapshot: Path | None = None) -> dict:
+    """The boards of every upcoming game of the week from the LAST price check (no network, no simulation): Kalshi's
+    prices as saved then, against the sims the scheduled check uses (default sim count). Returns
+    {"ts_utc", "season", "week", "games": {game_id: {"matchup", "home", "away", "kickoff_utc", "rows" | None,
+    "note"}}}; rows is None when the game has no cached sim or no saved prices (note says which)."""
+    from .live import kickoff_utc
+    season, week, games = week_slate(cfg, season, week)
+    out = {"ts_utc": None, "season": season, "week": week, "games": {}}
+    if snapshot is not None:
+        try:
+            snap = json.loads(snapshot.read_text(encoding="utf-8"))
+            snap = snap if isinstance(snap, dict) and isinstance(snap.get("games"), dict) else {}
+        except (OSError, ValueError):
+            snap = {}
+    else:
+        snap = _read_snapshot(cfg, season, week)
+    out["ts_utc"] = snap.get("ts_utc")
+    trust = trust_table(cfg)
+    now = dt.datetime.now(dt.timezone.utc)
+    for g in games:
+        ko = kickoff_utc(g)
+        if g.get("home_score") is not None or (ko and ko <= now):
+            continue
+        entry = {"matchup": f"{g['away_team']} @ {g['home_team']}", "home": g["home_team"], "away": g["away_team"],
+                 "kickoff_utc": ko.isoformat() if ko else None, "rows": None, "note": ""}
+        mk = (snap.get("games") or {}).get(g["game_id"])
+        summ = cached_summary(RunRequest(home=g["home_team"], away=g["away_team"], season=season, week=week,
+                                         market_lines=True), cfg)
+        if not isinstance(mk, dict) or mk.get("error") or not (mk.get("moneyline") or mk.get("spread") or mk.get("total")):
+            entry["note"] = "no Kalshi prices saved for this game yet"
+        elif summ is None:
+            entry["note"] = "not simulated yet at the standard settings"
+        else:
+            # like the price check: when it made a bigger sim for this game (a borderline edge) and that is still
+            # fresh, the bigger one is the better number
+            try:
+                big = cached_summary(RunRequest(home=g["home_team"], away=g["away_team"], season=season, week=week,
+                                                market_lines=True, sims=min(int(cfg.scanner["max_resim_sims"]),
+                                                                            int(summ["n_sims"]) * 4)), cfg)
+                made = dt.datetime.fromisoformat(big["created_utc"]) if big else None
+                if made and (now - made).total_seconds() / 3600 <= float(cfg.scanner["max_sim_age_hours"]):
+                    summ = big
+            except (KeyError, TypeError, ValueError):
+                pass
+            try:
+                entry["rows"] = game_board(cfg, summ, mk, trust, now)
+                for r in entry["rows"]:
+                    r.update(game_id=g["game_id"], matchup=entry["matchup"], kickoff_utc=entry["kickoff_utc"])
+            except Exception as e:           # one odd game must not blank the week
+                entry["note"] = f"could not be priced ({type(e).__name__})"
+        out["games"][g["game_id"]] = entry
+    return out
+
+
+PRICE_BANDS = [("under 25¢", 0.0, 0.25), ("25–49¢", 0.25, 0.50), ("50–74¢", 0.50, 0.75), ("75¢ and up", 0.75, 1.01)]
+
+
+def record_by_price(cfg: Config, season: int | None = None) -> list[dict]:
+    """How graded signals did by the price paid: long shots (under 50¢) against favourites. Each contract counts
+    once (its first sighting). "needed %" is the average cost with fees, i.e. the share that has to win to break
+    even. All confidence levels and model versions are counted together."""
+    gp = _dir(cfg) / "graded.csv"
+    if not gp.exists():
+        return []
+    df = pl.read_csv(gp, infer_schema_length=None)
+    if season:
+        df = df.filter(pl.col("season") == season)
+    df = first_sightings(df)
+    if not df.height:
+        return []
+    df = df.with_columns(pl.col("price").cast(pl.Float64), pl.col("fee").cast(pl.Float64), pl.col("pnl").cast(pl.Float64),
+                         pl.col("clv").cast(pl.Float64, strict=False),
+                         pl.col("won").cast(pl.Utf8).str.to_lowercase().is_in(["true", "1"]).alias("_won"))
+    out = []
+    for label, lo, hi in PRICE_BANDS + [("all under 50¢", 0.0, 0.50), ("all 50¢ and up", 0.50, 1.01)]:
+        x = df.filter((pl.col("price") >= lo) & (pl.col("price") < hi))
+        if not x.height:
+            continue
+        clv = x["clv"].drop_nulls()
+        out.append({"price paid": label, "contracts": x.height, "games": x["game_id"].n_unique(),
+                    "won %": 100 * float(x["_won"].mean()), "needed %": 100 * float((x["price"] + x["fee"]).mean()),
+                    "avg CLV": float(clv.mean()) if clv.len() else None, "P&L (units)": float(x["pnl"].sum())})
     return out
 
 
@@ -219,8 +421,10 @@ def scan(cfg: Config, season: int | None = None, week: int | None = None, notify
     if snap_games:
         sd = _dir(cfg) / "snapshots"
         sd.mkdir(exist_ok=True)
-        (sd / f"{season}_wk{week:02d}_{now.strftime('%Y%m%dT%H%M%SZ')}.json").write_text(
-            json.dumps({"ts_utc": now.isoformat(), "season": season, "week": week, "games": snap_games}))
+        snap_p = sd / f"{season}_wk{week:02d}_{now.strftime('%Y%m%dT%H%M%SZ')}.json"
+        tmp = snap_p.with_name(snap_p.name + ".partial")       # (never a half-written snapshot under the real name)
+        tmp.write_text(json.dumps({"ts_utc": now.isoformat(), "season": season, "week": week, "games": snap_games}))
+        tmp.replace(snap_p)
     # ledger + re-alert logic
     led = _dir(cfg) / "ledger.csv"
     alerts = []

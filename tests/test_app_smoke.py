@@ -261,3 +261,33 @@ def test_the_version_is_a_release_date_and_the_same_everywhere():
     assert re.search(r'^version = "(.+)"$', toml, re.M).group(1) == gridsim.__version__
     assert "gridsim.__version__" in (APP / "streamlit_app.py").read_text(encoding="utf-8")
     assert "gridsim.__version__" in (ROOT / "Start GridSim.bat").read_text(encoding="utf-8")
+
+
+# ---- tables that fit ---------------------------------------------------------------------------------------
+
+def test_tables_wrap_text_keep_numbers_on_one_line_and_escape_what_they_show():
+    import common
+    html = common.table_html(
+        [{"what": "NE wins <b>", "costs": 44.0, "edge": -2.5, "lean": 9.1, "note": "", "ok": True, "Kalshi": "https://k/x?a=1&b=2"},
+         {"what": "under 44.5", "costs": 51.0, "edge": 0.0, "lean": -3.0, "note": None, "ok": False, "Kalshi": None}],
+        fmt={"costs": "%.0f¢", "edge": "%+.1f", "lean": "%+.1f"}, link={"Kalshi": "open ↗"}, sign=("edge", "lean"),
+        help={"lean": 'GridSim\'s "own" view'}, hide={"note": 2}, labels={"what": "you buy"})
+    assert "NE wins &lt;b&gt;" in html and "<b>" not in html                      # what a cell shows is never markup
+    assert '<td class="n" data-label="costs">44¢</td>' in html and '<td class="n neg" data-label="edge">-2.5</td>' in html
+    assert '<td class="n pos" data-label="lean">+9.1</td>' in html and '<td class="n" data-label="edge">+0.0</td>' in html
+    assert '<td class="t" data-label="you buy">NE wins' in html and '<th class="t">you buy</th>' in html
+    assert 'title="GridSim&#x27;s &quot;own&quot; view"' in html                  # the heading explains itself
+    assert 'class="t w2 empty" data-label="note">—<' in html and ">yes<" in html and ">no<" in html
+    assert '<a href="https://k/x?a=1&amp;b=2" target="_blank" rel="noopener">open ↗</a>' in html
+    assert common.table_html([]) == "" and common.table_html(None) == ""
+    import polars as pl
+    assert ">3<" in common.table_html(pl.DataFrame({"a": [3]}))                    # a data frame works too
+
+
+def test_no_page_uses_the_grid_that_scrolls_sideways():
+    """Every table goes through common.table / common.board (they fit the page); the page itself has no fixed width."""
+    for p in [APP / "streamlit_app.py", APP / "common.py", *PAGES]:
+        src = p.read_text(encoding="utf-8")
+        assert "st.dataframe(" not in src and "st.data_editor(" not in src, p.name
+    css = (APP / "common.py").read_text(encoding="utf-8")
+    assert "max-width: none" in css and "max-width: 1180px" not in css

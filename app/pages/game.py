@@ -6,6 +6,8 @@ import json
 import streamlit as st
 
 import common
+
+common.via_app(common.GAME_PAGE)
 from gridsim.api import cover_from_hist
 from gridsim.availability import default_overrides_path, load_overrides, save_overrides
 
@@ -39,6 +41,7 @@ if ss.pop("game_pick_new", False) or ss.get("game_choice") not in options:
     ss["game_choice"] = default_id if default_id in options else options[0]
 choice = st.selectbox(f"Game ({season} week {week})", options, format_func=_label, key="game_choice")
 neutral = playoff = False
+slate_game = None
 if choice == CUSTOM:
     teams = common.schedule_index().get(season, {}).get("teams") or sorted({g["home_team"] for g in games})
     c1, c2, c3, c4 = st.columns([2, 2, 1, 1], vertical_alignment="bottom")
@@ -57,7 +60,7 @@ if choice == CUSTOM:
         st.warning("Pick two different teams.")
         st.stop()
 else:
-    g = by_id[choice]
+    g = slate_game = by_id[choice]
     home, away, gweek = g["home_team"], g["away_team"], week
 ss["game_pick"] = {"home": home, "away": away, "season": season, "week": gweek}
 
@@ -72,7 +75,7 @@ if summ is None:
         if summ is not None:
             st.rerun()
     st.stop()
-if bcol1.button("Re-simulate (ignore cache)", width="stretch",
+if bcol1.button("Re-simulate", width="stretch",
                 help="Runs again with the current data and overrides file, then replaces the cached result."):
     if common.run(req, force=True) is not None:
         st.rerun()
@@ -83,7 +86,101 @@ n = summ["n_sims"]
 # ---- headline ------------------------------------------------------------------------------------------
 st.html('<div class="gs">' + hr.header_html(summ) + hr.tiles_html(summ) + hr.market_html(summ) + "</div>")
 
-tabs = st.tabs(["Lines & charts", "Alt lines", "Scores", "Team stats", "Lineup", "Players", "Details"])
+kalshi_tab, *tabs = st.tabs(["Kalshi prices", "Lines & charts", "Alt lines", "Scores", "Team stats", "Lineup",
+                             "Players", "Details"])
+
+# ---- Kalshi prices: every contract of this game against GridSim's number (read-only) -----------------------
+with kalshi_tab:
+    import datetime as dt
+
+    from gridsim import scanner
+    from gridsim.live import kickoff_utc
+
+    ko = kickoff_utc(slate_game) if slate_game else None
+    if slate_game is None:
+        st.info("Kalshi prices are shown for the scheduled games of the week. Pick one in the box at the top.")
+    elif slate_game.get("home_score") is not None or (ko and ko <= dt.datetime.now(dt.timezone.utc)):
+        st.info("This game has started or is over, so there is nothing left to buy before kickoff.")
+    else:
+        mk = common.kalshi_contracts(slate_game["game_id"], H, A, slate_game.get("gameday"))
+        c1, c2 = st.columns([3, 1], vertical_alignment="center")
+        if c2.button("Refresh prices", icon=":material/refresh:", width="stretch", key="kb_refresh"):
+            common.kalshi_contracts.clear()
+            st.rerun()
+        if mk.get("error"):
+            st.error(f"Could not read Kalshi's prices ({mk['error']}). Check the internet connection and press "
+                     "**Refresh prices**.")
+        elif not (mk.get("moneyline") or mk.get("spread") or mk.get("total")):
+            st.info("Kalshi lists no open contracts for this game right now (they usually open early in the week).")
+        else:
+            board = scanner.game_board(common.cfg(), summ, mk)
+            try:
+                seen = dt.datetime.fromisoformat(mk["fetched_utc"]).astimezone().strftime("%I:%M %p").lstrip("0")
+            except (KeyError, ValueError):
+                seen = "just now"
+            c1.caption(f"Kalshi's prices as of {seen}, against this page's simulation ({n:,} sims). "
+                       "**Read-only**: GridSim never places orders.")
+            f1, f2, f3 = st.columns([3, 2, 2], vertical_alignment="bottom")
+            with f1:
+                band = common.price_filter()
+            kinds = {"all": "All types", **common.MARKET_LABEL}
+            kind = f2.selectbox("Type", list(kinds), format_func=kinds.get, key=common.keep("kb_kind", "all"))
+            only = f3.toggle("Only edges and leans", key=common.keep("kb_only", False))
+            shown = [r for r in board if common.in_band(r, band) and (kind == "all" or r["market"] == kind)]
+            edge_rows = [r for r in shown if r["rating"] in common.EDGE_RATINGS]
+            leans = [r for r in shown if r["rating"] == "lean"]
+            top = (edge_rows or leans or [None])[0]
+            rows = (edge_rows + leans) if only else shown
+            st.html(common.kv_html([
+                ("Contracts shown", f"{len(rows)}", f"of {len(board)} sides you could buy for this game"),
+                ("Edges after adjusting", f"{len(edge_rows)}",
+                 (f"{sum(r['rating'] == 'signal' for r in edge_rows)} pass every rule · "
+                  f"{sum(r['rating'] == 'unproven' for r in edge_rows)} unproven · "
+                  f"{sum(r['rating'] == 'catch' for r in edge_rows)} with a catch") if edge_rows
+                 else "none: every price is at or above the adjusted chance"),
+                ("GridSim leans", f"{len(leans)}",
+                 f"sides GridSim alone rates at least {100 * float(common.cfg().scanner['min_edge']):.0f} points above their cost"),
+                ("Top of the list", hr.esc(top["what"]) if top else "—",
+                 hr.esc(f"costs {100 * top['cost']:.0f}¢ · market {100 * top['p_market']:.0f}% · GridSim "
+                        f"{100 * top['p_side']:.0f}% · adjusted {100 * top['p_adj']:.0f}%") if top else ""),
+            ]))
+            if rows:
+                common.board(rows)
+            else:
+                st.caption("Nothing to show with these choices.")
+            common.blend_note()
+            if band == "under50":
+                common.longshot_note(season)
+            av_q = [p for t in (summ.get("availability") or {}).get("teams", {}).values() for p in t.get("listed", [])
+                    if 0 < p.get("p_play", 1) < 1 and p.get("pos") == "QB"]
+            if av_q:
+                st.caption("Questionable: " + ", ".join(f"{p['name']} ({100 * p['p_play']:.0f}% to play)" for p in av_q)
+                           + ". GridSim's numbers here mix both cases; the **Lineup** tab lets you try him out and in.")
+            with st.expander("How to read this table"):
+                st.markdown(
+                    "- **You buy** — the thing that has to happen for the contract to pay one dollar.\n"
+                    "- **Costs** — Kalshi's price right now plus its fee. **Pays** — what comes back for every dollar "
+                    "put in if it wins.\n"
+                    "- **Market** — how often the market thinks it wins (the middle of Kalshi's buy and sell price). "
+                    "**GridSim** — how often it won in the simulations, ± its margin of error.\n"
+                    "- **Edge** = the adjusted chance − costs (see the box above). **Lean** = GridSim − costs: the "
+                    "edge there would be if GridSim alone were right.\n"
+                    f"- 🟢 **Signal** — an adjusted edge of at least {100 * float(common.cfg().scanner['min_edge']):.0f} "
+                    "points that passes every rule, including a proven record for that type of contract. "
+                    "🟡 **Unproven** — the same without the record. 🟠 **Catch** — an edge with a problem.\n"
+                    "- ⚪ **Lean** — no edge after adjusting, but GridSim alone rates it at least "
+                    f"{100 * float(common.cfg().scanner['min_edge']):.0f} points above its cost. Useful as a second "
+                    "opinion on which side of a game to look at; not evidence that the price is wrong.\n"
+                    "- **Catch** column: *only $… offered* / *buy/sell prices …¢ apart* / *hardly traded* — a thin "
+                    "market, where the price shown may not be one you can really get. *inside the margin of error* — "
+                    "more sims would settle it (raise **Sims per game** on the left). *sim is … h old* — press "
+                    "**Re-simulate**. *far from the market — check the news* — when GridSim and the market are this "
+                    "far apart, GridSim is usually missing something (an injury, a quarterback change).\n"
+                    "- Rest the mouse on a column heading to see what it means.\n\n"
+                    "The numbers are facts about prices and simulations. Whether to buy is your call.")
+            st.page_link(common.POSITIONS_PAGE, label="Bought one? Add it on My positions so GridSim watches it",
+                         icon=":material/visibility:")
+
 
 # ---- lines & charts ------------------------------------------------------------------------------------
 with tabs[0]:
@@ -217,7 +314,7 @@ with tabs[6]:
     cmd = (f"gridsim run --home {H} --away {A} --season {season}" + (f" --week {gweek}" if gweek else "")
            + f" --sims {n} --seed {summ['meta'].get('seed')} --market-lines"
            + (" --neutral" if neutral else "") + (" --playoff" if playoff else "") + ("" if s["players"] else " --no-players"))
-    st.code(cmd, language="bash")
+    st.code(cmd, language="bash", wrap_lines=True)
     d1, d2 = st.columns(2)
     stem = f"{A}_at_{H}_{season}_s{summ['meta'].get('seed')}"
     d1.download_button("Download HTML report", data=lambda: hr.render_html(summ), file_name=f"{stem}.html",

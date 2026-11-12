@@ -8,9 +8,11 @@ import datetime as dt
 import streamlit as st
 
 import common
+
+common.via_app(common.POSITIONS_PAGE)
 from gridsim import api
 from gridsim import positions as pos
-from gridsim.markets import Kalshi, game_markets, sim_probs
+from gridsim.markets import sim_probs
 
 hr = common.hr
 ss = st.session_state
@@ -48,11 +50,6 @@ def _usd(x) -> str:
     return "—" if x is None else f"{'+' if x >= 0 else '−'}${abs(float(x)):,.2f}"
 
 
-@st.cache_data(ttl=120, show_spinner="Reading Kalshi prices …")
-def _contracts(game_id: str, home: str, away: str, gameday: str) -> dict:
-    return game_markets(Kalshi(common.cfg()), {"home_team": home, "away_team": away, "gameday": gameday})
-
-
 # ---- add ---------------------------------------------------------------------------------------------------------------
 with st.expander("Add a position", expanded=bool(ss.get("pos_adding")) or not pos.open_positions(cfg),
                  icon=":material/add_circle:"):
@@ -74,11 +71,11 @@ with st.expander("Add a position", expanded=bool(ss.get("pos_adding")) or not po
                           format_func=lambda i: f"{games[i]['away_team']} @ {games[i]['home_team']} · "
                                                 f"{games[i].get('weekday', '')} {games[i].get('gametime', '')}")
         g = games[gi]
-        try:
-            mk = _contracts(g["game_id"], g["home_team"], g["away_team"], g.get("gameday"))
-        except Exception as e:
+        mk = common.kalshi_contracts(g["game_id"], g["home_team"], g["away_team"], g.get("gameday"))
+        if mk.get("error"):
+            st.error(f"Could not read Kalshi's prices for this game ({mk['error']}).")
+            st.button("Try again", key="pos_retry", icon=":material/refresh:")      # (any click reads them again)
             mk = None
-            st.error(f"Could not read Kalshi's prices for this game ({type(e).__name__}: {e}). Try again in a minute.")
         if mk:
             kinds = {"Who wins (moneyline)": "moneyline", "Spread": "spread", "Total points": "total"}
             kind = kinds[st.radio("Market", list(kinds), horizontal=True, key="pos_kind")]
@@ -220,12 +217,12 @@ if closed:
     st.markdown("#### Closed positions")
     total = sum(float(p.get("pnl") or 0) for p in closed)
     ended = {"won": "won (paid $1 each)", "lost": "lost (paid $0)", "tie": "tie (paid 50¢ each)"}
-    st.dataframe([{"game": p["matchup"], "contract": f"{p['label']} ({p['side'].title()})", "contracts": p["contracts"],
+    common.table([{"game": p["matchup"], "contract": f"{p['label']} ({p['side'].title()})", "contracts": p["contracts"],
                    "paid": _cents(p["price"]),
                    "ended": ("sold at " + _cents(p.get("exit_price"))) if p["status"] == "sold"
                    else ended.get(p.get("result"), p.get("result", "")),
                    "profit / loss": _usd(p.get("pnl")), "closed": _local(p.get("closed_utc"))}
                   for p in sorted(closed, key=lambda q: str(q.get("closed_utc")), reverse=True)],
-                 hide_index=True, width="stretch")
+                 right=("paid", "profit / loss"), height=460)
     st.caption(f"Total across closed positions: **{_usd(total)}** after fees. These are your own entries — GridSim "
                "doesn't know about anything you didn't add here.")

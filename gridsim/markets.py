@@ -200,15 +200,18 @@ def sim_probs(summary: dict, mk: dict) -> list[dict]:
     out = []
     p_home = summary["win"]["home"]["p"]
     p_away = summary["win"]["away"]["p"]
+    A = summary["matchup"]["away"]
     for team, q in mk.get("moneyline", {}).items():
         p = p_home if team == H else p_away
-        out.append({"market": "moneyline", "label": f"{team} wins", "p_yes": p, **q})
+        out.append({"market": "moneyline", "label": f"{team} wins", "p_yes": p, **q, "team": team,
+                    "other": A if team == H else H})
     for q in mk.get("spread", []):
         # "TEAM wins by over X": home perspective spread line for cover_from_hist is -X for home, +X... for away
         line = -q["line"] if q["team"] == H else q["line"]
         c = cover_from_hist(summary["hist"]["margin"], line, "spread")
         p = c["hit"] if q["team"] == H else c["miss"]
-        out.append({"market": "spread", "label": f"{q['team']} wins by {q['line']}+", "p_yes": p, **q})
+        out.append({"market": "spread", "label": f"{q['team']} wins by {q['line']}+", "p_yes": p, **q,
+                    "other": A if q["team"] == H else H})
     for q in mk.get("total", []):
         c = cover_from_hist(summary["hist"]["total"], q["line"], "total")
         out.append({"market": "total", "label": f"over {q['line']}", "p_yes": c["hit"], **q})
@@ -232,6 +235,62 @@ def edges(rows: list[dict], cfg) -> list[dict]:
             if best is None or cand["edge"] > best["edge"]:
                 best = cand
         out.append({**r, **(best or {"side": None, "edge": None})})
+    return out
+
+
+def side_text(row: dict, side: str) -> str:
+    """What you are buying, in plain words: the YES statement, or what has to happen for NO to pay."""
+    if side == "YES":
+        return row["label"]
+    if row["market"] == "total":
+        line = float(row["line"])
+        return f"under {line:g}" if line != int(line) else f"{line:g} or fewer"
+    if row["market"] == "spread" and row.get("other"):
+        # NO on "TEAM wins by over X" pays when the other team wins, ties, or loses by X or less
+        return f"{row['other']} wins or loses by {math.floor(float(row['line']))} or fewer"
+    return f"{row.get('team') or row['label'].removesuffix(' wins')} does not win"
+
+
+def blend_weight(cfg) -> float:
+    """market_blend.weight, kept between 0 (the market's price is the estimate) and 1 (GridSim alone)."""
+    try:
+        return min(1.0, max(0.0, float((cfg.raw.get("market_blend") or {}).get("weight", 0.0))))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def both_sides(rows: list[dict], cfg) -> list[dict]:
+    """Every side you could buy of every contract (sim_probs rows): buying YES pays the yes ask, buying NO the no
+    ask. `edges` keeps only the better side of a contract; this keeps both, so the cheap side (the long shot) is
+    always listed. Per side:
+
+      cost      price + fee;  pays = what $1 returns if it wins
+      p_side    the sim's chance (GridSim alone)
+      p_market  the market's own chance for this side: the middle of its bid and ask (the ask when there is no bid)
+      p_adj     the adjusted chance: p_market + market_blend.weight x (p_side - p_market)
+      lean      p_side - cost: what the edge would be if GridSim alone were right
+      edge      p_adj - cost: the edge after adjusting for how much GridSim's disagreements have been worth
+    """
+    w = blend_weight(cfg)
+    out = []
+    for r in rows:
+        mid = r.get("mid")
+        if r.get("yes_bid") is None or r.get("yes_ask") is None:
+            mid = None                       # (a last-trade price is not a current market opinion)
+        for side, price, p in (("YES", r.get("yes_ask"), r["p_yes"]), ("NO", r.get("no_ask"), 1 - r["p_yes"])):
+            if price is None or price <= 0 or price >= 1:
+                continue
+            f = fee(price, cfg)
+            cost = price + f
+            if cost >= 1:
+                continue
+            pm = price if mid is None else (mid if side == "YES" else 1 - mid)
+            pm = min(max(pm, 0.0), price)    # never above what you would pay: the ask is the top of the market's range
+            adj = pm + w * (p - pm)
+            e = adj - cost
+            out.append({**r, "side": side, "what": side_text(r, side), "price": price, "fee": f, "cost": cost,
+                        "p_side": p, "p_market": pm, "p_adj": adj, "lean": p - cost, "edge": e,
+                        "ev_per_dollar": e / cost, "pays": 1.0 / cost})
     return out
 
 

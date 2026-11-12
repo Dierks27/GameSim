@@ -61,17 +61,25 @@ always safe.
 
 1. Double-click the **GridSim** icon on your desktop (or **Start GridSim** in the GridSim folder).
 2. A black window opens — **leave it open** while you use GridSim (you can minimize it). Closing it stops GridSim.
-3. Your web browser opens GridSim at <http://localhost:8501> after a few seconds. (If it doesn't, open your browser
-   and type that address.)
+3. GridSim opens in **a window of its own** after a few seconds (it uses Microsoft Edge's app window, so there are
+   no tabs and no address bar; on a PC without Edge or Chrome it opens as a tab in your browser instead). If nothing
+   opens, open your browser and type <http://localhost:8501>.
 4. The first time, Windows may ask whether to allow Python through the **firewall**: tick **Private networks**
    and click **Allow**. That's only needed for your phone; GridSim works on the PC either way. (Windows 11 often sets a
    new home network to *Public*, and then the phone still can't connect — see *Phone can't connect* in the
    troubleshooting table.)
 
 **Everyday basics**
-- **Stopping GridSim:** close the black window. Closing the browser tab alone does not stop it — and double-clicking
-  the icon again while it's still running just opens the browser to it.
-- **After a few days away:** first open **Weekly routine** and press **Refresh data**.
+- **Stopping GridSim:** close the black window. Closing the GridSim window alone does not stop it — and
+  double-clicking the icon again while it's still running just opens its window again.
+- **Nothing to remember:** every time you start GridSim it does what is due **by itself**, in the background —
+  fresh data, grading finished games, locking in predictions for the coming games (early in the week, and once more
+  after Friday evening's final injury reports), a Kalshi price check and the weekly check-up. A line at the top says
+  what it is doing; you can use the app meanwhile, and Home says what was done. After a few days away, just start it.
+  And if you **leave GridSim running**, it keeps checking by itself every five minutes and does whatever has become
+  due — no restart, no click; the page you have open refreshes its numbers when a job finishes. (With GridSim closed,
+  the jobs run on Windows' timer if you set up **Schedule GridSim**; otherwise they catch up at the next start. A PC
+  that is asleep does nothing until it wakes.)
 - **Where things are saved:** everything GridSim can't download again lives in **your data folder**,
   `C:\Users\<you>\GridSim Data` — *not* in the GridSim program folder — and is backed up automatically. See
   *Your data and backups* below. Reports you download go to your browser's *Downloads* folder.
@@ -80,15 +88,26 @@ always safe.
 
 ## A quick tour
 
-Everything is on the left-hand menu. Below the list of pages is a small **Settings** box (season, week, sims per
-game, seed, player projections — not the same as the *Settings* page). It applies to the game pages (This Week,
-Game, Player props, Parlay builder, What-if & Live, Signals) and to **Lock in predictions**. 2,000 sims per game is a
-good default; more sims make the numbers steadier but slower (about 3 seconds per 1,000 sims, plus a few seconds the
-first time).
+Everything is on the left-hand menu, in the order you would use it: **This week** (This Week, Game, Signals, My
+positions), **Game tools** (Parlays, Player props, What-if & Live), **Track record** (Scorecard, Diagnose) and
+**Upkeep** (Weekly routine, Settings). **Home** shows where things stand — games left this week, how many Kalshi
+edges and leans the last price check found, your open positions — and four numbered steps to follow.
+
+Below the list of pages is a small **Settings** box (season, week, sims per game, seed, player projections — not the
+same as the *Settings* page). It applies to the game pages (This Week, Game, Player props, Parlays, What-if & Live,
+Signals) and to **Lock in predictions**. 2,000 sims per game is a good default; more sims make the numbers steadier
+but slower (about 3 seconds per 1,000 sims, plus a few seconds the first time). At the very bottom is the **version**
+you are running.
+
+**Under 50¢ or everything?** Wherever Kalshi contracts are listed (This Week, Game, Signals, Parlays) there is the
+same choice: **All prices**, **Under 50¢** (long shots: they win less than half the time and pay more than double) or
+**50¢ and up**. GridSim remembers what you picked, on every page and the next time you start it.
 
 ### This Week
 Every game on this week's slate as a card: kickoff time, the betting market's spread and total, and — once
-simulated — GridSim's win %, fair spread and fair total, and how far GridSim is from the market.
+simulated — GridSim's win %, fair spread and fair total, and how far GridSim is from the market. The last line of a
+card is **Kalshi**: how many contracts of that game showed an edge or a lean at the last price check, and the top
+one. Sort the cards by kickoff, by the biggest spread gap or by the **strongest Kalshi lean**.
 Press **Sim all** to simulate the whole week (a minute or two), or **Sim this game** on one card. **Open game**
 goes to the details. Results are saved and reused; they are recomputed automatically after you refresh the data,
 change a setting, or change that game's lineup.
@@ -100,6 +119,15 @@ One game in depth. Pick the game at the top; if it hasn't been simulated yet, pr
 - **Fair spread** is always shown from the **home team's** side, the way sportsbooks write it: **MIN −2.0** means
   Minnesota is favored by 2; **MIN +3.5** means Minnesota is a 3.5-point underdog.
 - **Fair total** is the total points GridSim expects (half the sims go over, half under).
+- **Kalshi prices** tab (the first one): every contract you could buy for this game right now — who wins, every
+  spread, every total, both the *Yes* and the *No* side. For each: what it **costs** (price plus Kalshi's fee), what
+  **$1 returns** if it wins, and three chances side by side: the **market**'s own (the middle of Kalshi's buy and sell
+  price), **GridSim**'s (how often it happened in the simulations) and the **adjusted** one — the best estimate from
+  the two. **Edge** is adjusted minus cost; **lean** is GridSim minus cost. See *How the numbers are adjusted* below
+  for why these differ. ⚪ **Lean** marks sides GridSim alone rates well above their cost — a second
+  opinion on where to look, not proof the price is wrong. 🟢 🟡 🟠 mark edges that are left after adjusting (with a
+  proven record, without one, or with a catch such as a thin market). Filter by price, by type, or to edges and
+  leans only. GridSim never places orders: the table is facts, the decision is yours.
 - **Lines & charts** tab: type any spread or total and see how often it covers in the sims — instantly.
 - **Lineup** tab: who GridSim assumes is playing (injury report, depth chart). Mark a QB, running back, receiver,
   tight end or kicker **OUT** (or force him **IN**, or pick the starting QB) and press **Re-sim with these changes**.
@@ -107,14 +135,25 @@ One game in depth. Pick the game at the top; if it hasn't been simulated yet, pr
   undo, clear the boxes and press the button again.
 - **Details** tab: download a one-file report (HTML) to keep or share.
 
+### Parlays
+A parlay pays only when every leg wins.
+- **Auto parlay:** GridSim puts the sides it likes this week together for you — one leg per game, two to four
+  legs — and lists them in three groups: **Safer** (hits at least about 1 time in 3), **Middle**, and **Long shot**
+  (less than 1 time in 8, big payout). Each shows the chance that every leg hits (the adjusted one, with GridSim's
+  own next to it), what it costs per $1 of payout, what $1 returns, and the value per $1. Two things to keep in mind:
+  the cost is the legs' costs today multiplied together — a yardstick for what a combination at these prices would
+  cost, not a way to buy (games played at the same time cannot be bought one after another, and buying the legs
+  separately is not a parlay); Kalshi sells combinations itself, at its own price, so look before you buy. And by the
+  adjusted numbers a parlay is worth about 10% less than it costs with two legs and about 15% less with three (the
+  fees and the gap between buy and sell prices on every leg). The lists put the least costly ones first.
+- **Build your own:** pick a game, a *Leg type*, fill in the details and press **Add leg** (e.g. *MIN wins*, *over
+  45.5*, *Jefferson over 64.5 receiving yards*). Pick another game and add more legs if you like, then press **Price
+  it**. Legs in the same game are counted **together** in the same simulated games (so legs that help or hurt each
+  other are priced right); different games are multiplied.
+
 ### Player props
 Pick a game, a team, a player and a stat (passing yards, receiving yards, receptions, rushing yards, touchdowns…);
 press **Simulate with players** if asked. Move the line slider and the over/under percentage updates immediately.
-
-### Parlay builder
-Pick a *Leg type*, fill in the details and press **Add leg** for each leg (e.g. *MIN wins*, *over 45.5*, *Jefferson
-over 64.5 receiving yards*), then press **Price it**. GridSim shows the chance all legs hit **together** in the same
-simulated games, next to the "multiply the legs" number — the difference shows how the legs help or hurt each other.
 
 ### What-if & Live
 - **What-if:** the same game with and without a player (or with a different QB), and who picks up his touches.
@@ -122,8 +161,12 @@ simulated games, next to the "multiply the legs" number — the difference shows
   the rest of it from there.
 
 ### Signals (read-only)
-Press **Scan now** (takes several minutes) to compare GridSim's numbers with **Kalshi** prediction-market prices after
-Kalshi's fees. GridSim **never places orders and never touches any account** — it only reads public prices.
+The whole week in one list. **Edges and leans this week** shows every contract of every upcoming game as of the last
+price check; filter it by price (under 50¢ for the long shots), by game, by type and by rating. Press **Scan now**
+(takes several minutes) to check the prices right now instead of waiting for the next scheduled check.
+GridSim **never places orders and never touches any account** — it only reads public prices.
+Further down, **By the price paid** shows how the cheap contracts GridSim leaned to did compared with the dearer
+ones: how many won against how many had to.
 A market type (moneyline, spread or total) only becomes an **alert** after it has earned trust: at least 50 graded
 games whose signals beat Kalshi's closing price on average, without losing money (a game counts once per market
 type, however many of its lines showed up or how often). Until then everything shows as
@@ -173,8 +216,13 @@ your data folder, so updating GridSim never wipes them.
 
 ## Your weekly routine — the **Weekly routine** page
 
-Open **Weekly routine** (under *Setup* in the menu). It has five numbered boxes, each with one blue button. Use them
-on these days:
+**You don't have to do any of this by hand.** GridSim does it by itself when you start it (see *Nothing to remember*
+above), and, if you ran **Schedule GridSim**, on a timer even when the app is closed. The page is there for doing a
+step yourself — for example locking in again on Sunday morning after a late scratch. **Tuning** (the last row) is
+optional: the standard settings have held up in testing, and nothing else depends on it.
+
+Open **Weekly routine** (under *Upkeep* in the menu). It has five numbered boxes, each with one blue button. If you
+want to run the week by hand, these are the days:
 
 | When | Do this | What it does |
 |---|---|---|
@@ -208,8 +256,14 @@ folder (`C:\Users\<you>\GridSim Data`). Run **Schedule GridSim** again and press
 3. On your phone (same Wi-Fi), open the browser and type exactly that address. (If it doesn't load, see *Phone can't
    connect* in the troubleshooting table below.)
 
-There is no password, so only do this on your own home Wi-Fi. If the phone can't connect, see the troubleshooting
-table below.
+**If it doesn't load:** double-click **Allow phone access** in the GridSim folder and say Yes when Windows asks for
+permission. It adds the one firewall rule the phone needs, shows whether Windows treats your network as *Private*
+(it must be, for a home network — the window offers to set it), and prints the address to type into the phone.
+
+There is no password, so only do this on your own home Wi-Fi. **Don't put GridSim behind a public tunnel or a
+forwarded port** (the way a game server is shared): anyone who found the address could use it. To reach it away from
+home, a private network between your own devices (Tailscale is a free one) is the safe way: install it on the PC and
+the phone, and use the PC's Tailscale address with `:8501` on the end.
 
 ## Phone alerts for Kalshi signals (optional)
 
@@ -232,7 +286,7 @@ watchlist in GridSim but no phone alerts.
   **Extract All…** → type exactly the same place as the first time (**`C:\GridSim`** — not the GameSim-… folder
   inside it) → **Extract** → choose **Replace the files in the destination**. Then double-click **Setup GridSim** once.
 
-**Which version do I have?** Look at the bottom of the left-hand menu in GridSim: *GridSim version 2026.11.11 · …*
+**Which version do I have?** Look at the bottom of the left-hand menu in GridSim: *GridSim version 2026.11.12 · …*
 The version is the date the update was released, so after an update it shows a newer date. The same line is the
 first thing in the black Start GridSim window.
 
@@ -297,12 +351,32 @@ where they were.
 | "Windows protected your PC" | *More info → Run anyway* (or Unblock the ZIP before extracting, step 2.3). |
 | GridSim shows a red "your data looks lost" banner | Press **Restore the latest backup**. If your data is in an old GridSim folder instead, use *Settings → Your data → Bring in data from an old GridSim folder*. |
 | An error says a file was blocked by antivirus or an *Application Control policy* | Windows Security → *Virus & threat protection* → *Protection history* → allow / restore the file (or check your antivirus quarantine), then run Setup again. |
-| Black window says *"Port 8501 is not available"* | GridSim is already open (or still starting) in another black window. Close this one, wait a few seconds, then use the open browser tab or <http://localhost:8501>. |
+| Black window says *"Port 8501 is not available"* | GridSim is already open (or still starting) in another black window. Close this one, wait a few seconds, then use the GridSim window that is already open, or <http://localhost:8501>. |
 | Browser didn't open | Open it yourself and go to <http://localhost:8501>. |
 | A page says the schedule / data is missing | Weekly routine → box 1 → **Refresh data** (or run Setup again). |
-| Phone can't connect | 1) Windows *Settings → Network & internet → Wi-Fi* (or *Ethernet* if the PC is plugged in by cable) *→* your network → set *Network profile type* to **Private** (Windows often sets new networks to Public, which blocks the phone). 2) Start menu → type **Allow an app through Windows Firewall** → *Change settings* → tick **Private** on every **Python** row → OK. 3) Phone on the same Wi-Fi, GridSim's black window still open. |
+| Phone can't connect | Double-click **Allow phone access** in the GridSim folder (it adds the firewall rule and checks the network type). If the phone still can't connect after that, do these by hand: 1) Windows *Settings → Network & internet → Wi-Fi* (or *Ethernet* if the PC is plugged in by cable) *→* your network → set *Network profile type* to **Private** (Windows often sets new networks to Public, which blocks the phone). 2) Start menu → type **Allow an app through Windows Firewall** → *Change settings* → tick **Private** on every **Python** row → OK. 3) Phone on the same Wi-Fi, GridSim's black window still open. |
 | The scheduled jobs don't seem to run | Open `logs\scheduled.log` in your data folder (*Settings → Your data → Open data folder*) to see what happened; run **Schedule GridSim** again and press **A**. |
 | Anything else | Close the black window and start GridSim again. If an error stays, take a screenshot of the black window. |
+
+## How the numbers are adjusted
+
+When GridSim and the market disagree about a game, who is usually right? That can be measured. Four past seasons
+(2022–2025, 959 games) were replayed with only the data available before each game, and each result was compared with
+both numbers: the closing betting line, and GridSim's. The answer: **GridSim's disagreement with the line did not
+predict results.** Over the four seasons together a blend of the two was not better than the line alone — in one of the four (2025) a half-and-half blend was slightly better, within noise (weight for GridSim's side of a
+disagreement: −0.2 ± 0.2 on margins, −0.3 ± 0.2 on win chances, 0.0 ± 0.2 on totals — in other words zero).
+
+So wherever a Kalshi contract is rated, GridSim shows three numbers: the **market**'s chance, **GridSim**'s own, and
+the **adjusted** chance, which is the market's moved toward GridSim's by the weight GridSim has earned — today, none.
+The **edge** (adjusted minus cost) is therefore slightly negative everywhere: the cost of the fees and the gap between
+buy and sell prices. GridSim's own view is shown as its **lean**. Two things this is good for: a lean tells you which
+side of a game GridSim's simulation favours and by how much, and the same-game parlay pricing (how legs move
+together) is something the single prices don't tell you.
+
+This is not fixed. GridSim keeps grading its own Kalshi record (Signals → *Ledger record*); if its leans start
+beating the closing price, the weight (`market_blend.weight` under *Settings → Config*) should go up, and edges will
+appear. **Tuning cannot fix this**: tuning adjusts GridSim's own settings to fit past results as well as possible; it
+never sees the market's price, and the market simply knows more (injuries, news, money).
 
 ## How much should you trust it?
 

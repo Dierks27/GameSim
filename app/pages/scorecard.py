@@ -8,6 +8,8 @@ import polars as pl
 import streamlit as st
 
 import common
+
+common.via_app(common.SCORECARD_PAGE)
 from gridsim import live, userdata
 from gridsim.metrics import calibration_table
 
@@ -22,7 +24,15 @@ METRICS = [("games", "Games", "%d"), ("brier", "Brier", "%.4f"), ("market_brier"
            ("log_loss", "Log loss", "%.4f"), ("mae_margin", "MAE margin", "%.2f"),
            ("market_mae_margin", "MAE margin (market)", "%.2f"), ("mae_total", "MAE total", "%.2f"),
            ("crps_margin", "CRPS margin", "%.2f"), ("crps_total", "CRPS total", "%.2f")]
-FMT = {label: st.column_config.NumberColumn(label, format=f) for _, label, f in METRICS}
+FMT = {label: f for _, label, f in METRICS}
+SHORT = {"Brier (market)": "Brier (mkt)", "MAE margin (market)": "MAE margin (mkt)"}
+SC_HELP = {"Brier": "Error of the win chances: 0 is perfect, 0.25 is a coin flip. Lower is better.",
+           "Brier (market)": "The same for the closing betting line.", "Brier (mkt)": "The same for the closing betting line.",
+           "Log loss": "Another error measure for win chances; punishes confident misses harder. Lower is better.",
+           "MAE margin": "Average miss of the predicted margin, in points.", "MAE total": "Average miss of the predicted total, in points.",
+           "MAE margin (market)": "Average miss of the closing spread, in points.",
+           "CRPS margin": "Error of the whole predicted margin range (not just its middle). Lower is better.",
+           "CRPS total": "Error of the whole predicted total range. Lower is better."}
 
 
 def _row(first: dict, b: dict) -> dict:
@@ -56,13 +66,11 @@ else:
     st.markdown("##### By config version")
     st.caption("Each code is one version of GridSim's model and settings, oldest first. A new code appears after an "
                "update that changes the model, after you use tuned settings, or after you change a setting (other than "
-               "backups, PC resources or the position watch). "
+               "backups, PC resources, the position watch or how the app shows things). "
                "Versions are scored separately here; the other tables on this page count all of them together.")
-    st.dataframe([_row({"config": h}, b) for h, b in sc.get("by_config", {}).items()], hide_index=True, width="stretch",
-                 column_config=FMT)
+    common.table([_row({"config": h}, b) for h, b in sc.get("by_config", {}).items()], fmt=FMT, labels=SHORT, help=SC_HELP)
     st.markdown("##### By week")
-    st.dataframe([_row({"week": w}, b) for w, b in sc.get("by_week", {}).items()], hide_index=True, width="stretch",
-                 column_config=FMT)
+    common.table([_row({"week": w}, b) for w, b in sc.get("by_week", {}).items()], fmt=FMT, labels=SHORT, help=SC_HELP)
 
 df = live.load_card(cfg)
 if df is not None:
@@ -88,8 +96,11 @@ if rdf is not None:
             st.caption("Re-created after a data loss from data before each week (Settings → Your data). Shown for "
                        "reference only: they are **not** in the record above, because they were not made before "
                        "kickoff.")
-            st.dataframe(rdf.select(["season", "week", "home", "away", "home_score", "away_score", "p_home",
-                                     "pred_margin", "pred_total"]), hide_index=True, width="stretch")
+            common.table(rdf.select(["season", "week", "home", "away", "home_score", "away_score", "p_home",
+                                     "pred_margin", "pred_total"]),
+                         labels={"home_score": "home pts", "away_score": "away pts", "p_home": "home win",
+                                 "pred_margin": "margin (pred.)", "pred_total": "total (pred.)"},
+                         fmt={"p_home": lambda v: f"{100 * v:.0f}%", "pred_margin": "%+.1f", "pred_total": "%.1f"}, height=420)
     except Exception as e:
         st.warning(f"Could not read reconstructed predictions ({e}).")
 
@@ -100,19 +111,19 @@ if by_day:
     rows_d = []
     for b in by_day:
         fin = b.get("final_same_games") or {}
-        rows_d.append({"locked in on": b["day"], "games": b["games"],
-                       "hours before kickoff (median)": b.get("hours_before"),
-                       "Brier": b.get("brier"), "Brier — final lock-in, same games": fin.get("brier"),
-                       "MAE margin": b.get("mae_margin"), "MAE margin — final, same games": fin.get("mae_margin"),
-                       "MAE total": b.get("mae_total"), "MAE total — final, same games": fin.get("mae_total"),
-                       "Brier (closing line)": b.get("market_brier")})
-    f4 = st.column_config.NumberColumn(format="%.4f")
-    f2 = st.column_config.NumberColumn(format="%.2f")
-    st.dataframe(rows_d, hide_index=True, width="stretch",
-                 column_config={"Brier": f4, "Brier — final lock-in, same games": f4, "Brier (closing line)": f4,
-                                "MAE margin": f2, "MAE margin — final, same games": f2, "MAE total": f2,
-                                "MAE total — final, same games": f2, "hours before kickoff (median)":
-                                st.column_config.NumberColumn(format="%.0f")})
+        rows_d.append({"locked in on": b["day"], "games": b["games"], "hours before": b.get("hours_before"),
+                       "Brier": b.get("brier"), "Brier (final)": fin.get("brier"),
+                       "MAE margin": b.get("mae_margin"), "MAE margin (final)": fin.get("mae_margin"),
+                       "MAE total": b.get("mae_total"), "MAE total (final)": fin.get("mae_total"),
+                       "Brier (line)": b.get("market_brier")})
+    f4, f2 = "%.4f", "%.2f"
+    common.table(rows_d, fmt={"Brier": f4, "Brier (final)": f4, "Brier (line)": f4, "MAE margin": f2,
+                              "MAE margin (final)": f2, "MAE total": f2, "MAE total (final)": f2, "hours before": "%.0f"},
+                 help={**SC_HELP, "hours before": "How long before kickoff these were locked in (the middle one).",
+                       "Brier (final)": "Your LAST lock-in before kickoff, on the same games.",
+                       "MAE margin (final)": "Your last lock-in before kickoff, on the same games.",
+                       "MAE total (final)": "Your last lock-in before kickoff, on the same games.",
+                       "Brier (line)": "The closing betting line, on the same games."})
     st.caption("Every lock-in you made before kickoff, graded and grouped by the day you made it. Lower is better. "
                "Each day is compared with your final lock-in on the very same games, so you can see how much the "
                "extra days of news (injury reports, lineups) improve the numbers — or whether Tuesday's are just as "
@@ -131,21 +142,25 @@ for p, shipped in sorted(_bt, key=lambda q: (q[1], -q[0].stat().st_mtime)):
     except (OSError, ValueError):
         continue
     mk = m.get("market") or {}
-    bt_rows.append({"label": m.get("label") + (" (example run shipped with GridSim)" if shipped else ""),
+    def pair(a, b, f="%.3f"):          # GridSim's number and the closing line's, side by side in one cell
+        return "—" if a is None else (f % a) + ("" if b is None else " · " + (f % b))
+    bt_rows.append({"label": m.get("label") + (" (example)" if shipped else ""),
                     "config": m.get("config_hash"), "saved": common.mtime_text(p),
-                    "games": m.get("games"), "sims/game": m.get("sims_per_game"),
-                    "Brier": m.get("brier"), "Brier (mkt)": mk.get("brier"),
-                    "Log loss": m.get("log_loss"), "Log loss (mkt)": mk.get("log_loss"),
-                    "MAE margin": m.get("mae_margin"), "MAE margin (mkt)": mk.get("mae_margin"),
-                    "MAE total": m.get("mae_total"), "MAE total (mkt)": mk.get("mae_total"),
+                    "games": m.get("games"), "sims": m.get("sims_per_game"),
+                    "Brier": pair(m.get("brier"), mk.get("brier")), "Log loss": pair(m.get("log_loss"), mk.get("log_loss")),
+                    "MAE margin": pair(m.get("mae_margin"), mk.get("mae_margin"), "%.2f"),
+                    "MAE total": pair(m.get("mae_total"), mk.get("mae_total"), "%.2f"),
                     "CRPS margin": m.get("crps_margin"), "CRPS total": m.get("crps_total")})
 if bt_rows:
-    f4 = st.column_config.NumberColumn(format="%.4f")
-    f2 = st.column_config.NumberColumn(format="%.2f")
-    st.dataframe(bt_rows, hide_index=True, width="stretch",
-                 column_config={"Brier": f4, "Brier (mkt)": f4, "Log loss": f4, "Log loss (mkt)": f4, "MAE margin": f2,
-                                "MAE margin (mkt)": f2, "MAE total": f2, "MAE total (mkt)": f2, "CRPS margin": f2,
-                                "CRPS total": f2})
+    common.table(bt_rows, fmt={"CRPS margin": "%.2f", "CRPS total": "%.2f"},
+                 right=("Brier", "Log loss", "MAE margin", "MAE total"),
+                 help={**SC_HELP, "Brier": "GridSim · the closing line. " + SC_HELP["Brier"],
+                       "Log loss": "GridSim · the closing line. " + SC_HELP["Log loss"],
+                       "MAE margin": "GridSim · the closing line. " + SC_HELP["MAE margin"],
+                       "MAE total": "GridSim · the closing line. " + SC_HELP["MAE total"]},
+                 hide={"config": 2, "saved": 2, "CRPS margin": 2, "CRPS total": 2, "sims": 3}, height=460)
+    st.caption("Where a cell has two numbers, the first is GridSim and the second the closing betting line. "
+               "“(example)” marks runs that came with GridSim.")
     st.caption("Walk-forward backtests (no lookahead). Compare their Brier / MAE with the live record above: a live "
                "record much worse than the backtest points to leakage or stale inputs.")
 else:
@@ -158,7 +173,11 @@ hist = tdir / "history.csv"
 if hist.exists():
     try:
         st.markdown("##### Promoted configs (`tuning/history.csv`)")
-        st.dataframe(pl.read_csv(hist, infer_schema_length=None), hide_index=True, width="stretch")
+        common.table(pl.read_csv(hist, infer_schema_length=None),
+                     labels={"promoted_at": "promoted", "config_hash": "config", "previous_hash": "previous",
+                             "validate_season": "tested on", "val_objective": "score", "val_log_loss": "log loss",
+                             "val_crps_margin": "CRPS margin", "val_crps_total": "CRPS total"},
+                     fmt={"val_objective": "%.4f", "val_log_loss": "%.4f", "val_crps_margin": "%.2f", "val_crps_total": "%.2f"})
     except Exception as e:
         st.warning(f"Could not read tuning history ({e}).")
 runs = []
@@ -175,8 +194,12 @@ for p, shipped in _tr:
                  "tuned config": t.get("config_hash_tuned")})
 if runs:
     st.markdown("##### Tuning runs (`tuning/*/summary.json`)")
-    st.dataframe(runs, hide_index=True, width="stretch",
-                 column_config={"train gain": st.column_config.NumberColumn(format="%+.5f"),
-                                "validation gain": st.column_config.NumberColumn(format="%+.5f")})
+    common.table(runs, fmt={"train gain": "%+.4f", "validation gain": "%+.4f"}, sign=("train gain", "validation gain"),
+                 labels={"validate": "tested on", "validation gain": "test gain", "likely overfit": "overfit?",
+                         "tuned config": "config"},
+                 help={"train gain": "How much better the tuned settings scored on the seasons they were fitted to.",
+                       "validation gain": "How much better on a season they never saw: the number that counts.",
+                       "likely overfit": "Better on the fitted seasons but not on the unseen one."},
+                 hide={"tuned config": 2, "trials": 3, "train": 3}, height=420)
 if not hist.exists() and not runs:
     st.caption("No tuning runs yet (Weekly routine → step 5).")
