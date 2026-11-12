@@ -187,6 +187,11 @@ def cmd_weekly(args) -> int:
     return 0
 
 
+def cmd_schedule(args) -> int:
+    from . import schedule
+    return schedule.run(args.action)        # prints one plain line; non-zero when the jobs could not be changed
+
+
 def cmd_impact(args) -> int:
     from .api import RunRequest, player_impact
     from .config import load_config
@@ -247,6 +252,30 @@ def cmd_snapshot(args) -> int:
     from .config import load_config
     from .scanner import snapshot_markets
     print(f"saved {snapshot_markets(load_config(args.config), args.season, args.week)}")
+    return 0
+
+
+def cmd_update(args) -> int:
+    """Say whether a newer GridSim has been released (asks GitHub now). Exit code 0 either way."""
+    from . import installed, update
+    newer = update.check(force=True)
+    st = update.status()
+    if newer:
+        print(f"GridSim {newer['version']} is available (this is {st['current']}).")
+        if installed.is_installed():
+            print("Open GridSim and press \"Update now\" at the top of the page.")
+        else:
+            print(f"This copy runs from a source folder, so it does not update itself. The release: {newer['page']}")
+    elif st["state"] == "newest":
+        print(f"GridSim {st['current']} is the newest version.")
+    elif st["state"] == "not_ready":
+        print(f"A newer GridSim ({st['listed']}) has been released, but its installer is not on GitHub yet. "
+              f"Try again in an hour. This is GridSim {st['current']}.")
+    elif st["state"] == "none_published":
+        print(f"GitHub lists no GridSim release yet. This is GridSim {st['current']}.")
+    else:
+        print(f"Could not check for updates: GitHub did not answer ({st['error'] or 'no details'}). "
+              f"This is GridSim {st['current']}.")
     return 0
 
 
@@ -312,6 +341,10 @@ def register(sub) -> None:
     sn.add_argument("--season", type=int, default=None)
     sn.add_argument("--week", type=int, default=None)
     sn.set_defaults(func=cmd_snapshot)
+    up = sub.add_parser("update", help="say whether a newer GridSim has been released")
+    up.add_argument("--check", action="store_true", help="only check (this is all the command does; the installed "
+                                                         "program updates itself from inside the app)")
+    up.set_defaults(func=cmd_update)
 
     im = sub.add_parser("impact", help="what-if: game with vs without a player (or a QB swap)")
     im.add_argument("--home", required=True)
@@ -375,6 +408,11 @@ def register(sub) -> None:
     w = sub.add_parser("weekly", help="refresh, grade, diagnose, (tune), predict")
     w.add_argument("--tune", action="store_true")
     w.set_defaults(func=cmd_weekly)
+    sd = sub.add_parser("schedule", help="background jobs (Windows scheduled tasks): --install turns them on, "
+                                         "--remove turns them off, --repoint after an update, --status (default)")
+    from .schedule import add_arguments as _schedule_arguments
+    _schedule_arguments(sd)
+    sd.set_defaults(func=cmd_schedule)
 
     wh = sub.add_parser("where", help="where your data and backups are, and what they hold")
     wh.set_defaults(func=cmd_where)

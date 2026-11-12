@@ -97,7 +97,12 @@ positive live record (≥ 50 graded games — one per market type per game — w
 
 ## Scheduling on Windows (Task Scheduler)
 
-Easiest: double-click **`Schedule GridSim.bat`** and press **A** (press **R** to remove). It creates four tasks
+**Installed with `GridSim-Setup.exe`:** use the two buttons on *Settings → Schedule* (or `gridsim schedule --install`
+/ `--remove` / `--status`). The four tasks below then run the installed program's own `pythonw.exe`, and an update
+carries them over by itself. `Schedule GridSim.bat` belongs to a source folder and is not part of the installed
+program; the rest of this section describes the same four tasks for a source folder.
+
+Source folder: double-click **`Schedule GridSim.bat`** and press **A** (press **R** to remove). It creates four tasks
 that run windowless with `.venv\Scripts\pythonw.exe` while you are signed in, catch up a run missed while the PC
 was off or asleep, and append their output to `logs\scheduled.log` in the data folder:
 
@@ -165,6 +170,17 @@ Backups go to `backup.dir` (default `%OneDrive%\GridSim Backups`, else `%USERPRO
 Long jobs (tune / backtest / slate) start only as many workers as fit `resources.max_ram_fraction` (whole PC ≤ 80% of
 RAM; tuning workers hold one season each, ~2 GB) and `resources.free_cores`, at low priority. `backup` and `resources` are not part of the config
 hash.
+
+## Windows installer (`packaging/`)
+
+End users get GridSim as one program, `GridSim-Setup.exe` (see GETTING_STARTED.md, *The easy way*). Everything that
+builds it is in `packaging/`: `ci/build.ps1` puts a pinned python-build-standalone CPython, the dependencies and a
+`git archive` of this repository (minus what `export-ignore.gitattributes` lists) into `dist\GridSim` and compiles
+`gridsim.iss` with Inno Setup; `ci/smoke.ps1` installs the result and runs the numbered tests in `ci/smoke/`, writing
+`ci-logs\summary.txt`; `ci/release.ps1` publishes a GitHub Release. They run only on GitHub Actions
+(`.github/workflows/windows-installer.yml`, a thin wrapper around those scripts; a release is published when the
+tests pass and the commit message contains `[release]`); `tests/test_packaging.py` checks the scripts' syntax and
+their agreement with `gridsim/installed.py` on Linux, since PowerShell and Inno Setup cannot run there.
 
 ## Tests
 

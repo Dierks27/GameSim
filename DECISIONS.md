@@ -678,3 +678,52 @@ instead of a browser tab.
   `msedge --app=http://localhost:8501` (Chrome if no Edge; the default browser if neither or on any error) once the
   port answers. The black window still runs the server; closing it stops GridSim. A real single-file program
   (no console, own installer, self-update) is a separate piece of work.
+
+## GridSim as one installed Windows program (2026-11-12)
+
+Nothing in this section has run on Windows yet; the GitHub Actions run (`packaging/ci/smoke.ps1`) is the test bench.
+The decisions, and where the build differs from the written plan:
+
+- **Private Python** (`packaging/ci/build.ps1`): python-build-standalone CPython 3.13, pinned by tag and SHA-256.
+  `python313._pth` lists `Lib`, `DLLs`, `Lib\site-packages`, `..\program` and has NO `import site` line: with that
+  line another Python 3.13's per-user site-packages would be importable. So `.pth` files are not read (the build
+  stops if a library ships one) and `exit()` / `quit()` do not exist. Libraries are installed with
+  `pip --no-compile` and compiled with `compileall -f --invalidation-mode checked-hash`; without `-f` pip's
+  time-based `.pyc` files would stay and be rewritten on the user's PC. `proxy_tools` (needed by pywebview) exists
+  only as a source package, so it is the one exception to "wheels only".
+- **What ships** is decided by `packaging/export-ignore.gitattributes`, applied through `.git/info/attributes` for
+  one `git archive` call. The rules are not in `.gitattributes`: GitHub's "Download ZIP" honours them and would lose
+  the `.bat` files of the folder install.
+- **Installer** (`packaging/gridsim.iss`): per user, no questions, no AppMutex, no Restart Manager. Before any file
+  is replaced it pauses the four scheduled jobs and ends every process under `<root>\python`
+  (`stop-gridsim.ps1`). "Still running" is exit code 3 (1 is what PowerShell returns when it cannot run a script at
+  all, and must not stop an install); when the install stops there, the jobs are switched back on.
+- **Launcher** (`gridsim/desktop.py`): pywebview on WebView2, then an Edge / Chrome app window, then the default
+  browser with a "Click OK to stop" box. Differences from the plan: the window is sized to the screen; F5, Ctrl+F,
+  Ctrl+P and the right-click menu work (pywebview's debug switch with its developer-tools window off; F12 opens
+  the developer tools); WebView2 is only used when its runtime (version 86 or later) and .NET Framework 4.6.2 are
+  found, because pywebview would otherwise fall back to Internet Explorer's engine without saying so; a window
+  that has not loaded the page within 60 s is replaced by the next kind; a note file (`webview.starting`) makes
+  the start after a crash-while-opening use the Edge window once; a second double-click brings the window
+  forward, or opens the browser when no window can be found 90 s after the start; the server is in a
+  kill-on-close job object that the tune and the autopilot leave (`CREATE_BREAKAWAY_FROM_JOB`).
+- **Background jobs** (`gridsim/schedule.py`): task XML through `schtasks /Create /XML`, the same four names as
+  `Schedule GridSim.bat`. Differences from the plan: `<Command>` is written in quotes; a refused file is tried again
+  without `<UserId>` and then as UTF-8; the Tuesday and Friday jobs are registered with their NEXT turn as the start
+  (a start in the past could run them right after every "turn on" and every update); `repoint()` does nothing in a
+  source folder, also re-creates a task whose arguments changed, and switches a task back on that was disabled by
+  hand (the task cannot tell that from the installer's pause). Calls are logged to `schedule.log` and the registered
+  XML is kept under `tasks\` in the state folder; the old GridSim folder goes to `old_install.txt`, which
+  *Settings → Your data* offers as the folder to bring data in from.
+- **Commands about the program itself** (`gridsim schedule`, `gridsim update`) skip the data-folder start-up check
+  and, without a console, write to `program.log` in the state folder: the installer and the uninstaller run them and
+  must never create or touch the data folder.
+- **Updates** (`gridsim/update.py`): GitHub is asked at most every 12 hours (1 hour after a failure); a 404 means
+  "no release yet"; the download follows redirects only to github.com and `*.githubusercontent.com` and must match
+  the listed size and SHA-256; an install request older than 15 minutes is dropped and the launcher clears it
+  before it starts the installer, so a failed update cannot loop. The checksum proves the file is the one GitHub
+  holds, not who published it: the installer is unsigned, so whoever can publish a release in the repository
+  decides what "Update now" installs. A second release on one day needs a fourth number (`2026.11.12.1`).
+- **State folder** (`%LOCALAPPDATA%\GridSim`, `GRIDSIM_STATE` in tests): `desktop.json`, `desktop.log`,
+  `server.log`, `schedule.log`, `program.log`, `tasks\`, `update\`, `webview\`, `browser-profile\`. The
+  uninstaller leaves it, and the data folder, in place.

@@ -229,10 +229,18 @@ with st.container(border=True):
         fh = open(log_path, "w", encoding="utf-8")
         # Windows: CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | BELOW_NORMAL_PRIORITY_CLASS -> no console windows
         # (also for its worker processes), keeps running if the GridSim window is closed, and yields to anything
-        # else you do on the PC
-        kw = ({"creationflags": 0x08000000 | 0x00000200 | 0x00004000} if sys.platform == "win32"
+        # else you do on the PC. CREATE_BREAKAWAY_FROM_JOB (0x01000000): the installed program ends everything the
+        # app started when its window is closed (a job object) — except what asks to be left out, like this tune.
+        # Where that is not allowed Windows refuses the start: then it is started without.
+        kw = ({"creationflags": 0x08000000 | 0x00000200 | 0x00004000 | 0x01000000} if sys.platform == "win32"
               else {"start_new_session": True})
-        p = subprocess.Popen(cmd, cwd=str(ROOT), stdout=fh, stderr=subprocess.STDOUT, **kw)
+        try:
+            p = subprocess.Popen(cmd, cwd=str(ROOT), stdout=fh, stderr=subprocess.STDOUT, **kw)
+        except OSError:
+            if "creationflags" not in kw:
+                raise
+            kw["creationflags"] &= ~0x01000000
+            p = subprocess.Popen(cmd, cwd=str(ROOT), stdout=fh, stderr=subprocess.STDOUT, **kw)
         pid_path.write_text(json.dumps({"pid": p.pid, "started": dt.datetime.now().isoformat(timespec="minutes"),
                                         "cmd": " ".join(cmd), "model_rev": MODEL_REV}))
         st.success("Tuning started. You can close this page; come back later and press Refresh status.")

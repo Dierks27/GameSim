@@ -421,11 +421,20 @@ def start_if_due(cfg: Config, min_gap_s: float = 600.0) -> str:
     log = open(_dir(cfg) / "autopilot.log", "a", encoding="utf-8")
     log.write(f"\n=== {dt.datetime.now():%Y-%m-%d %H:%M} autopilot\n")
     log.flush()
-    # Windows: no console window, keeps going if the GridSim window is closed, below-normal priority
-    kw = ({"creationflags": 0x08000000 | 0x00000200 | 0x00004000} if sys.platform == "win32"
+    # Windows: no console window, keeps going if the GridSim window is closed, below-normal priority.
+    # 0x01000000 = CREATE_BREAKAWAY_FROM_JOB: the installed program ends everything the app started when its window
+    # is closed (a job object) — except what asks to be left out, so that a half-finished lock-in is not cut off.
+    # Where that is not allowed Windows refuses the start: then it is started without.
+    kw = ({"creationflags": 0x08000000 | 0x00000200 | 0x00004000 | 0x01000000} if sys.platform == "win32"
           else {"start_new_session": True})
-    p = subprocess.Popen([sys.executable, "-m", "gridsim", "autopilot"], cwd=str(root), stdout=log,
-                         stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, **kw)
+    cmd = [sys.executable, "-m", "gridsim", "autopilot"]
+    try:
+        p = subprocess.Popen(cmd, cwd=str(root), stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, **kw)
+    except OSError:
+        if "creationflags" not in kw:
+            raise
+        kw["creationflags"] &= ~0x01000000
+        p = subprocess.Popen(cmd, cwd=str(root), stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, **kw)
     # counted as running from this moment (the child takes a second to say so itself): never two at once
     _write(_dir(cfg) / "run.pid", {"pid": getattr(p, "pid", os.getpid()), "reserved": True,
                                    "started_utc": _now().isoformat(timespec="seconds")})

@@ -174,7 +174,22 @@ with tab_mine:
                "Explorer, hold **Shift**, right-click the folder → **Copy as path**, and paste it here. GridSim "
                "<b>adds</b> what's missing — nothing you have now is overwritten or lost — and backs up first.",
                unsafe_allow_html=True)
+    # The installed program: when it took over background jobs that ran from an older GridSim folder, it wrote that
+    # folder down (gridsim.schedule.repoint -> old_install.txt in the program's state folder). Offer it here.
+    found_old = None
+    try:
+        from gridsim import installed as _installed, schedule as _schedule
+        if _installed.is_installed():
+            found_old = _schedule.old_install()
+            if found_old and not Path(found_old).is_dir():
+                found_old = None
+    except Exception:
+        found_old = None
+    if found_old and "ud_old" not in ss:
+        ss["ud_old"] = found_old
     old_dir = st.text_input("Old GridSim folder", key="ud_old", placeholder=r"C:\Users\you\Desktop\GameSim-claude-friendly-turing-wk7xhb")
+    if found_old and old_dir.strip() == found_old:
+        st.caption("Filled in for you: this is the folder GridSim ran from before it was installed.")
     if st.button("Bring it in", icon=":material/move_to_inbox:", disabled=not old_dir.strip()):
         try:
             rep = userdata.import_folder(old_dir, cfg)
@@ -365,12 +380,61 @@ with tab_sched:
         sec = helpers.readme_section((REPO_ROOT / "README.md").read_text(encoding="utf-8"), "## Scheduling")
     except OSError:
         sec = None
-    common.callout("<b>Easiest:</b> double-click <b>Schedule GridSim</b> in the GridSim folder and press <b>A</b>. "
-                   "It creates four background tasks (Tuesday 9:00 weekly routine, Friday 19:00 lock-in, Kalshi "
-                   "price check every 30 minutes every day, and the position watch every 10 minutes for contracts "
-                   "you entered under My positions). Run it again and press <b>R</b> to remove them. "
-                   f"What they did is written to <code>{hr.esc(str(data_dir() / 'logs' / 'scheduled.log'))}</code>.",
-                   tone="good")
+    import time
+
+    from gridsim import installed, schedule
+    # Asking Windows takes four hidden schtasks calls, and this page reruns at every click in any of its tabs:
+    # keep the answer for a few seconds (a press of one of the two buttons below asks again at once).
+    if "_sched" not in ss or time.monotonic() - ss["_sched"][0] > 20:
+        ss["_sched"] = (time.monotonic(), schedule.status())
+    sched = ss["_sched"][1]
+    if not sched["supported"]:
+        st.info(sched["message"])
+    else:
+        st.markdown("**Background jobs** do GridSim's regular work by themselves, also while GridSim is closed. "
+                    "Windows starts them for you, and no windows pop up.")
+        sched_state = st.container()            # filled below, once a button press has been dealt with
+        b_on, b_off, _ = st.columns([1.7, 1.2, 4])
+        turn_on = b_on.button("Turn background jobs on", type="primary", icon=":material/play_circle:", key="sched_on")
+        turn_off = b_off.button("Turn them off", icon=":material/stop_circle:", key="sched_off")
+        sched_done, sched_problem = False, None
+        if turn_on or turn_off:
+            try:
+                with st.spinner("Asking Windows…"):
+                    sched_done = bool(schedule.install() if turn_on else schedule.remove())
+            except schedule.ScheduleError as e:
+                sched_problem = str(e)
+            except Exception as e:
+                sched_problem = f"The background jobs could not be changed ({type(e).__name__}: {e})."
+            ss["_sched"] = (time.monotonic(), schedule.status())
+            sched = ss["_sched"][1]
+        with sched_state:
+            lead = "Done. " if sched_done else ""
+            if sched_problem:
+                st.error(sched_problem)
+                st.caption("If this keeps happening, take a screenshot of this page. A possible cause: the jobs were "
+                           "once set up from a window started with \"Run as administrator\"; Windows then lets only "
+                           "an administrator change them. In that case open the Windows app **Task Scheduler**, "
+                           "delete the four entries whose names start with \"GridSim\", and press the button again.")
+            if sched["state"] == "on":
+                st.success(lead + "Background jobs are **on**. Windows runs the four jobs below by itself.")
+            elif sched["state"] == "off":
+                st.info(lead + "Background jobs are **off**. GridSim still does what is due each time you start it; "
+                        "with the jobs on, that also happens while GridSim is closed.")
+            elif sched["state"] == "partial":
+                st.warning(lead + sched["message"] + " Press **Turn background jobs on** to set all four up for "
+                           "this GridSim.")
+            else:
+                st.warning(sched["message"])
+        now = {t["name"]: t["detail"] for t in sched["tasks"]}
+        common.table([{"job": name, "when": job["when"], "what it does": job["what"], "now": now.get(name, "–")}
+                      for name, job in schedule.JOBS.items()], nowrap=("job", "now"))
+        st.caption("The jobs run while you are signed in to Windows (a locked screen is fine). If the PC was off or "
+                   "asleep at the time, the Tuesday and Friday jobs run as soon as it is back on. What each job did "
+                   f"is written to `{data_dir() / 'logs' / 'scheduled.log'}`. Phone alerts are sent only if you set "
+                   "them up (Notifications tab)."
+                   + ("" if installed.is_installed() or not (REPO_ROOT / "Schedule GridSim.bat").exists() else
+                      " Double-clicking **Schedule GridSim** in the GridSim folder does the same as the two buttons."))
     with st.expander("Details for console users (README)"):
         st.markdown(sec or helpers.DEFAULT_SCHEDULE)
     st.markdown("##### Last activity")
@@ -382,5 +446,5 @@ with tab_sched:
         rows.append({"folder": name, "contains": what, "newest file": nf[0].name if nf else "–",
                      "modified": nf[1].strftime("%Y-%m-%d %H:%M") if nf else "never"})
     common.table(rows)
-    st.caption("If the scheduled tasks run, these timestamps move: predictions on Tuesday/Friday, signals every 30 "
+    st.caption("If the background jobs run, these timestamps move: predictions on Tuesday/Friday, signals every 30 "
                "minutes in game weeks.")

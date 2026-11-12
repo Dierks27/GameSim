@@ -194,7 +194,39 @@ def _has_open_positions(args) -> bool:
         return True         # unsure: take the normal path
 
 
+# Commands about the PROGRAM itself (its scheduled jobs, its updates). The installer and the uninstaller run them, so
+# they must not create, move or write anything in the user's data folder: no data check, and their windowless output
+# goes to the program's own state folder.
+PROGRAM_COMMANDS = ("schedule", "update")
+
+
+def _program_log_when_windowless() -> None:
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    try:
+        import datetime as dt
+
+        from .installed import state_dir
+        fh = open(state_dir() / "program.log", "a", encoding="utf-8", buffering=1, errors="backslashreplace")
+        # (the same kind of header as in scheduled.log, so every line can be traced to a command and a time)
+        fh.write(f"\n=== {dt.datetime.now():%Y-%m-%d %H:%M} gridsim {' '.join(sys.argv[1:])}\n")
+    except OSError:
+        import os
+        fh = open(os.devnull, "w")
+    sys.stdout = sys.stderr = fh
+
+
 def main(argv: list[str] | None = None) -> int:
+    first = next((a for a in (sys.argv[1:] if argv is None else argv) if not a.startswith("-")), None)
+    if first in PROGRAM_COMMANDS:
+        _program_log_when_windowless()
+        args = build_parser().parse_args(argv)
+        try:
+            return int(args.func(args) or 0)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            return 1
     _log_when_windowless()
     args = build_parser().parse_args(argv)
     if args.cmd == "watch" and not _has_open_positions(args):

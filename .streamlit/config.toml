@@ -1,4 +1,9 @@
-# gridsim GUI settings (read by `streamlit run` from the repo root, which Start GridSim.bat cd's into).
+# gridsim GUI settings (read by `streamlit run` from the GridSim folder, which both ways of starting use).
+# Only the colours and the [client] lines below apply to everyone. The [server] and [browser] values are what a bare
+# `streamlit run app/streamlit_app.py` gets; both starters give their own on the command line, which wins over this
+# file: "Start GridSim.bat" (a source folder) passes address 0.0.0.0, port 8501, headless true; the installed
+# program (gridsim/desktop.py) passes address 127.0.0.1 and a free port (0.0.0.0 and 8501 only when
+# display.phone_access is on), headless true, and browser.serverAddress 127.0.0.1.
 
 [theme]
 base = "dark"
@@ -12,7 +17,8 @@ font = "sans serif"
 # 0.0.0.0 = reachable from other devices on the home network (phone: http://<PC-LAN-IP>:8501)
 address = "0.0.0.0"
 port = 8501
-headless = false        # open a browser tab on start
+headless = false        # a bare `streamlit run` opens a browser tab (both starters pass headless true: they open
+                        # the window themselves)
 showEmailPrompt = false # never stop at Streamlit's first-run "enter your email" prompt in the black window
 runOnSave = false
 fileWatcherType = "none"

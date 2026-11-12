@@ -6,6 +6,86 @@ This guide takes about 20–30 minutes the first time. After that, starting Grid
 
 ---
 
+## The easy way: the GridSim installer
+
+GridSim now comes as one Windows program, like any other: you download **one file**, click **Install**, and from
+then on GridSim is in the Start menu and on the desktop. It brings its own Python, opens in a window of its own with
+**no black window**, and updates itself when you say so. This takes about five minutes, most of it waiting.
+
+**With the installer you skip Steps 1 to 4 below.** They describe the old, manual way (Python, a ZIP, Setup GridSim)
+and are only still there for anyone who needs it. Everything from *A quick tour* onwards applies either way.
+
+**Before you start**
+
+1. **Check one Windows setting.** Open the Start menu, type **Windows Security** and open it → **App & browser
+   control** → **Smart App Control settings**. If it says **Off** or **Evaluation**, carry on. If it says **On**,
+   stop here: with that setting on, Windows blocks any program that isn't signed by its maker, GridSim's installer
+   included, and offers no "run anyway". Keep using GridSim the way you do now and say that the setting is on.
+2. **If the old GridSim is running, close it** (its black window).
+
+**Install**
+
+1. Download the installer: <https://github.com/Dierks27/GameSim/releases/latest/download/GridSim-Setup.exe>
+   (a large file, around 200 MB; the link always gives the newest version).
+2. Microsoft Edge will probably say that **GridSim-Setup.exe isn't commonly downloaded**. Point at that line, click
+   the **three dots (…)** → **Keep** → **Show more** → **Keep anyway**. (The exact words can differ a little.)
+3. Open the downloaded **GridSim-Setup.exe**. A blue box says **"Windows protected your PC"**: click **More info**
+   → **Run anyway**. Windows shows this for a program whose maker hasn't bought a signature; it is the same box
+   Setup GridSim used to cause.
+4. Click **Install**. There is nothing to choose, and Windows does **not** ask for an administrator password.
+   Copying takes a minute or two.
+5. Leave **Start GridSim now** ticked and click **Finish**.
+
+GridSim is now in the **Start menu** and has a **GridSim icon on the desktop** (it replaces the old icon). It needs
+about 1 GB of disk space.
+
+**What is different from before**
+
+- **Your data is found by itself.** It was never inside the program: it is in `C:\Users\<you>\GridSim Data`, and the
+  new program reads the same folder. Nothing is moved, copied or imported. After the first start, look at the
+  **Scorecard** and at this week's predictions: they should be there as before. If something looks missing,
+  *Settings → Your data → Bring in data from an old GridSim folder* adds it from the old folder without overwriting
+  anything.
+- **The first start takes longer**: about a minute until the window shows, and GridSim downloads the football data
+  again (that part was kept in the old program folder and can always be downloaded again). A line at the top says
+  what it is doing.
+- **No black window.** GridSim is its window. **Closing the window stops GridSim**; double-clicking the icon while
+  it is open brings that window to the front. **F5** reloads the page, as in a browser.
+- **Updates:** when a newer version is out, GridSim shows a line saying so, with an **Update now** button. Click it,
+  watch the progress bar, and GridSim closes, updates and opens again by itself. Nothing to download by hand, and
+  the two warnings from the first install should not come back (the update doesn't go through the browser).
+  Your data folder is not touched by an update. While it is open, GridSim looks for a new version by itself, at
+  most once every 12 hours; to look right now, click **Check for updates** under the version line at the bottom of
+  the left-hand menu. An update ends a tuning run that is going on at that moment (start it again afterwards);
+  the automatic background run starts again by itself.
+- **Background jobs:** if you had set up **Schedule GridSim** before, the installer points those jobs at the new
+  program by itself. *Settings → Schedule* shows whether they are on and has buttons to switch them **on** or
+  **off**; that page replaces the old *Schedule GridSim* file, and after an update there is nothing to do: the
+  jobs carry over. If it reports a problem, take a screenshot of it.
+- **Phone access is off at first.** The new program is private to this PC until you say otherwise, so Windows shows
+  no firewall question. To use GridSim from your phone on your home Wi-Fi: *Settings → Config → display →
+  phone_access* → switch it on → **Save changes**, then close GridSim and start it again. Windows asks once whether
+  to allow it: tick **Private networks** and click **Allow**. The phone then opens `http://<your PC's address>:8501`
+  (Windows shows the address under *Settings → Network & internet →* your network *→ IPv4 address*). The advice in
+  *Using GridSim on your phone* below still holds: there is no password, so home Wi-Fi only.
+- **Uninstalling:** Windows *Settings → Apps → Installed apps → GridSim →* the three dots *→ Uninstall*. That
+  removes the program, its icons and its background jobs. **Your data folder stays** exactly as it is.
+
+**The old `C:\GridSim` folder**
+
+Leave it where it is for about a week, as a fallback, but **don't start anything in it** any more (no *Start
+GridSim*, no *Schedule GridSim*): the old and the new program would work on the same data at the same time. Once
+the new GridSim has run through a week, delete the old folder by hand. The Python you installed for the old way can
+stay or be uninstalled; the new program doesn't use it.
+
+Four things only you can confirm, because they can't be checked on the machines that test the installer: the
+window opens without any sign-in or welcome question, the taskbar shows the GridSim icon, closing the window leaves
+nothing running, and no black window flashes up. If one of them is not so, say which.
+
+**Steps 1 to 4, from here to *A quick tour*, are the old, manual way. With the installer you don't need them.**
+
+---
+
 ## Step 1 — Install Python (one time)
 
 GridSim is written in Python, so Windows needs Python installed once.

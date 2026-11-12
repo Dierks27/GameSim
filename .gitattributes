@@ -1,2 +1,7 @@
 # Windows batch files are stored with CRLF as-is (cmd.exe misreads labels in LF-only files)
 *.bat -text
+*.ico binary
+
+# No export-ignore lines here: GitHub's "Download ZIP" honours them, and the ZIP must stay complete (it is the old
+# way of installing and updating GridSim: Setup / Start / Schedule GridSim.bat). What the installed Windows program
+# leaves out is listed in packaging/export-ignore.gitattributes, which only the installer build applies.

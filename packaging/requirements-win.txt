@@ -1,0 +1,14 @@
+# Extra packages of the installed Windows program, on top of [project].dependencies in pyproject.toml
+# (packaging/print_deps.py prints those). Installed by packaging/ci/build.ps1 into the private Python.
+#
+# The window: pywebview on Microsoft's WebView2. pip would pick the newest pythonnet for it; the three pins below
+# are the set pywebview 6.2.1 was developed against. Change them only together, and only with a green
+# "06 pywebview window" test in the windows-installer workflow.
+pywebview==6.2.1
+pythonnet==3.0.5
+clr_loader==0.2.10
+# pywebview also needs proxy_tools, which exists on PyPI only as a source package (pure Python). build.ps1
+# therefore allows a source build for that one name (--no-binary=proxy_tools); everything else must be a wheel.
+
+# Streamlit 1.57 to 1.60 let a second server bind a port that is already in use on Windows; stay above them.
+streamlit>=1.62

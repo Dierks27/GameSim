@@ -1,0 +1,19 @@
+# What the installed Windows program does NOT ship.
+#
+# packaging/ci/build.ps1 copies this file to <.git>/info/attributes for the length of one "git archive HEAD"
+# (and puts back what was there), and "git archive" leaves out every path marked export-ignore. What is left is
+# what the program needs at run time: gridsim/, app/, .streamlit/, config.yaml, regime_changes.yaml, README.md
+# (Settings shows a part of it), GETTING_STARTED.md, pyproject.toml and the example runs in backtests/, tuning/
+# and diagnose/.
+#
+# These lines are NOT in the repository's .gitattributes on purpose: GitHub builds its "Download ZIP" with
+# git archive too, so there they would also remove Setup / Start / Schedule GridSim.bat from the ZIP - and with
+# them the old way of installing GridSim from a folder, which must keep working.
+/tests export-ignore
+/packaging export-ignore
+/.github export-ignore
+*.bat export-ignore
+/DECISIONS.md export-ignore
+/SCHEMA_NOTES.md export-ignore
+/.gitattributes export-ignore
+/.gitignore export-ignore

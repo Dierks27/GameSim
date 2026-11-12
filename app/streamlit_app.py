@@ -184,6 +184,29 @@ def sidebar() -> None:
                        help="Version: the date this copy of GridSim was released — it changes with every update. "
                             "Model: counts up when an update changes how games are simulated. Settings: a code for "
                             "your current settings; the Scorecard lists its results under it.")
+    try:
+        update_check_button()
+    except Exception:  # never block the app
+        pass
+
+
+def update_check_button() -> None:
+    """The installed Windows program only: "Check for updates" under the version line asks GitHub now (GridSim also
+    asks by itself, see update_banner). A source folder is updated the way it was installed, so it has no button."""
+    from gridsim import installed, update
+    if not installed.is_installed():
+        return
+    if st.sidebar.button("Check for updates", key="_update_check", type="tertiary",
+                         help="Asks GitHub now whether a newer GridSim has been released. GridSim also checks by "
+                              "itself while it is open."):
+        with st.sidebar, st.spinner("Asking GitHub …"):
+            newer = update.check(force=True)
+        st.sidebar.caption(f"GridSim {newer['version']} is available: see the top of the page." if newer else {
+            "newest": "You have the newest version.",
+            "not_ready": "A newer GridSim has been released, but its installer is not on GitHub yet. GridSim looks "
+                         "again by itself within the hour.",
+            "none_published": "GitHub lists no GridSim release yet.",
+        }.get(update.status()["state"], "GitHub could not be reached just now. GridSim keeps checking by itself."))
 
 
 pages = {
@@ -317,6 +340,67 @@ def autopilot_line(view_page: bool = True) -> None:
         show()
 
 
+def update_banner() -> None:
+    """The installed Windows program only: one line at the top of every page when a newer GridSim has been released.
+    "Update now" downloads the installer in the background (a progress bar; the app stays usable), then the launcher
+    is asked to run it: GridSim closes, updates itself and opens again. No page waits for GitHub: the check runs in
+    the background at most every 12 hours and the page only reads what it found (gridsim/update.py)."""
+    from gridsim import installed, update
+    if not installed.is_installed():
+        return
+    update.check_soon()
+
+    def show() -> None:
+        try:
+            draw()
+        except Exception:  # the timer below redraws this part by itself: no traceback then either
+            pass
+
+    def draw() -> None:
+        job, info = update.job(), update.cached()
+        page = job.get("page") or (info or {}).get("page") or update.RELEASES_PAGE
+        if job["state"] == "downloading":
+            done, total = job.get("done") or 0, job.get("total") or 0
+            st.progress(min(1.0, done / total) if total else 0.0,
+                        text=f"Downloading GridSim {job['version']}: {done / 1e6:.0f} of {total / 1e6:.0f} MB. When "
+                             "it is done, GridSim closes, updates itself and opens again in about a minute. You can "
+                             "keep using it until then. Your data is not touched.")
+            return
+        if job["state"] == "ready" and job["age_s"] < 60:
+            st.success(f"**GridSim {job['version']} is downloaded.** GridSim closes now, updates itself and opens "
+                       "again in about a minute. Nothing for you to press. Your data is not touched.",
+                       icon=":material/check:")
+            return
+        if info:
+            with st.container(border=True):
+                c1, c2 = st.columns([5, 1], vertical_alignment="center")
+                c1.markdown(f"**GridSim {info['version']} is available.** You have {update.current()}. Updating "
+                            "takes a few minutes and does not touch your data.")
+                if c2.button("Update now", type="primary", key="_update_now", icon=":material/download:"):
+                    update.start_download(info)
+                    st.rerun()                    # the whole page: the line above turns into the progress bar
+        if job["state"] == "ready":
+            st.warning("GridSim did not close by itself. Close it and open it again. If it is still the old version "
+                       f"then, download the installer from [the GridSim download page]({page}) and run it. Your "
+                       "data is not touched either way.")
+        elif job["state"] == "failed":
+            again = "Press **Update now** to try again, or download" if info else "You can download"
+            st.warning(f"The update was not installed: {job.get('error') or 'the download failed.'} Nothing was "
+                       f"changed. {again} the installer from [the GridSim download page]({page}) and run it.")
+
+    busy = update.job()["state"] in ("downloading", "ready")
+    frag = getattr(st, "fragment", None)
+    if frag is not None:
+        # every 30 seconds otherwise: what the background check finds shows up without a click
+        frag(show, run_every=1 if busy else 30)()
+    else:
+        show()
+
+
+try:
+    update_banner()
+except Exception:  # never block the app, never a traceback: the next page load tries again
+    pass
 try:
     # pages that only show things may be redrawn when a background run ends; the others keep what they show
     autopilot_line(view_page=(getattr(nav, "title", "") in ("Home", "This Week", "Signals", "Scorecard", "My positions")))
